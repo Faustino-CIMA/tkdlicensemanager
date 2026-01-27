@@ -1,0 +1,22 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: lb\n"
+
+msgid "Confirm your LTF License Manager email"
+msgstr "Confirméiert Är LTF Lizenz Manager E-Mail"
+
+msgid "Hello,"
+msgstr "Moien,"
+
+msgid "Thanks for registering with LTF License Manager. Please verify your email address:"
+msgstr "Merci fir d’Aschreiwung beim LTF Lizenz Manager. Bestätegt w.e.g. Är E-Mail-Adress:"
+
+msgid "Verify your email"
+msgstr "E-Mail bestätegen"
+
+msgid "If you did not request this account, you can ignore this email."
+msgstr "Wann Dir dëse Kont net ugefrot hutt, kënnt Dir dës E-Mail ignoréieren."
+
+msgid "LTF License Manager"
+msgstr "LTF Lizenz Manager"
