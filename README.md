@@ -9,6 +9,12 @@ Required:
 - Docker Desktop (Windows/macOS) or Docker Engine (Linux)
 - Docker Compose v2 (`docker compose` command)
 
+Download links:
+- Git (Windows): https://git-scm.com/download/win
+- Git (macOS): https://git-scm.com/download/mac
+- Docker Desktop (Windows): https://www.docker.com/products/docker-desktop/
+- Docker Desktop (macOS): https://www.docker.com/products/docker-desktop/
+
 Optional for local (non-Docker) development:
 - Python 3.12+
 - Node 20+
@@ -16,6 +22,11 @@ Optional for local (non-Docker) development:
 Windows (WSL) notes:
 - Use WSL2 with a Linux distro (Ubuntu recommended).
 - Install Docker Desktop and enable WSL integration.
+
+Quick install scripts (optional):
+- Windows: `scripts/install-prereqs.bat`
+- macOS: `scripts/install-prereqs-macos.sh`
+- Linux: `scripts/install-prereqs-linux.sh`
 
 ## Quick Start (Docker-first)
 
@@ -66,6 +77,7 @@ docker compose exec backend python manage.py createsuperuser
 ## Environment Variables
 
 See `.env.example` for required settings.
+Note: `.env.example` is tracked in git, `.env` is ignored.
 
 Key value for email verification links:
 - `FRONTEND_BASE_URL` (default `http://localhost:3000`)
@@ -121,6 +133,19 @@ Frontend:
 
 ```
 docker compose exec frontend npm test
+```
+
+## Verify Install
+
+Check services:
+```
+docker compose ps
+```
+
+Quick smoke checks:
+```
+curl http://localhost:8000/api/schema/
+curl http://localhost:3000/
 ```
 
 ## MVP Features (current)
