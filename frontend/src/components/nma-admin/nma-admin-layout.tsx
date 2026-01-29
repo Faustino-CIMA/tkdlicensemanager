@@ -4,22 +4,22 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 
-type ClubAdminLayoutProps = {
+type NmaAdminLayoutProps = {
   title: string;
   subtitle?: string;
   children: React.ReactNode;
 };
 
-export function ClubAdminLayout({ title, subtitle, children }: ClubAdminLayoutProps) {
-  const t = useTranslations("ClubAdmin");
+export function NmaAdminLayout({ title, subtitle, children }: NmaAdminLayoutProps) {
+  const t = useTranslations("NmaAdmin");
   const pathname = usePathname();
   const locale = pathname?.split("/")[1] || "en";
 
   const navItems = [
-    { href: `/${locale}/dashboard/club`, label: t("navOverview") },
-    { href: `/${locale}/dashboard/club/members`, label: t("navMembers") },
-    { href: `/${locale}/dashboard/club/licenses`, label: t("navLicenses") },
-    { href: `/${locale}/dashboard/club/settings`, label: t("navSettings") },
+    { href: `/${locale}/dashboard/nma`, label: t("navOverview") },
+    { href: `/${locale}/dashboard/nma/clubs`, label: t("navClubs") },
+    { href: `/${locale}/dashboard/nma/members`, label: t("navMembers") },
+    { href: `/${locale}/dashboard/nma/licenses`, label: t("navLicenses") },
   ];
 
   return (

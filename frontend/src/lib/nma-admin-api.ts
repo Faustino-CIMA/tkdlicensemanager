@@ -39,6 +39,12 @@ export type License = {
   updated_at: string;
 };
 
+export type ClubInput = {
+  name: string;
+  city?: string;
+  address?: string;
+};
+
 export type MemberInput = {
   club: number;
   first_name: string;
@@ -57,14 +63,15 @@ export type LicenseInput = {
   status: "pending" | "active" | "expired";
 };
 
-export type ClubInput = {
-  name: string;
-  city?: string;
-  address?: string;
-};
-
 export function getClubs() {
   return apiRequest<Club[]>("/api/clubs/");
+}
+
+export function createClub(input: ClubInput) {
+  return apiRequest<Club>("/api/clubs/", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export function updateClub(id: number, input: ClubInput) {

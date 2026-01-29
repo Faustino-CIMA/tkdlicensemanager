@@ -6,9 +6,20 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
-import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
+import { NmaAdminLayout } from "@/components/nma-admin/nma-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
+import { DeleteConfirmModal } from "@/components/ui/delete-confirm-modal";
+import { Modal } from "@/components/ui/modal";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Club,
   License,
@@ -19,18 +30,7 @@ import {
   getLicenses,
   getMembers,
   updateLicense,
-} from "@/lib/club-admin-api";
-import { Button } from "@/components/ui/button";
-import { DeleteConfirmModal } from "@/components/ui/delete-confirm-modal";
-import { Input } from "@/components/ui/input";
-import { Modal } from "@/components/ui/modal";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+} from "@/lib/nma-admin-api";
 
 const licenseSchema = z.object({
   club: z.string().min(1, "Club is required"),
@@ -41,13 +41,12 @@ const licenseSchema = z.object({
 
 type LicenseFormValues = z.infer<typeof licenseSchema>;
 
-export default function ClubAdminLicensesPage() {
-  const t = useTranslations("ClubAdmin");
+export default function NmaAdminLicensesPage() {
+  const t = useTranslations("NmaAdmin");
   const common = useTranslations("Common");
   const [clubs, setClubs] = useState<Club[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [licenses, setLicenses] = useState<License[]>([]);
-  const [selectedClubId, setSelectedClubId] = useState<number | null>(null);
   const [editingLicense, setEditingLicense] = useState<License | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [licenseToDelete, setLicenseToDelete] = useState<License | null>(null);
@@ -88,10 +87,8 @@ export default function ClubAdminLicensesPage() {
       setClubs(clubsResponse);
       setMembers(membersResponse);
       setLicenses(licensesResponse);
-      if (clubsResponse.length > 0 && !selectedClubId) {
-        const firstClubId = clubsResponse[0].id;
-        setSelectedClubId(firstClubId);
-        setValue("club", String(firstClubId));
+      if (clubsResponse.length > 0 && !watch("club")) {
+        setValue("club", String(clubsResponse[0].id));
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to load licenses.");
@@ -104,37 +101,34 @@ export default function ClubAdminLicensesPage() {
     loadData();
   }, []);
 
-  const filteredMembers = useMemo(() => {
+  const selectedClubId = Number(watch("club")) || null;
+  const clubMembers = useMemo(() => {
     if (!selectedClubId) {
       return members;
     }
     return members.filter((member) => member.club === selectedClubId);
   }, [members, selectedClubId]);
 
-  const filteredLicenses = useMemo(() => {
-    if (!selectedClubId) {
-      return licenses;
-    }
-    return licenses.filter((license) => license.club === selectedClubId);
-  }, [licenses, selectedClubId]);
-
   const searchedLicenses = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
     if (!normalizedQuery) {
-      return filteredLicenses;
+      return licenses;
     }
-    return filteredLicenses.filter((license) => {
+    return licenses.filter((license) => {
       const member = members.find((item) => item.id === license.member);
+      const club = clubs.find((item) => item.id === license.club);
       const memberName = member ? `${member.first_name} ${member.last_name}`.toLowerCase() : "";
+      const clubName = club?.name.toLowerCase() ?? "";
       const yearText = String(license.year);
       const statusText = license.status.toLowerCase();
       return (
         memberName.includes(normalizedQuery) ||
+        clubName.includes(normalizedQuery) ||
         yearText.includes(normalizedQuery) ||
         statusText.includes(normalizedQuery)
       );
     });
-  }, [filteredLicenses, members, searchQuery]);
+  }, [clubs, licenses, members, searchQuery]);
 
   const totalPages = Math.max(1, Math.ceil(searchedLicenses.length / pageSize));
   const pagedLicenses = useMemo(() => {
@@ -144,7 +138,7 @@ export default function ClubAdminLicensesPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedClubId]);
+  }, [searchQuery]);
 
   const onSubmit = async (values: LicenseFormValues) => {
     setErrorMessage(null);
@@ -189,7 +183,7 @@ export default function ClubAdminLicensesPage() {
     setEditingLicense(null);
     setIsFormOpen(true);
     reset({
-      club: selectedClubId ? String(selectedClubId) : "",
+      club: clubs[0] ? String(clubs[0].id) : "",
       member: "",
       year: new Date().getFullYear().toString(),
       status: "pending",
@@ -226,7 +220,7 @@ export default function ClubAdminLicensesPage() {
     : "";
 
   return (
-    <ClubAdminLayout title={t("licensesTitle")} subtitle={t("licensesSubtitle")}>
+    <NmaAdminLayout title={t("licensesTitle")} subtitle={t("licensesSubtitle")}>
       {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
 
       <div className="space-y-4">
@@ -276,6 +270,14 @@ export default function ClubAdminLicensesPage() {
                   return member ? `${member.first_name} ${member.last_name}` : t("unknownMember");
                 },
               },
+              {
+                key: "club",
+                header: t("clubLabel"),
+                render: (license) => {
+                  const club = clubs.find((item) => item.id === license.club);
+                  return club ? club.name : t("unknownClub");
+                },
+              },
               { key: "year", header: t("yearLabel") },
               { key: "status", header: t("statusLabel") },
               {
@@ -309,10 +311,7 @@ export default function ClubAdminLicensesPage() {
             <label className="text-sm font-medium text-zinc-700">{t("clubLabel")}</label>
             <Select
               value={watch("club")}
-              onValueChange={(value) => {
-                setSelectedClubId(Number(value));
-                setValue("club", value, { shouldValidate: true });
-              }}
+              onValueChange={(value) => setValue("club", value, { shouldValidate: true })}
             >
               <SelectTrigger>
                 <SelectValue placeholder={t("selectClubPlaceholder")} />
@@ -338,7 +337,7 @@ export default function ClubAdminLicensesPage() {
                 <SelectValue placeholder={t("selectMemberPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
-                {filteredMembers.map((member) => (
+                {clubMembers.map((member) => (
                   <SelectItem key={member.id} value={String(member.id)}>
                     {member.first_name} {member.last_name}
                   </SelectItem>
@@ -411,6 +410,6 @@ export default function ClubAdminLicensesPage() {
           setLicenseToDelete(null);
         }}
       />
-    </ClubAdminLayout>
+    </NmaAdminLayout>
   );
 }

@@ -6,9 +6,20 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
-import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
+import { NmaAdminLayout } from "@/components/nma-admin/nma-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
+import { DeleteConfirmModal } from "@/components/ui/delete-confirm-modal";
+import { Modal } from "@/components/ui/modal";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Club,
   License,
@@ -19,18 +30,7 @@ import {
   getLicenses,
   getMembers,
   updateMember,
-} from "@/lib/club-admin-api";
-import { Button } from "@/components/ui/button";
-import { DeleteConfirmModal } from "@/components/ui/delete-confirm-modal";
-import { Input } from "@/components/ui/input";
-import { Modal } from "@/components/ui/modal";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+} from "@/lib/nma-admin-api";
 import { ImportCsvModal } from "@/components/import/import-csv-modal";
 
 const memberSchema = z.object({
@@ -43,14 +43,13 @@ const memberSchema = z.object({
 
 type MemberFormValues = z.infer<typeof memberSchema>;
 
-export default function ClubAdminMembersPage() {
-  const t = useTranslations("ClubAdmin");
+export default function NmaAdminMembersPage() {
+  const t = useTranslations("NmaAdmin");
   const importT = useTranslations("Import");
   const common = useTranslations("Common");
   const [clubs, setClubs] = useState<Club[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [licenses, setLicenses] = useState<License[]>([]);
-  const [selectedClubId, setSelectedClubId] = useState<number | null>(null);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState<Member | null>(null);
@@ -59,19 +58,26 @@ export default function ClubAdminMembersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [importType, setImportType] = useState<"clubs" | "members" | null>(null);
 
   const pageSize = 8;
 
-  const importFields = [
-    { key: "first_name", label: t("firstNameLabel"), required: true },
-    { key: "last_name", label: t("lastNameLabel"), required: true },
-    { key: "email", label: importT("emailLabel") },
-    { key: "date_of_birth", label: t("dobLabel") },
-    { key: "belt_rank", label: t("beltRankLabel") },
-    { key: "wt_licenseid", label: importT("wtLicenseLabel") },
-    { key: "ltf_licenseid", label: importT("ltfLicenseLabel") },
-  ];
+  const importFields = {
+    clubs: [
+      { key: "name", label: t("clubNameLabel"), required: true },
+      { key: "city", label: t("cityLabel") },
+      { key: "address", label: t("addressLabel") },
+    ],
+    members: [
+      { key: "first_name", label: t("firstNameLabel"), required: true },
+      { key: "last_name", label: t("lastNameLabel"), required: true },
+      { key: "email", label: importT("emailLabel") },
+      { key: "date_of_birth", label: t("dobLabel") },
+      { key: "belt_rank", label: t("beltRankLabel") },
+      { key: "wt_licenseid", label: importT("wtLicenseLabel") },
+      { key: "ltf_licenseid", label: importT("ltfLicenseLabel") },
+    ],
+  };
 
   const {
     register,
@@ -103,10 +109,8 @@ export default function ClubAdminMembersPage() {
       setClubs(clubsResponse);
       setMembers(membersResponse);
       setLicenses(licensesResponse);
-      if (clubsResponse.length > 0 && !selectedClubId) {
-        const firstClubId = clubsResponse[0].id;
-        setSelectedClubId(firstClubId);
-        setValue("club", String(firstClubId));
+      if (clubsResponse.length > 0 && !watch("club")) {
+        setValue("club", String(clubsResponse[0].id));
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to load members.");
@@ -119,23 +123,19 @@ export default function ClubAdminMembersPage() {
     loadData();
   }, []);
 
-  const filteredMembers = useMemo(() => {
-    if (!selectedClubId) {
-      return members;
-    }
-    return members.filter((member) => member.club === selectedClubId);
-  }, [members, selectedClubId]);
-
   const searchedMembers = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
     if (!normalizedQuery) {
-      return filteredMembers;
+      return members;
     }
-    return filteredMembers.filter((member) => {
+    return members.filter((member) => {
+      const clubName = clubs.find((club) => club.id === member.club)?.name ?? "";
       const fullName = `${member.first_name} ${member.last_name}`.toLowerCase();
-      return fullName.includes(normalizedQuery);
+      return (
+        fullName.includes(normalizedQuery) || clubName.toLowerCase().includes(normalizedQuery)
+      );
     });
-  }, [filteredMembers, searchQuery]);
+  }, [clubs, members, searchQuery]);
 
   const totalPages = Math.max(1, Math.ceil(searchedMembers.length / pageSize));
   const pagedMembers = useMemo(() => {
@@ -145,7 +145,7 @@ export default function ClubAdminMembersPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedClubId]);
+  }, [searchQuery]);
 
   const onSubmit = async (values: MemberFormValues) => {
     setErrorMessage(null);
@@ -187,7 +187,7 @@ export default function ClubAdminMembersPage() {
     setEditingMember(null);
     setIsFormOpen(true);
     reset({
-      club: selectedClubId ? String(selectedClubId) : "",
+      club: clubs[0] ? String(clubs[0].id) : "",
       first_name: "",
       last_name: "",
       date_of_birth: "",
@@ -232,7 +232,7 @@ export default function ClubAdminMembersPage() {
   };
 
   return (
-    <ClubAdminLayout title={t("membersTitle")} subtitle={t("membersSubtitle")}>
+    <NmaAdminLayout title={t("membersTitle")} subtitle={t("membersSubtitle")}>
       {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
 
       <div className="space-y-4">
@@ -245,9 +245,18 @@ export default function ClubAdminMembersPage() {
               onChange={(event) => setSearchQuery(event.target.value)}
             />
             <Button onClick={startCreate}>{t("createMember")}</Button>
-            <Button variant="outline" onClick={() => setIsImportOpen(true)}>
-              {importT("importMembers")}
-            </Button>
+            <Select
+              value={importType ?? ""}
+              onValueChange={(value) => setImportType(value as "clubs" | "members")}
+            >
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder={importT("importLabel")} />
+              </SelectTrigger>
+              <SelectContent>
+              <SelectItem value="clubs">{importT("importClubs")}</SelectItem>
+              <SelectItem value="members">{importT("importMembers")}</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex items-center gap-2 text-sm text-zinc-500">
             {t("pageLabel", { current: currentPage, total: totalPages })}
@@ -279,8 +288,13 @@ export default function ClubAdminMembersPage() {
             columns={[
               { key: "first_name", header: t("firstNameLabel") },
               { key: "last_name", header: t("lastNameLabel") },
+              {
+                key: "club",
+                header: t("clubLabel"),
+                render: (member) =>
+                  clubs.find((club) => club.id === member.club)?.name ?? t("unknownClub"),
+              },
               { key: "belt_rank", header: t("beltRankLabel") },
-              { key: "date_of_birth", header: t("dobLabel") },
               {
                 key: "actions",
                 header: t("actionsLabel"),
@@ -312,10 +326,7 @@ export default function ClubAdminMembersPage() {
             <label className="text-sm font-medium text-zinc-700">{t("clubLabel")}</label>
             <Select
               value={watch("club")}
-              onValueChange={(value) => {
-                setSelectedClubId(Number(value));
-                setValue("club", value, { shouldValidate: true });
-              }}
+              onValueChange={(value) => setValue("club", value, { shouldValidate: true })}
             >
               <SelectTrigger>
                 <SelectValue placeholder={t("selectClubPlaceholder")} />
@@ -396,25 +407,24 @@ export default function ClubAdminMembersPage() {
       />
 
       <ImportCsvModal
-        isOpen={isImportOpen}
-        onClose={() => setIsImportOpen(false)}
+        isOpen={importType === "clubs"}
+        onClose={() => setImportType(null)}
+        type="clubs"
+        title={importT("importClubs")}
+        subtitle={importT("importClubsSubtitle")}
+        fields={importFields.clubs}
+        onComplete={loadData}
+      />
+      <ImportCsvModal
+        isOpen={importType === "members"}
+        onClose={() => setImportType(null)}
         type="members"
         title={importT("importMembers")}
         subtitle={importT("importMembersSubtitle")}
-        fields={importFields}
-        fixedClubId={selectedClubId}
+        fields={importFields.members}
+        clubOptions={clubs}
         onComplete={loadData}
       />
-    </ClubAdminLayout>
+    </NmaAdminLayout>
   );
-}
-
-function getDefaultValues(): MemberFormValues {
-  return {
-    club: "",
-    first_name: "",
-    last_name: "",
-    date_of_birth: "",
-    belt_rank: "",
-  };
 }

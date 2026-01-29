@@ -1,4 +1,5 @@
-from rest_framework import permissions, viewsets
+from rest_framework import permissions, status, viewsets
+from rest_framework.response import Response
 
 from .models import Club
 from .serializers import ClubSerializer
@@ -23,3 +24,17 @@ class ClubViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+    def destroy(self, request, *args, **kwargs):
+        club = self.get_object()
+        if club.members.exists():
+            return Response(
+                {"detail": "Club has members and cannot be deleted."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        if club.licenses.exists():
+            return Response(
+                {"detail": "Club has licenses and cannot be deleted."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return super().destroy(request, *args, **kwargs)

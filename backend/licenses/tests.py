@@ -27,6 +27,23 @@ class LicenseModelTests(TestCase):
 
         self.assertEqual(license_record.start_date, date(2026, 1, 1))
         self.assertEqual(license_record.end_date, date(2026, 12, 31))
-from django.test import TestCase
 
-# Create your tests here.
+
+class MemberDeletionCascadeTests(TestCase):
+    def test_member_delete_cascades_licenses(self):
+        admin = User.objects.create_user(
+            username="admin2",
+            password="pass12345",
+            role=User.Roles.NMA_ADMIN,
+        )
+        club = Club.objects.create(name="Cascade Club", created_by=admin)
+        member = Member.objects.create(
+            club=club,
+            first_name="Lina",
+            last_name="Meyer",
+        )
+        License.objects.create(member=member, club=club, year=2026)
+
+        member.delete()
+
+        self.assertEqual(License.objects.count(), 0)

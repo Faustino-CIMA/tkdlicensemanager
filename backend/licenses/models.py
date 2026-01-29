@@ -12,7 +12,7 @@ class License(models.Model):
         ACTIVE = "active", "Active"
         EXPIRED = "expired", "Expired"
 
-    member = models.ForeignKey(Member, on_delete=models.PROTECT, related_name="licenses")
+    member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name="licenses")
     club = models.ForeignKey(Club, on_delete=models.PROTECT, related_name="licenses")
     year = models.PositiveIntegerField()
     start_date = models.DateField()

@@ -22,6 +22,9 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     const contentType = response.headers.get("content-type");
     const message = await response.text();
     let normalizedMessage = message;
+    if (contentType?.includes("text/html")) {
+      normalizedMessage = "Request failed. Please try again.";
+    }
     if (contentType?.includes("application/json") && message) {
       try {
         const parsed = JSON.parse(message) as {

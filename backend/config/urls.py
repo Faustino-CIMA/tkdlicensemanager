@@ -1,5 +1,7 @@
+from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path
+from django.views.generic.base import RedirectView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.routers import DefaultRouter
 
@@ -14,6 +16,12 @@ from accounts.views import (
     ResendVerificationView,
     VerifyEmailView,
 )
+from imports.views import (
+    ClubImportConfirmView,
+    ClubImportPreviewView,
+    MemberImportConfirmView,
+    MemberImportPreviewView,
+)
 from clubs.views import ClubViewSet
 from licenses.views import LicenseViewSet
 from members.views import MemberViewSet
@@ -23,7 +31,14 @@ router.register(r"clubs", ClubViewSet, basename="club")
 router.register(r"members", MemberViewSet, basename="member")
 router.register(r"licenses", LicenseViewSet, basename="license")
 
+schema_view = (
+    SpectacularAPIView.as_view(throttle_classes=[])
+    if settings.DEBUG
+    else SpectacularAPIView.as_view()
+)
+
 urlpatterns = [
+    path("favicon.ico", RedirectView.as_view(url="/static/favicon.ico", permanent=True)),
     path("admin/", admin.site.urls),
     path("accounts/", include("allauth.urls")),
     path("api/auth/register/", RegisterView.as_view(), name="register"),
@@ -39,7 +54,12 @@ urlpatterns = [
         name="resend-verification",
     ),
     path("api/auth/verify-email/", VerifyEmailView.as_view(), name="verify-email"),
+    path("api/imports/clubs/preview/", ClubImportPreviewView.as_view(), name="import-clubs-preview"),
+    path("api/imports/clubs/confirm/", ClubImportConfirmView.as_view(), name="import-clubs-confirm"),
+    path("api/imports/members/preview/", MemberImportPreviewView.as_view(), name="import-members-preview"),
+    path("api/imports/members/confirm/", MemberImportConfirmView.as_view(), name="import-members-confirm"),
     path("api/", include(router.urls)),
-    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    path("api/schema/", schema_view, name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="docs"),
 ]
+

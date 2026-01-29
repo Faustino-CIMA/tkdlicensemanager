@@ -27,6 +27,10 @@ export default function DashboardPage() {
       try {
         const response = await apiRequest<MeResponse>("/api/auth/me/");
         setUser(response);
+        if (response.role === "nma_admin") {
+          router.push(`/${locale}/dashboard/nma`);
+          return;
+        }
         if (response.role === "club_admin") {
           router.push(`/${locale}/dashboard/club`);
         }

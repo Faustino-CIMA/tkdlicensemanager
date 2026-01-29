@@ -4,40 +4,53 @@ Modern, secure Taekwondo license management for the Luxembourg Taekwondo Federat
 
 ## Prerequisites
 
-- Docker + Docker Compose
+Required:
 - Git
+- Docker Desktop (Windows/macOS) or Docker Engine (Linux)
+- Docker Compose v2 (`docker compose` command)
 
 Optional for local (non-Docker) development:
 - Python 3.12+
 - Node 20+
 
+Windows (WSL) notes:
+- Use WSL2 with a Linux distro (Ubuntu recommended).
+- Install Docker Desktop and enable WSL integration.
+
 ## Quick Start (Docker-first)
 
-1. Copy env template and adjust if needed:
+1. Clone the repo and enter the folder:
+
+```
+git clone https://github.com/Faustino-CIMA/tkdlicensemanager.git
+cd tkdlicensemanager
+```
+
+2. Copy env template and adjust if needed:
 
 ```
 cp .env.example .env
 ```
 
-2. Build and start all services:
+3. Build and start all services (production-like containers):
 
 ```
 docker compose up --build
 ```
 
-3. Apply migrations:
+4. Apply migrations:
 
 ```
 docker compose exec backend python manage.py migrate
 ```
 
-4. Create Django superuser (admin login):
+5. Create Django superuser (admin login):
 
 ```
 docker compose exec backend python manage.py createsuperuser
 ```
 
-5. Open:
+6. Open:
 - Backend API: `http://localhost:8000/`
 - Swagger docs: `http://localhost:8000/api/docs/`
 - Frontend: `http://localhost:3000/`
@@ -67,6 +80,12 @@ FRONTEND_BASE_URL=http://127.0.0.1:3000
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
 ```
 
+Ports used:
+- `3000` (Frontend)
+- `8000` (Backend API)
+- `5432` (PostgreSQL)
+- `6379` (Redis)
+
 ## Local Development (optional)
 
 Backend:
@@ -87,6 +106,8 @@ cd frontend
 npm install
 npm run dev
 ```
+
+Note: Local dev uses the Next.js dev server and Django dev server. Docker compose uses production-style `gunicorn` and `next start`.
 
 ## Tests
 
@@ -112,3 +133,11 @@ docker compose exec frontend npm test
 ## Contributing
 
 - Use conventional commits: `feat:`, `fix:`, `docs:`, `chore:`
+
+## Troubleshooting
+
+- **Missing `.env`**: Create it from `.env.example` and ensure values are set.
+- **Port conflicts**: Stop services using ports 3000/8000/5432/6379 or change ports in `docker-compose.yml`.
+- **CORS errors**: Use the same host for frontend/backed (`localhost` or `127.0.0.1`) and align `FRONTEND_BASE_URL` + `NEXT_PUBLIC_API_URL`.
+- **Database not ready**: Wait for `docker compose ps` to show healthy, or restart with `docker compose restart db`.
+- **Stuck migrations**: `docker compose down -v` to reset volumes (data loss), then `docker compose up --build`.
