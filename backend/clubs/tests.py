@@ -113,3 +113,89 @@ class ClubImportTests(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(Club.objects.count(), 2)
+
+
+class ClubAdminManagementTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.nma_admin = User.objects.create_user(
+            username="nmaadmin",
+            password="pass12345",
+            role=User.Roles.NMA_ADMIN,
+        )
+        self.member_user = User.objects.create_user(
+            username="memberuser",
+            password="pass12345",
+            role=User.Roles.MEMBER,
+        )
+        self.club = Club.objects.create(
+            name="Admin Club",
+            city="Luxembourg",
+            address="1 Admin Rd",
+            created_by=self.nma_admin,
+            max_admins=1,
+        )
+        Member.objects.create(
+            user=self.member_user,
+            club=self.club,
+            first_name="Lina",
+            last_name="Muller",
+        )
+
+    def test_add_admin_respects_limit(self):
+        self.client.force_authenticate(user=self.nma_admin)
+        response = self.client.post(
+            f"/api/clubs/{self.club.id}/add_admin/",
+            {"user_id": self.member_user.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.club.refresh_from_db()
+        self.assertEqual(self.club.admins.count(), 1)
+        self.member_user.refresh_from_db()
+        self.assertEqual(self.member_user.role, User.Roles.CLUB_ADMIN)
+
+        other_user = User.objects.create_user(
+            username="membertwo",
+            password="pass12345",
+            role=User.Roles.MEMBER,
+        )
+        Member.objects.create(
+            user=other_user,
+            club=self.club,
+            first_name="Kai",
+            last_name="Schmidt",
+        )
+        response = self.client.post(
+            f"/api/clubs/{self.club.id}/add_admin/",
+            {"user_id": other_user.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_remove_admin_resets_role(self):
+        self.client.force_authenticate(user=self.nma_admin)
+        self.client.post(
+            f"/api/clubs/{self.club.id}/add_admin/",
+            {"user_id": self.member_user.id},
+            format="json",
+        )
+        response = self.client.post(
+            f"/api/clubs/{self.club.id}/remove_admin/",
+            {"user_id": self.member_user.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.member_user.refresh_from_db()
+        self.assertEqual(self.member_user.role, User.Roles.MEMBER)
+
+    def test_set_max_admins(self):
+        self.client.force_authenticate(user=self.nma_admin)
+        response = self.client.patch(
+            f"/api/clubs/{self.club.id}/set_max_admins/",
+            {"max_admins": 5},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.club.refresh_from_db()
+        self.assertEqual(self.club.max_admins, 5)

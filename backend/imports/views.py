@@ -53,6 +53,30 @@ def parse_date(value, errors, field_name, date_format):
         return None
 
 
+def normalize_sex(value, errors):
+    if not value:
+        return None
+    normalized = value.strip().lower()
+    if normalized in {"m", "male"}:
+        return "M"
+    if normalized in {"f", "female"}:
+        return "F"
+    errors.append("sex must be Male or Female")
+    return None
+
+
+def parse_boolean(value, errors, field_name):
+    if value is None or value == "":
+        return None
+    normalized = str(value).strip().lower()
+    if normalized in {"true", "1", "yes", "y"}:
+        return True
+    if normalized in {"false", "0", "no", "n"}:
+        return False
+    errors.append(f"{field_name} must be true/false")
+    return None
+
+
 def get_member_club_id(request):
     club_id_raw = request.data.get("club_id")
     if not club_id_raw:
@@ -264,6 +288,15 @@ class MemberImportPreviewView(views.APIView):
                 "date_of_birth",
                 date_format,
             )
+            sex_value = normalize_sex(
+                row_data.get(mapping.get("sex", ""), "").strip(),
+                errors,
+            )
+            is_active_value = parse_boolean(
+                row_data.get(mapping.get("is_active", ""), "").strip(),
+                errors,
+                "is_active",
+            )
             duplicate_id = (
                 existing_members.get((first_name.lower(), last_name.lower()))
                 if first_name and last_name
@@ -281,6 +314,8 @@ class MemberImportPreviewView(views.APIView):
                         "email": row_data.get(mapping.get("email", ""), "").strip(),
                         "wt_licenseid": row_data.get(mapping.get("wt_licenseid", ""), "").strip(),
                         "ltf_licenseid": row_data.get(mapping.get("ltf_licenseid", ""), "").strip(),
+                        "sex": sex_value,
+                        "is_active": is_active_value,
                     },
                     "errors": errors,
                     "duplicate": bool(duplicate_id),
@@ -360,21 +395,34 @@ class MemberImportConfirmView(views.APIView):
                     "date_of_birth",
                     date_format,
                 )
+                sex_value = normalize_sex(
+                    row_data.get(mapping.get("sex", ""), "").strip(),
+                    errors,
+                )
+                is_active_value = parse_boolean(
+                    row_data.get(mapping.get("is_active", ""), "").strip(),
+                    errors,
+                    "is_active",
+                )
 
                 if errors:
                     row_errors.append({"row_index": index, "errors": errors})
                     continue
-
-                Member.objects.create(
-                    club_id=club_id,
-                    first_name=first_name,
-                    last_name=last_name,
-                    date_of_birth=dob,
-                    belt_rank=row_data.get(mapping.get("belt_rank", ""), "").strip(),
-                    email=row_data.get(mapping.get("email", ""), "").strip(),
-                    wt_licenseid=row_data.get(mapping.get("wt_licenseid", ""), "").strip(),
-                    ltf_licenseid=row_data.get(mapping.get("ltf_licenseid", ""), "").strip(),
-                )
+                member_payload = {
+                    "club_id": club_id,
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "date_of_birth": dob,
+                    "belt_rank": row_data.get(mapping.get("belt_rank", ""), "").strip(),
+                    "email": row_data.get(mapping.get("email", ""), "").strip(),
+                    "wt_licenseid": row_data.get(mapping.get("wt_licenseid", ""), "").strip(),
+                    "ltf_licenseid": row_data.get(mapping.get("ltf_licenseid", ""), "").strip(),
+                }
+                if sex_value:
+                    member_payload["sex"] = sex_value
+                if is_active_value is not None:
+                    member_payload["is_active"] = is_active_value
+                Member.objects.create(**member_payload)
                 created += 1
 
         return response.Response(

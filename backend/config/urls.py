@@ -12,7 +12,10 @@ from accounts.views import (
     LoginView,
     LogoutView,
     MeView,
+    PasswordResetConfirmView,
+    PasswordResetRequestView,
     RegisterView,
+    ResendStatusView,
     ResendVerificationView,
     VerifyEmailView,
 )
@@ -23,13 +26,14 @@ from imports.views import (
     MemberImportPreviewView,
 )
 from clubs.views import ClubViewSet
-from licenses.views import LicenseViewSet
+from licenses.views import LicenseTypeViewSet, LicenseViewSet
 from members.views import MemberViewSet
 
 router = DefaultRouter()
 router.register(r"clubs", ClubViewSet, basename="club")
 router.register(r"members", MemberViewSet, basename="member")
 router.register(r"licenses", LicenseViewSet, basename="license")
+router.register(r"license-types", LicenseTypeViewSet, basename="license-type")
 
 schema_view = (
     SpectacularAPIView.as_view(throttle_classes=[])
@@ -54,6 +58,13 @@ urlpatterns = [
         name="resend-verification",
     ),
     path("api/auth/verify-email/", VerifyEmailView.as_view(), name="verify-email"),
+    path("api/auth/resend-status/", ResendStatusView.as_view(), name="resend-status"),
+    path("api/auth/password-reset/", PasswordResetRequestView.as_view(), name="password-reset"),
+    path(
+        "api/auth/password-reset/confirm/",
+        PasswordResetConfirmView.as_view(),
+        name="password-reset-confirm",
+    ),
     path("api/imports/clubs/preview/", ClubImportPreviewView.as_view(), name="import-clubs-preview"),
     path("api/imports/clubs/confirm/", ClubImportConfirmView.as_view(), name="import-clubs-confirm"),
     path("api/imports/members/preview/", MemberImportPreviewView.as_view(), name="import-members-preview"),

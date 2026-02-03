@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { SummaryCard } from "@/components/club-admin/summary-card";
+import { useClubSelection } from "@/components/club-selection-provider";
 import {
   Club,
   License,
@@ -14,20 +15,13 @@ import {
   getLicenses,
   getMembers,
 } from "@/lib/club-admin-api";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 export default function ClubAdminOverviewPage() {
   const t = useTranslations("ClubAdmin");
+  const { selectedClubId, setSelectedClubId, clubs: storedClubs } = useClubSelection();
   const [clubs, setClubs] = useState<Club[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [licenses, setLicenses] = useState<License[]>([]);
-  const [selectedClubId, setSelectedClubId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -44,7 +38,7 @@ export default function ClubAdminOverviewPage() {
         setClubs(clubsResponse);
         setMembers(membersResponse);
         setLicenses(licensesResponse);
-        if (clubsResponse.length > 0) {
+        if (clubsResponse.length > 0 && !selectedClubId) {
           setSelectedClubId(clubsResponse[0].id);
         }
       } catch (error) {
@@ -76,27 +70,6 @@ export default function ClubAdminOverviewPage() {
 
   return (
     <ClubAdminLayout title={t("overviewTitle")} subtitle={t("overviewSubtitle")}>
-      <section className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm">
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="text-sm font-medium text-zinc-700">{t("selectClubLabel")}</p>
-          <Select
-            value={selectedClubId ? String(selectedClubId) : ""}
-            onValueChange={(value) => setSelectedClubId(Number(value))}
-          >
-            <SelectTrigger className="w-[220px]">
-              <SelectValue placeholder={t("selectClubPlaceholder")} />
-            </SelectTrigger>
-            <SelectContent>
-              {clubs.map((club) => (
-                <SelectItem key={club.id} value={String(club.id)}>
-                  {club.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </section>
-
       {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
 
       {isLoading ? (

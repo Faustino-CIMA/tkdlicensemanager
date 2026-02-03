@@ -17,11 +17,13 @@ export type Member = {
   club: number;
   first_name: string;
   last_name: string;
+  sex: "M" | "F";
   email: string;
   wt_licenseid: string;
   ltf_licenseid: string;
   date_of_birth: string | null;
   belt_rank: string;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -30,6 +32,7 @@ export type License = {
   id: number;
   member: number;
   club: number;
+  license_type: number;
   year: number;
   start_date: string;
   end_date: string;
@@ -43,18 +46,29 @@ export type MemberInput = {
   club: number;
   first_name: string;
   last_name: string;
+  sex: "M" | "F";
   email?: string;
   wt_licenseid?: string;
   ltf_licenseid?: string;
   date_of_birth?: string | null;
   belt_rank?: string;
+  is_active?: boolean;
 };
 
 export type LicenseInput = {
   member: number;
   club: number;
+  license_type: number;
   year: number;
   status: "pending" | "active" | "expired";
+};
+
+export type LicenseType = {
+  id: number;
+  name: string;
+  code: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export type ClubInput = {
@@ -106,6 +120,10 @@ export function deleteMember(id: number) {
 
 export function getLicenses() {
   return apiRequest<License[]>("/api/licenses/");
+}
+
+export function getLicenseTypes() {
+  return apiRequest<LicenseType[]>("/api/license-types/");
 }
 
 export function createLicense(input: LicenseInput) {

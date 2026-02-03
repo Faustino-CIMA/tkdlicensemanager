@@ -28,6 +28,17 @@ type VerifyEmailInput = {
   key: string;
 };
 
+type PasswordResetRequestInput = {
+  email: string;
+  locale?: string;
+};
+
+type PasswordResetConfirmInput = {
+  uid: string;
+  token: string;
+  password: string;
+};
+
 export function login(input: LoginInput) {
   return apiRequest<AuthResponse>("/api/auth/login/", {
     method: "POST",
@@ -59,6 +70,24 @@ export function resendVerification(input: ResendVerificationInput) {
 
 export function verifyEmail(input: VerifyEmailInput) {
   return apiRequest<RegisterResponse>("/api/auth/verify-email/", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function resetPasswordRequest(input: PasswordResetRequestInput) {
+  const locale = input.locale ?? "en";
+  return apiRequest<RegisterResponse>(
+    `/api/auth/password-reset/?locale=${encodeURIComponent(locale)}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ email: input.email, locale }),
+    }
+  );
+}
+
+export function resetPasswordConfirm(input: PasswordResetConfirmInput) {
+  return apiRequest<RegisterResponse>("/api/auth/password-reset/confirm/", {
     method: "POST",
     body: JSON.stringify(input),
   });

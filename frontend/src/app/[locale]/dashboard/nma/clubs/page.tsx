@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Pencil, Trash2 } from "lucide-react";
 
 import { NmaAdminLayout } from "@/components/nma-admin/nma-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
@@ -21,7 +24,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ImportCsvModal } from "@/components/import/import-csv-modal";
-import { Club, createClub, deleteClub, getClubs, updateClub } from "@/lib/nma-admin-api";
+import {
+  Club,
+  EligibleMember,
+  addClubAdmin,
+  createClub,
+  deleteClub,
+  getClubAdmins,
+  getClubs,
+  getEligibleMembers,
+  removeClubAdmin,
+  setClubMaxAdmins,
+  updateClub,
+} from "@/lib/nma-admin-api";
 
 const clubSchema = z.object({
   name: z.string().min(1, "Club name is required"),
@@ -35,18 +50,31 @@ export default function NmaAdminClubsPage() {
   const t = useTranslations("NmaAdmin");
   const importT = useTranslations("Import");
   const common = useTranslations("Common");
+  const pathname = usePathname();
+  const locale = pathname?.split("/")[1] || "en";
   const [clubs, setClubs] = useState<Club[]>([]);
   const [editingClub, setEditingClub] = useState<Club | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [clubToDelete, setClubToDelete] = useState<Club | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isBatchDeleteOpen, setIsBatchDeleteOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState("25");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [importType, setImportType] = useState<"clubs" | "members" | null>(null);
+  const [selectedClub, setSelectedClub] = useState<Club | null>(null);
+  const [clubAdmins, setClubAdmins] = useState<Array<{ id: number; username: string; email: string }>>([]);
+  const [eligibleMembers, setEligibleMembers] = useState<EligibleMember[]>([]);
+  const [maxAdmins, setMaxAdmins] = useState<number>(10);
+  const [selectedMemberId, setSelectedMemberId] = useState<string>("");
+  const [isEmailPromptOpen, setIsEmailPromptOpen] = useState(false);
+  const [emailInput, setEmailInput] = useState("");
+  const [emailError, setEmailError] = useState<string | null>(null);
 
-  const pageSize = 8;
+  const pageSizeOptions = ["25", "50", "100", "150", "200", "all"];
 
   const importFields = {
     clubs: [
@@ -108,15 +136,33 @@ export default function NmaAdminClubsPage() {
     });
   }, [clubs, searchQuery]);
 
-  const totalPages = Math.max(1, Math.ceil(searchedClubs.length / pageSize));
+  const resolvedPageSize =
+    pageSize === "all" ? Math.max(searchedClubs.length, 1) : Number(pageSize);
+  const totalPages = Math.max(1, Math.ceil(searchedClubs.length / resolvedPageSize));
   const pagedClubs = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize;
-    return searchedClubs.slice(startIndex, startIndex + pageSize);
-  }, [currentPage, searchedClubs]);
+    const startIndex = (currentPage - 1) * resolvedPageSize;
+    return searchedClubs.slice(startIndex, startIndex + resolvedPageSize);
+  }, [currentPage, searchedClubs, resolvedPageSize]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery]);
+  }, [searchQuery, pageSize]);
+
+  const allFilteredIds = useMemo(() => searchedClubs.map((club) => club.id), [searchedClubs]);
+  const allSelected =
+    allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedIds.includes(id));
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(allFilteredIds);
+    }
+  };
+
+  const toggleSelectRow = (id: number) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+  };
 
   const onSubmit = async (values: ClubFormValues) => {
     setErrorMessage(null);
@@ -160,6 +206,110 @@ export default function NmaAdminClubsPage() {
     setIsDeleteOpen(true);
   };
 
+  const openClubAdmins = async (club: Club) => {
+    setSelectedClub(club);
+    setSelectedMemberId("");
+    setIsEmailPromptOpen(false);
+    setEmailInput("");
+    setEmailError(null);
+    try {
+      const [adminsResponse, eligibleResponse] = await Promise.all([
+        getClubAdmins(club.id),
+        getEligibleMembers(club.id),
+      ]);
+      setClubAdmins(adminsResponse.admins);
+      setMaxAdmins(adminsResponse.max_admins);
+      setEligibleMembers(eligibleResponse.eligible);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to load club admins.");
+    }
+  };
+
+  const selectedMember = eligibleMembers.find(
+    (member) => String(member.id) === selectedMemberId
+  );
+
+  const handleAddAdmin = async () => {
+    if (!selectedClub || !selectedMemberId) {
+      return;
+    }
+    if (!selectedMember) {
+      return;
+    }
+    if (!selectedMember.email && !emailInput) {
+      setIsEmailPromptOpen(true);
+      setEmailError(null);
+      return;
+    }
+    if (!selectedMember.email && !isValidEmail(emailInput.trim())) {
+      setIsEmailPromptOpen(true);
+      setEmailError(t("emailRequiredError"));
+      return;
+    }
+    try {
+      await addClubAdmin(
+        selectedClub.id,
+        Number(selectedMemberId),
+        selectedMember.email || emailInput,
+        locale
+      );
+      setIsEmailPromptOpen(false);
+      setEmailInput("");
+      setEmailError(null);
+      await openClubAdmins(selectedClub);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to add club admin.";
+      if (message === "email_required") {
+        setIsEmailPromptOpen(true);
+        setEmailError(t("emailRequiredError"));
+        return;
+      }
+      setErrorMessage(message);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedMemberId) {
+      setIsEmailPromptOpen(false);
+      setEmailInput("");
+      setEmailError(null);
+      return;
+    }
+    if (selectedMember?.email) {
+      setIsEmailPromptOpen(false);
+      setEmailInput("");
+      setEmailError(null);
+    }
+  }, [selectedMemberId, selectedMember]);
+
+  const handleRemoveAdmin = async (userId: number) => {
+    if (!selectedClub) {
+      return;
+    }
+    try {
+      await removeClubAdmin(selectedClub.id, userId);
+      await openClubAdmins(selectedClub);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to remove club admin.");
+    }
+  };
+
+  const handleMaxAdminsChange = async (value: string) => {
+    if (!selectedClub) {
+      return;
+    }
+    const parsed = Number(value);
+    if (Number.isNaN(parsed)) {
+      return;
+    }
+    try {
+      const response = await setClubMaxAdmins(selectedClub.id, parsed);
+      setMaxAdmins(response.max_admins);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to update admin limit.");
+    }
+  };
+
   const confirmDelete = async () => {
     if (!clubToDelete) {
       return;
@@ -174,6 +324,22 @@ export default function NmaAdminClubsPage() {
     }
   };
 
+  const selectedClubs = clubs.filter((club) => selectedIds.includes(club.id));
+
+  const confirmBatchDelete = async () => {
+    try {
+      await Promise.all(selectedClubs.map((club) => deleteClub(club.id)));
+      setSelectedIds([]);
+      await loadClubs();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to delete clubs.");
+    }
+  };
+
+  const selectedClubItems = selectedClubs.map((club) =>
+    club.city ? `${club.name} · ${club.city}` : club.name
+  );
+
   return (
     <NmaAdminLayout title={t("clubsTitle")} subtitle={t("clubsSubtitle")}>
       {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
@@ -187,6 +353,35 @@ export default function NmaAdminClubsPage() {
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
             />
+            <Select value={pageSize} onValueChange={setPageSize}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder={common("rowsPerPageLabel")} />
+              </SelectTrigger>
+              <SelectContent>
+                {pageSizeOptions.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option === "all" ? common("rowsPerPageAll") : option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value=""
+              onValueChange={(value) => {
+                if (value === "delete") {
+                  setIsBatchDeleteOpen(true);
+                }
+              }}
+            >
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder={common("batchActionsLabel")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="delete" disabled={selectedIds.length === 0}>
+                  {common("batchDeleteLabel")}
+                </SelectItem>
+              </SelectContent>
+            </Select>
             <Button onClick={startCreate}>{t("createClub")}</Button>
             <Select
               value={importType ?? ""}
@@ -229,6 +424,25 @@ export default function NmaAdminClubsPage() {
         ) : (
           <EntityTable
             columns={[
+              {
+                key: "select",
+                header: (
+                  <input
+                    type="checkbox"
+                    aria-label={common("selectAllLabel")}
+                    checked={allSelected}
+                    onChange={toggleSelectAll}
+                  />
+                ),
+                render: (club) => (
+                  <input
+                    type="checkbox"
+                    aria-label={common("selectRowLabel")}
+                    checked={selectedIds.includes(club.id)}
+                    onChange={() => toggleSelectRow(club.id)}
+                  />
+                ),
+              },
               { key: "name", header: t("clubNameLabel") },
               { key: "city", header: t("cityLabel") },
               { key: "address", header: t("addressLabel") },
@@ -237,11 +451,34 @@ export default function NmaAdminClubsPage() {
                 header: t("actionsLabel"),
                 render: (club) => (
                   <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" onClick={() => startEdit(club)}>
-                      {t("editAction")}
+                    <Button variant="outline" size="sm" asChild>
+                      <Link href={`/${locale}/dashboard/nma/clubs/${club.id}`}>
+                        {t("viewClubAction")}
+                      </Link>
                     </Button>
-                    <Button variant="destructive" size="sm" onClick={() => handleDelete(club)}>
-                      {t("deleteAction")}
+                    <Button
+                      variant="outline"
+                      size="icon-sm"
+                      aria-label={t("editAction")}
+                      onClick={() => startEdit(club)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      aria-label={t("manageAdmins")}
+                      onClick={() => openClubAdmins(club)}
+                    >
+                      {t("manageAdmins")}
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="icon-sm"
+                      aria-label={t("deleteAction")}
+                      onClick={() => handleDelete(club)}
+                    >
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 ),
@@ -309,6 +546,144 @@ export default function NmaAdminClubsPage() {
         }}
       />
 
+      <DeleteConfirmModal
+        isOpen={isBatchDeleteOpen}
+        title={common("deleteTitle", { item: common("itemClub") })}
+        description={common("deleteSelectedDescription", {
+          count: selectedClubs.length,
+          item: common("itemClub"),
+        })}
+        listTitle={common("batchDeleteListTitle")}
+        listItems={selectedClubItems}
+        confirmLabel={common("deleteConfirmButton")}
+        cancelLabel={common("deleteCancelButton")}
+        onConfirm={() => {
+          setIsBatchDeleteOpen(false);
+          confirmBatchDelete();
+        }}
+        onCancel={() => setIsBatchDeleteOpen(false)}
+      />
+
+      <Modal
+        title={selectedClub ? t("adminsTitle", { club: selectedClub.name }) : t("adminsTitleFallback")}
+        description={t("adminsSubtitle")}
+        isOpen={Boolean(selectedClub)}
+        onClose={() => setSelectedClub(null)}
+      >
+        <div className="space-y-4">
+          {selectedClub ? (
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/${locale}/dashboard/nma/clubs/${selectedClub.id}?tab=admins`}>
+                {t("openAdminsPage")}
+              </Link>
+            </Button>
+          ) : null}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-zinc-700">{t("maxAdminsLabel")}</label>
+            <Input
+              type="number"
+              min={1}
+              value={String(maxAdmins)}
+              onChange={(event) => handleMaxAdminsChange(event.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-zinc-700">{t("addAdminLabel")}</label>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={selectedMemberId} onValueChange={setSelectedMemberId}>
+                <SelectTrigger className="w-64">
+                  <SelectValue placeholder={t("selectMemberAdminPlaceholder")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {eligibleMembers.map((member) => (
+                    <SelectItem key={member.id} value={String(member.id)}>
+                      {member.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button onClick={handleAddAdmin}>{t("addAdminAction")}</Button>
+            </div>
+            {isEmailPromptOpen && selectedMember ? (
+              <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700">
+                <p className="font-medium">{t("emailRequiredTitle")}</p>
+                <p className="mt-1 text-xs text-zinc-500">{t("emailRequiredDescription")}</p>
+                <div className="mt-3 space-y-2">
+                  <label className="text-xs font-medium text-zinc-600">
+                    {t("emailInputLabel")}
+                  </label>
+                  <Input
+                    type="email"
+                    placeholder={t("emailInputPlaceholder")}
+                    value={emailInput}
+                    onChange={(event) => setEmailInput(event.target.value)}
+                  />
+                  {emailError ? <p className="text-xs text-red-600">{emailError}</p> : null}
+                  <p className="text-xs text-zinc-500">
+                    {t("usernamePreviewLabel", {
+                      username: buildUsernamePreview(
+                        selectedMember.first_name,
+                        selectedMember.last_name
+                      ),
+                    })}{" "}
+                    {t("usernamePreviewNote")}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        if (!isValidEmail(emailInput.trim())) {
+                          setEmailError(t("emailRequiredError"));
+                          return;
+                        }
+                        handleAddAdmin();
+                      }}
+                    >
+                      {t("emailConfirmAction")}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setIsEmailPromptOpen(false);
+                        setEmailInput("");
+                        setEmailError(null);
+                      }}
+                    >
+                      {t("emailCancelAction")}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-zinc-700">{t("currentAdminsLabel")}</p>
+            {clubAdmins.length === 0 ? (
+              <p className="text-sm text-zinc-500">{t("noAdminsLabel")}</p>
+            ) : (
+              <div className="space-y-2">
+                {clubAdmins.map((admin) => (
+                  <div
+                    key={admin.id}
+                    className="flex items-center justify-between rounded-md border border-zinc-200 px-3 py-2"
+                  >
+                    <div className="text-sm text-zinc-700">
+                      {admin.username} · {admin.email}
+                    </div>
+                    <Button variant="destructive" size="sm" onClick={() => handleRemoveAdmin(admin.id)}>
+                      {t("removeAdminAction")}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </Modal>
+
       <ImportCsvModal
         isOpen={importType === "clubs"}
         onClose={() => setImportType(null)}
@@ -330,4 +705,14 @@ export default function NmaAdminClubsPage() {
       />
     </NmaAdminLayout>
   );
+}
+
+function buildUsernamePreview(firstName: string, lastName: string) {
+  const initial = firstName.trim().slice(0, 1);
+  const base = `${initial}${lastName}`.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return (base || "member").slice(0, 10);
+}
+
+function isValidEmail(value: string) {
+  return /\S+@\S+\.\S+/.test(value);
 }

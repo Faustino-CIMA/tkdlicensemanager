@@ -8,16 +8,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
-import { Club, getClubs, updateClub } from "@/lib/club-admin-api";
+import { getClubs, updateClub } from "@/lib/club-admin-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 const clubSchema = z.object({
   name: z.string().min(1, "Club name is required"),
@@ -29,7 +22,6 @@ type ClubFormValues = z.infer<typeof clubSchema>;
 
 export default function ClubAdminSettingsPage() {
   const t = useTranslations("ClubAdmin");
-  const [clubs, setClubs] = useState<Club[]>([]);
   const [selectedClubId, setSelectedClubId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -54,7 +46,6 @@ export default function ClubAdminSettingsPage() {
     setErrorMessage(null);
     try {
       const clubsResponse = await getClubs();
-      setClubs(clubsResponse);
       if (clubsResponse.length > 0) {
         const club = clubsResponse[0];
         setSelectedClubId(club.id);
@@ -89,39 +80,8 @@ export default function ClubAdminSettingsPage() {
     }
   };
 
-  const handleClubChange = (value: string) => {
-    const nextId = Number(value);
-    setSelectedClubId(nextId);
-    const nextClub = clubs.find((club) => club.id === nextId);
-    if (nextClub) {
-      reset({
-        name: nextClub.name,
-        city: nextClub.city ?? "",
-        address: nextClub.address ?? "",
-      });
-    }
-  };
-
   return (
     <ClubAdminLayout title={t("clubProfileTitle")} subtitle={t("clubProfileSubtitle")}>
-      <section className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm">
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="text-sm font-medium text-zinc-700">{t("selectClubLabel")}</p>
-          <Select value={String(selectedClubId ?? "")} onValueChange={handleClubChange}>
-            <SelectTrigger className="w-[220px]">
-              <SelectValue placeholder={t("selectClubPlaceholder")} />
-            </SelectTrigger>
-            <SelectContent>
-              {clubs.map((club) => (
-                <SelectItem key={club.id} value={String(club.id)}>
-                  {club.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </section>
-
       {isLoading ? (
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
       ) : (

@@ -151,7 +151,11 @@ curl http://localhost:3000/
 ## MVP Features (current)
 
 - Role-based authentication (NMA admin, club admin, coach, member)
-- Core models: Club, Member, License
+- Core models: Club, Member, License, LicenseType
+- Email verification + password reset flow
+- Club admin management (NMA assigns, limits per club)
+- License type management (NMA-managed)
+- CSV import for clubs and members with mapping + preview
 - GDPR endpoints: consent, data export, data delete
 - i18n scaffolding (English + Luxembourgish)
 
@@ -166,3 +170,4 @@ curl http://localhost:3000/
 - **CORS errors**: Use the same host for frontend/backed (`localhost` or `127.0.0.1`) and align `FRONTEND_BASE_URL` + `NEXT_PUBLIC_API_URL`.
 - **Database not ready**: Wait for `docker compose ps` to show healthy, or restart with `docker compose restart db`.
 - **Stuck migrations**: `docker compose down -v` to reset volumes (data loss), then `docker compose up --build`.
+- **makemigrations permission denied in Docker**: run `python backend/manage.py makemigrations` locally or add the migration file in the repo, then run `docker compose exec backend python manage.py migrate`.

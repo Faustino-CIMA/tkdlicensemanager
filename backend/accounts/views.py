@@ -1,4 +1,8 @@
 from allauth.account.models import EmailAddress, EmailConfirmationHMAC
+from django.conf import settings
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from django.utils.encoding import force_bytes, force_str
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, response, status, views
 from rest_framework.authtoken.models import Token
@@ -6,6 +10,7 @@ from rest_framework.authtoken.models import Token
 from members.models import Member
 from licenses.models import License
 
+from .email_utils import send_password_reset_email
 from .models import User
 from .serializers import (
     ConsentSerializer,
@@ -15,6 +20,8 @@ from .serializers import (
     EmptySerializer,
     LoginResponseSerializer,
     LoginSerializer,
+    PasswordResetConfirmSerializer,
+    PasswordResetRequestSerializer,
     RegisterResponseSerializer,
     RegisterSerializer,
     ResendVerificationSerializer,
@@ -200,3 +207,91 @@ class VerifyEmailView(views.APIView):
 
         confirmation.confirm(request)
         return response.Response({"detail": "Email verified successfully."})
+
+
+@extend_schema(
+    request=PasswordResetRequestSerializer,
+    responses=DetailResponseSerializer,
+)
+class PasswordResetRequestView(views.APIView):
+    permission_classes = [permissions.AllowAny]
+    serializer_class = PasswordResetRequestSerializer
+
+    def post(self, request):
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data["email"]
+        locale = (
+            serializer.validated_data.get("locale")
+            or request.query_params.get("locale")
+            or settings.FRONTEND_DEFAULT_LOCALE
+        )
+
+        user = User.objects.filter(email__iexact=email).first()
+        if user:
+            token = PasswordResetTokenGenerator().make_token(user)
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            reset_url = f"{settings.FRONTEND_BASE_URL}/{locale}/reset-password?uid={uid}&token={token}"
+            ok, _ = send_password_reset_email(user, reset_url)
+
+        return response.Response(
+            {"detail": "If the email exists, a reset link has been sent."}
+        )
+
+
+@extend_schema(
+    request=PasswordResetConfirmSerializer,
+    responses=DetailResponseSerializer,
+)
+class PasswordResetConfirmView(views.APIView):
+    permission_classes = [permissions.AllowAny]
+    serializer_class = PasswordResetConfirmSerializer
+
+    def post(self, request):
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        uid = serializer.validated_data["uid"]
+        token = serializer.validated_data["token"]
+        password = serializer.validated_data["password"]
+
+        try:
+            user_id = force_str(urlsafe_base64_decode(uid))
+            user = User.objects.get(pk=user_id)
+        except (User.DoesNotExist, ValueError, TypeError, OverflowError):
+            return response.Response(
+                {"detail": "Invalid or expired reset link."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        token_ok = PasswordResetTokenGenerator().check_token(user, token)
+
+        if not token_ok:
+            return response.Response(
+                {"detail": "Invalid or expired reset link."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.set_password(password)
+        user.is_email_verified = True
+        user.save(update_fields=["password", "is_email_verified"])
+        return response.Response({"detail": "Password reset successfully."})
+
+
+@extend_schema(
+    request=EmptySerializer,
+    responses=DetailResponseSerializer,
+)
+class ResendStatusView(views.APIView):
+    serializer_class = EmptySerializer
+
+    def get(self, request):
+        if not request.user or request.user.role != "nma_admin":
+            return response.Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        api_key = settings.RESEND_API_KEY or ""
+        return response.Response(
+            {
+                "detail": "Resend status",
+                "resend_api_key_loaded": bool(api_key),
+                "resend_api_key_length": len(api_key),
+            }
+        )

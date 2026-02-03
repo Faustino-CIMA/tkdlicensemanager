@@ -20,6 +20,7 @@ export function NmaAdminLayout({ title, subtitle, children }: NmaAdminLayoutProp
     { href: `/${locale}/dashboard/nma/clubs`, label: t("navClubs") },
     { href: `/${locale}/dashboard/nma/members`, label: t("navMembers") },
     { href: `/${locale}/dashboard/nma/licenses`, label: t("navLicenses") },
+    { href: `/${locale}/dashboard/nma/license-types`, label: t("navLicenseTypes") },
   ];
 
   return (

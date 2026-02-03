@@ -9,11 +9,17 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const token = getToken();
   const requestUrl = `${API_URL}${path}`;
+  const skipAuthHeader =
+    path.startsWith("/api/auth/login/") ||
+    path.startsWith("/api/auth/register/") ||
+    path.startsWith("/api/auth/verify-email/") ||
+    path.startsWith("/api/auth/resend-verification/") ||
+    path.startsWith("/api/auth/password-reset/");
   const response = await fetch(requestUrl, {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Token ${token}` } : {}),
+      ...(token && !skipAuthHeader ? { Authorization: `Token ${token}` } : {}),
       ...options.headers,
     },
   });
@@ -52,6 +58,5 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   if (response.status === 204) {
     return null as T;
   }
-
   return (await response.json()) as T;
 }

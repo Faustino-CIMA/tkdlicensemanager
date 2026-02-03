@@ -30,3 +30,4 @@ class MemberViewSet(viewsets.ModelViewSet):
                 {"detail": "Member has related licenses and cannot be deleted."},
                 status=status.HTTP_409_CONFLICT,
             )
+

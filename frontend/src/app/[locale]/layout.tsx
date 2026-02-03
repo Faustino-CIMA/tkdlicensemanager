@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getMessages } from "next-intl/server";
 
+import { ClubSelectionProvider } from "@/components/club-selection-provider";
 import { TopBar } from "@/components/top-bar";
 
 import "../globals.css";
@@ -34,9 +35,11 @@ export default async function LocaleLayout({ children, params }: LocaleLayoutPro
   return (
     <html lang={locale}>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <NextIntlClientProvider messages={messages}>
-          <TopBar />
-          {children}
+        <NextIntlClientProvider locale={locale} messages={messages}>
+          <ClubSelectionProvider>
+            <TopBar />
+            {children}
+          </ClubSelectionProvider>
         </NextIntlClientProvider>
       </body>
     </html>

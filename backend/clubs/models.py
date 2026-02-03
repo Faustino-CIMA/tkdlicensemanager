@@ -6,6 +6,7 @@ class Club(models.Model):
     name = models.CharField(max_length=255)
     city = models.CharField(max_length=255, blank=True)
     address = models.CharField(max_length=255, blank=True)
+    max_admins = models.PositiveIntegerField(default=10)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,

@@ -5,17 +5,21 @@ import { useTranslations } from "next-intl";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Pencil, Trash2 } from "lucide-react";
 
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
+import { useClubSelection } from "@/components/club-selection-provider";
 import {
   Club,
   License,
+  LicenseType,
   Member,
   createLicense,
   deleteLicense,
   getClubs,
+  getLicenseTypes,
   getLicenses,
   getMembers,
   updateLicense,
@@ -35,6 +39,7 @@ import {
 const licenseSchema = z.object({
   club: z.string().min(1, "Club is required"),
   member: z.string().min(1, "Member is required"),
+  license_type: z.string().min(1, "License type is required"),
   year: z.string().min(4, "Year is required"),
   status: z.enum(["pending", "active", "expired"]),
 });
@@ -44,20 +49,24 @@ type LicenseFormValues = z.infer<typeof licenseSchema>;
 export default function ClubAdminLicensesPage() {
   const t = useTranslations("ClubAdmin");
   const common = useTranslations("Common");
+  const { selectedClubId, setSelectedClubId } = useClubSelection();
   const [clubs, setClubs] = useState<Club[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [licenses, setLicenses] = useState<License[]>([]);
-  const [selectedClubId, setSelectedClubId] = useState<number | null>(null);
+  const [licenseTypes, setLicenseTypes] = useState<LicenseType[]>([]);
   const [editingLicense, setEditingLicense] = useState<License | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [licenseToDelete, setLicenseToDelete] = useState<License | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isBatchDeleteOpen, setIsBatchDeleteOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState("25");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const pageSize = 8;
+  const pageSizeOptions = ["25", "50", "100", "150", "200", "all"];
 
   const {
     handleSubmit,
@@ -71,6 +80,7 @@ export default function ClubAdminLicensesPage() {
     defaultValues: {
       club: "",
       member: "",
+      license_type: "",
       year: new Date().getFullYear().toString(),
       status: "pending",
     },
@@ -80,18 +90,21 @@ export default function ClubAdminLicensesPage() {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const [clubsResponse, membersResponse, licensesResponse] = await Promise.all([
-        getClubs(),
-        getMembers(),
-        getLicenses(),
-      ]);
+      const [clubsResponse, membersResponse, licensesResponse, licenseTypesResponse] =
+        await Promise.all([getClubs(), getMembers(), getLicenses(), getLicenseTypes()]);
       setClubs(clubsResponse);
       setMembers(membersResponse);
       setLicenses(licensesResponse);
+      setLicenseTypes(licenseTypesResponse);
       if (clubsResponse.length > 0 && !selectedClubId) {
         const firstClubId = clubsResponse[0].id;
         setSelectedClubId(firstClubId);
         setValue("club", String(firstClubId));
+      } else if (selectedClubId) {
+        setValue("club", String(selectedClubId));
+      }
+      if (licenseTypesResponse.length > 0 && !watch("license_type")) {
+        setValue("license_type", String(licenseTypesResponse[0].id));
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to load licenses.");
@@ -128,29 +141,60 @@ export default function ClubAdminLicensesPage() {
       const memberName = member ? `${member.first_name} ${member.last_name}`.toLowerCase() : "";
       const yearText = String(license.year);
       const statusText = license.status.toLowerCase();
+      const licenseType = licenseTypes.find((item) => item.id === license.license_type);
+      const licenseTypeName = licenseType?.name.toLowerCase() ?? "";
       return (
         memberName.includes(normalizedQuery) ||
         yearText.includes(normalizedQuery) ||
-        statusText.includes(normalizedQuery)
+        statusText.includes(normalizedQuery) ||
+        licenseTypeName.includes(normalizedQuery)
       );
     });
-  }, [filteredLicenses, members, searchQuery]);
+  }, [filteredLicenses, licenseTypes, members, searchQuery]);
 
-  const totalPages = Math.max(1, Math.ceil(searchedLicenses.length / pageSize));
+  const resolvedPageSize =
+    pageSize === "all" ? Math.max(searchedLicenses.length, 1) : Number(pageSize);
+  const totalPages = Math.max(1, Math.ceil(searchedLicenses.length / resolvedPageSize));
   const pagedLicenses = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize;
-    return searchedLicenses.slice(startIndex, startIndex + pageSize);
-  }, [currentPage, searchedLicenses]);
+    const startIndex = (currentPage - 1) * resolvedPageSize;
+    return searchedLicenses.slice(startIndex, startIndex + resolvedPageSize);
+  }, [currentPage, searchedLicenses, resolvedPageSize]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedClubId]);
+  }, [searchQuery, selectedClubId, pageSize]);
+
+  useEffect(() => {
+    if (selectedClubId && !watch("club")) {
+      setValue("club", String(selectedClubId));
+    }
+  }, [selectedClubId, setValue, watch]);
+
+  const allFilteredIds = useMemo(
+    () => searchedLicenses.map((license) => license.id),
+    [searchedLicenses]
+  );
+  const allSelected =
+    allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedIds.includes(id));
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(allFilteredIds);
+    }
+  };
+
+  const toggleSelectRow = (id: number) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+  };
 
   const onSubmit = async (values: LicenseFormValues) => {
     setErrorMessage(null);
     const payload = {
       club: Number(values.club),
       member: Number(values.member),
+      license_type: Number(values.license_type),
       year: Number(values.year),
       status: values.status,
     };
@@ -165,6 +209,7 @@ export default function ClubAdminLicensesPage() {
       reset({
         club: values.club,
         member: "",
+        license_type: values.license_type,
         year: new Date().getFullYear().toString(),
         status: "pending",
       });
@@ -180,6 +225,7 @@ export default function ClubAdminLicensesPage() {
     reset({
       club: String(license.club),
       member: String(license.member),
+      license_type: String(license.license_type),
       year: String(license.year),
       status: license.status,
     });
@@ -191,6 +237,7 @@ export default function ClubAdminLicensesPage() {
     reset({
       club: selectedClubId ? String(selectedClubId) : "",
       member: "",
+      license_type: licenseTypes[0] ? String(licenseTypes[0].id) : "",
       year: new Date().getFullYear().toString(),
       status: "pending",
     });
@@ -215,6 +262,18 @@ export default function ClubAdminLicensesPage() {
     }
   };
 
+  const selectedLicenses = licenses.filter((license) => selectedIds.includes(license.id));
+
+  const confirmBatchDelete = async () => {
+    try {
+      await Promise.all(selectedLicenses.map((license) => deleteLicense(license.id)));
+      setSelectedIds([]);
+      await loadData();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to delete licenses.");
+    }
+  };
+
   const licenseStatusLabel =
     licenseToDelete?.status === "active"
       ? t("statusActive")
@@ -224,6 +283,17 @@ export default function ClubAdminLicensesPage() {
   const licenseLabel = licenseToDelete
     ? `${licenseToDelete.year} · ${licenseStatusLabel}`
     : "";
+  const selectedLicenseItems = selectedLicenses.map((license) => {
+    const member = members.find((item) => item.id === license.member);
+    const memberLabel = member ? `${member.first_name} ${member.last_name}` : t("unknownMember");
+    const statusLabel =
+      license.status === "active"
+        ? t("statusActive")
+        : license.status === "expired"
+        ? t("statusExpired")
+        : t("statusPending");
+    return `${memberLabel} — ${license.year} · ${statusLabel}`;
+  });
 
   return (
     <ClubAdminLayout title={t("licensesTitle")} subtitle={t("licensesSubtitle")}>
@@ -238,6 +308,35 @@ export default function ClubAdminLicensesPage() {
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
             />
+            <Select value={pageSize} onValueChange={setPageSize}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder={common("rowsPerPageLabel")} />
+              </SelectTrigger>
+              <SelectContent>
+                {pageSizeOptions.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option === "all" ? common("rowsPerPageAll") : option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value=""
+              onValueChange={(value) => {
+                if (value === "delete") {
+                  setIsBatchDeleteOpen(true);
+                }
+              }}
+            >
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder={common("batchActionsLabel")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="delete" disabled={selectedIds.length === 0}>
+                  {common("batchDeleteLabel")}
+                </SelectItem>
+              </SelectContent>
+            </Select>
             <Button onClick={startCreate}>{t("createLicense")}</Button>
           </div>
           <div className="flex items-center gap-2 text-sm text-zinc-500">
@@ -269,6 +368,25 @@ export default function ClubAdminLicensesPage() {
           <EntityTable
             columns={[
               {
+                key: "select",
+                header: (
+                  <input
+                    type="checkbox"
+                    aria-label={common("selectAllLabel")}
+                    checked={allSelected}
+                    onChange={toggleSelectAll}
+                  />
+                ),
+                render: (license) => (
+                  <input
+                    type="checkbox"
+                    aria-label={common("selectRowLabel")}
+                    checked={selectedIds.includes(license.id)}
+                    onChange={() => toggleSelectRow(license.id)}
+                  />
+                ),
+              },
+              {
                 key: "member",
                 header: t("memberLabel"),
                 render: (license) => {
@@ -277,17 +395,35 @@ export default function ClubAdminLicensesPage() {
                 },
               },
               { key: "year", header: t("yearLabel") },
+              {
+                key: "license_type",
+                header: t("licenseTypeLabel"),
+                render: (license) => {
+                  const licenseType = licenseTypes.find((item) => item.id === license.license_type);
+                  return licenseType ? licenseType.name : t("unknownLicenseType");
+                },
+              },
               { key: "status", header: t("statusLabel") },
               {
                 key: "actions",
                 header: t("actionsLabel"),
                 render: (license) => (
                   <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" onClick={() => startEdit(license)}>
-                      {t("editAction")}
+                    <Button
+                      variant="outline"
+                      size="icon-sm"
+                      aria-label={t("editAction")}
+                      onClick={() => startEdit(license)}
+                    >
+                      <Pencil className="h-4 w-4" />
                     </Button>
-                    <Button variant="destructive" size="sm" onClick={() => handleDelete(license)}>
-                      {t("deleteAction")}
+                    <Button
+                      variant="destructive"
+                      size="icon-sm"
+                      aria-label={t("deleteAction")}
+                      onClick={() => handleDelete(license)}
+                    >
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 ),
@@ -349,6 +485,28 @@ export default function ClubAdminLicensesPage() {
           </div>
 
           <div className="space-y-2">
+            <label className="text-sm font-medium text-zinc-700">{t("licenseTypeLabel")}</label>
+            <Select
+              value={watch("license_type")}
+              onValueChange={(value) => setValue("license_type", value, { shouldValidate: true })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={t("selectLicenseTypePlaceholder")} />
+              </SelectTrigger>
+              <SelectContent>
+                {licenseTypes.map((licenseType) => (
+                  <SelectItem key={licenseType.id} value={String(licenseType.id)}>
+                    {licenseType.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {errors.license_type ? (
+              <p className="text-sm text-red-600">{errors.license_type.message}</p>
+            ) : null}
+          </div>
+
+          <div className="space-y-2">
             <label className="text-sm font-medium text-zinc-700">{t("yearLabel")}</label>
             <Input type="number" min="2000" {...register("year")} />
             {errors.year ? <p className="text-sm text-red-600">{errors.year.message}</p> : null}
@@ -388,6 +546,7 @@ export default function ClubAdminLicensesPage() {
                 reset({
                   club: watch("club"),
                   member: "",
+                  license_type: watch("license_type"),
                   year: new Date().getFullYear().toString(),
                   status: "pending",
                 });
@@ -410,6 +569,24 @@ export default function ClubAdminLicensesPage() {
           setIsDeleteOpen(false);
           setLicenseToDelete(null);
         }}
+      />
+
+      <DeleteConfirmModal
+        isOpen={isBatchDeleteOpen}
+        title={common("deleteTitle", { item: common("itemLicense") })}
+        description={common("deleteSelectedDescription", {
+          count: selectedLicenses.length,
+          item: common("itemLicense"),
+        })}
+        listTitle={common("batchDeleteListTitle")}
+        listItems={selectedLicenseItems}
+        confirmLabel={common("deleteConfirmButton")}
+        cancelLabel={common("deleteCancelButton")}
+        onConfirm={() => {
+          setIsBatchDeleteOpen(false);
+          confirmBatchDelete();
+        }}
+        onCancel={() => setIsBatchDeleteOpen(false)}
       />
     </ClubAdminLayout>
   );
