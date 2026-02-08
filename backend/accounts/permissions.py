@@ -1,9 +1,20 @@
+# pyright: reportIncompatibleMethodOverride=false
 from rest_framework.permissions import BasePermission
 
 
-class IsNmaAdmin(BasePermission):
+class IsLtfAdmin(BasePermission):
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role == "nma_admin"
+        return request.user.is_authenticated and request.user.role == "ltf_admin"
+
+
+class IsLtfFinance(BasePermission):
+    def has_permission(self, request, view) -> bool:  # type: ignore
+        return request.user.is_authenticated and request.user.role == "ltf_finance"
+
+
+class IsLtfFinanceOrLtfAdmin(BasePermission):
+    def has_permission(self, request, view) -> bool:  # type: ignore
+        return request.user.is_authenticated and request.user.role in ["ltf_finance", "ltf_admin"]
 
 
 class IsClubAdminOrCoach(BasePermission):
@@ -16,6 +27,6 @@ class IsClubAdmin(BasePermission):
         return request.user.is_authenticated and request.user.role == "club_admin"
 
 
-class IsNmaAdminOrClubAdmin(BasePermission):
+class IsLtfAdminOrClubAdmin(BasePermission):
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role in ["nma_admin", "club_admin"]
+        return request.user.is_authenticated and request.user.role in ["ltf_admin", "club_admin"]

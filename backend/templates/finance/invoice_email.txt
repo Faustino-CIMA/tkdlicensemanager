@@ -1,0 +1,7 @@
+Hello,
+
+Your invoice {{ invoice.invoice_number }} is ready for order {{ order.order_number }}.
+Total due: {{ invoice.total }} {{ invoice.currency }}
+
+The PDF is attached to this email.
+Thank you.

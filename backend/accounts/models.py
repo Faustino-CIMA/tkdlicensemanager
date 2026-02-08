@@ -1,14 +1,16 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 
 class User(AbstractUser):
     class Roles(models.TextChoices):
-        NMA_ADMIN = "nma_admin", "NMA Admin"
-        CLUB_ADMIN = "club_admin", "Club Admin"
-        COACH = "coach", "Coach"
-        MEMBER = "member", "Member"
+        LTF_ADMIN = "ltf_admin", _("LTF Admin")
+        LTF_FINANCE = "ltf_finance", _("LTF Finance")
+        CLUB_ADMIN = "club_admin", _("Club Admin")
+        COACH = "coach", _("Coach")
+        MEMBER = "member", _("Member")
 
     role = models.CharField(
         max_length=20,

@@ -6,7 +6,7 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, response, status, views
 from rest_framework.parsers import MultiPartParser
 
-from accounts.permissions import IsClubAdmin, IsNmaAdmin, IsNmaAdminOrClubAdmin
+from accounts.permissions import IsClubAdmin, IsLtfAdmin, IsLtfAdminOrClubAdmin
 from clubs.models import Club
 from members.models import Member
 
@@ -110,7 +110,7 @@ def get_member_club_id(request):
 
 class ClubImportPreviewView(views.APIView):
     parser_classes = [MultiPartParser]
-    permission_classes = [IsNmaAdmin]
+    permission_classes = [IsLtfAdmin]
     serializer_class = ImportBaseSerializer
 
     @extend_schema(
@@ -168,7 +168,7 @@ class ClubImportPreviewView(views.APIView):
 
 class ClubImportConfirmView(views.APIView):
     parser_classes = [MultiPartParser]
-    permission_classes = [IsNmaAdmin]
+    permission_classes = [IsLtfAdmin]
     serializer_class = ImportBaseSerializer
 
     @extend_schema(
@@ -228,7 +228,7 @@ class ClubImportConfirmView(views.APIView):
 
 class MemberImportPreviewView(views.APIView):
     parser_classes = [MultiPartParser]
-    permission_classes = [IsNmaAdminOrClubAdmin]
+    permission_classes = [IsLtfAdminOrClubAdmin]
     serializer_class = ImportBaseSerializer
 
     @extend_schema(
@@ -335,7 +335,7 @@ class MemberImportPreviewView(views.APIView):
 
 class MemberImportConfirmView(views.APIView):
     parser_classes = [MultiPartParser]
-    permission_classes = [IsNmaAdminOrClubAdmin]
+    permission_classes = [IsLtfAdminOrClubAdmin]
     serializer_class = ImportBaseSerializer
 
     @extend_schema(

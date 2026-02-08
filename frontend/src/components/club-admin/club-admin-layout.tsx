@@ -19,6 +19,8 @@ export function ClubAdminLayout({ title, subtitle, children }: ClubAdminLayoutPr
     { href: `/${locale}/dashboard/club`, label: t("navOverview") },
     { href: `/${locale}/dashboard/club/members`, label: t("navMembers") },
     { href: `/${locale}/dashboard/club/licenses`, label: t("navLicenses") },
+    { href: `/${locale}/dashboard/club/orders`, label: t("navOrders") },
+    { href: `/${locale}/dashboard/club/invoices`, label: t("navInvoices") },
     { href: `/${locale}/dashboard/club/settings`, label: t("navSettings") },
   ];
 

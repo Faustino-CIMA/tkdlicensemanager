@@ -15,10 +15,10 @@ from .models import Club
 class ClubApiTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.nma_admin = User.objects.create_user(
-            username="nmaadmin",
+        self.ltf_admin = User.objects.create_user(
+            username="ltfadmin",
             password="pass12345",
-            role=User.Roles.NMA_ADMIN,
+            role=User.Roles.LTF_ADMIN,
         )
         self.club_admin = User.objects.create_user(
             username="clubadmin",
@@ -30,12 +30,12 @@ class ClubApiTests(TestCase):
             name="Main Club",
             city="Luxembourg",
             address="1 Main St",
-            created_by=self.nma_admin,
+            created_by=self.ltf_admin,
         )
         self.club.admins.add(self.club_admin)
 
-    def test_nma_admin_sees_all_clubs(self):
-        self.client.force_authenticate(user=self.nma_admin)
+    def test_ltf_admin_sees_all_clubs(self):
+        self.client.force_authenticate(user=self.ltf_admin)
         response = self.client.get("/api/clubs/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), 1)
@@ -52,7 +52,7 @@ class ClubApiTests(TestCase):
             first_name="Ana",
             last_name="Weber",
         )
-        self.client.force_authenticate(user=self.nma_admin)
+        self.client.force_authenticate(user=self.ltf_admin)
         response = self.client.delete(f"/api/clubs/{self.club.id}/")
         self.assertEqual(response.status_code, 409)
         self.assertIn("members", response.data.get("detail", "").lower())
@@ -65,7 +65,7 @@ class ClubApiTests(TestCase):
             last_name="Schmitt",
         )
         License.objects.create(member=member, club=self.club, year=2026)
-        self.client.force_authenticate(user=self.nma_admin)
+        self.client.force_authenticate(user=self.ltf_admin)
         response = self.client.delete(f"/api/clubs/{self.club.id}/")
         self.assertEqual(response.status_code, 409)
         self.assertTrue(
@@ -77,10 +77,10 @@ class ClubApiTests(TestCase):
 class ClubImportTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.nma_admin = User.objects.create_user(
-            username="nmaadmin",
+        self.ltf_admin = User.objects.create_user(
+            username="ltfadmin",
             password="pass12345",
-            role=User.Roles.NMA_ADMIN,
+            role=User.Roles.LTF_ADMIN,
         )
 
     def test_preview_requires_auth(self):
@@ -88,7 +88,7 @@ class ClubImportTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_preview_returns_headers(self):
-        self.client.force_authenticate(user=self.nma_admin)
+        self.client.force_authenticate(user=self.ltf_admin)
         csv_data = "name,city,address\nClub A,Lux,Main St\n"
         file_obj = BytesIO(csv_data.encode("utf-8"))
         file_obj.name = "clubs.csv"
@@ -101,7 +101,7 @@ class ClubImportTests(TestCase):
         self.assertIn("headers", response.data)
 
     def test_confirm_creates_clubs(self):
-        self.client.force_authenticate(user=self.nma_admin)
+        self.client.force_authenticate(user=self.ltf_admin)
         csv_data = "name,city,address\nClub A,Lux,Main St\nClub B,,\n"
         file_obj = BytesIO(csv_data.encode("utf-8"))
         file_obj.name = "clubs.csv"
@@ -118,10 +118,10 @@ class ClubImportTests(TestCase):
 class ClubAdminManagementTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.nma_admin = User.objects.create_user(
-            username="nmaadmin",
+        self.ltf_admin = User.objects.create_user(
+            username="ltfadmin",
             password="pass12345",
-            role=User.Roles.NMA_ADMIN,
+            role=User.Roles.LTF_ADMIN,
         )
         self.member_user = User.objects.create_user(
             username="memberuser",
@@ -132,7 +132,7 @@ class ClubAdminManagementTests(TestCase):
             name="Admin Club",
             city="Luxembourg",
             address="1 Admin Rd",
-            created_by=self.nma_admin,
+            created_by=self.ltf_admin,
             max_admins=1,
         )
         Member.objects.create(
@@ -143,7 +143,7 @@ class ClubAdminManagementTests(TestCase):
         )
 
     def test_add_admin_respects_limit(self):
-        self.client.force_authenticate(user=self.nma_admin)
+        self.client.force_authenticate(user=self.ltf_admin)
         response = self.client.post(
             f"/api/clubs/{self.club.id}/add_admin/",
             {"user_id": self.member_user.id},
@@ -174,7 +174,7 @@ class ClubAdminManagementTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_remove_admin_resets_role(self):
-        self.client.force_authenticate(user=self.nma_admin)
+        self.client.force_authenticate(user=self.ltf_admin)
         self.client.post(
             f"/api/clubs/{self.club.id}/add_admin/",
             {"user_id": self.member_user.id},
@@ -190,7 +190,7 @@ class ClubAdminManagementTests(TestCase):
         self.assertEqual(self.member_user.role, User.Roles.MEMBER)
 
     def test_set_max_admins(self):
-        self.client.force_authenticate(user=self.nma_admin)
+        self.client.force_authenticate(user=self.ltf_admin)
         response = self.client.patch(
             f"/api/clubs/{self.club.id}/set_max_admins/",
             {"max_admins": 5},

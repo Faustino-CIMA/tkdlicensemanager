@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ImportCsvModal } from "@/components/import/import-csv-modal";
+import { createClubOrdersBatch } from "@/lib/club-finance-api";
 
 const memberSchema = z.object({
   club: z.string().min(1, "Club is required"),
@@ -67,6 +68,8 @@ export default function ClubAdminMembersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("25");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [orderMessage, setOrderMessage] = useState<string | null>(null);
+  const [isOrdering, setIsOrdering] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isImportOpen, setIsImportOpen] = useState(false);
 
@@ -309,9 +312,37 @@ export default function ClubAdminMembersPage() {
     }
   };
 
+  const handleBatchOrder = async () => {
+    if (!selectedClubId || selectedIds.length === 0) {
+      return;
+    }
+    setErrorMessage(null);
+    setOrderMessage(null);
+    setIsOrdering(true);
+    const currentYear = new Date().getFullYear();
+    const selectedCount = selectedIds.length;
+    try {
+      const response = await createClubOrdersBatch({
+        club: selectedClubId,
+        member_ids: selectedIds,
+        year: currentYear,
+        quantity: 1,
+        tax_total: "0.00",
+      });
+      setSelectedIds([]);
+      await loadData();
+      setOrderMessage(t("orderLicenseSuccess", { count: selectedCount }));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : t("orderLicenseError"));
+    } finally {
+      setIsOrdering(false);
+    }
+  };
+
   return (
     <ClubAdminLayout title={t("membersTitle")} subtitle={t("membersSubtitle")}>
       {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+      {orderMessage ? <p className="text-sm text-emerald-600">{orderMessage}</p> : null}
 
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -354,6 +385,15 @@ export default function ClubAdminMembersPage() {
             <Button onClick={startCreate}>{t("createMember")}</Button>
             <Button variant="outline" onClick={() => setIsImportOpen(true)}>
               {importT("importMembers")}
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={selectedIds.length === 0 || !selectedClubId || isOrdering}
+              onClick={handleBatchOrder}
+            >
+              {isOrdering
+                ? t("orderLicenseProcessing")
+                : t("orderLicenseButton", { year: new Date().getFullYear() })}
             </Button>
           </div>
           <div className="flex items-center gap-2 text-sm text-zinc-500">

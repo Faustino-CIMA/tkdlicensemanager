@@ -1,9 +1,11 @@
 from allauth.account.models import EmailAddress, EmailConfirmationHMAC
 from django.test import TestCase
 from django.utils import timezone
+from rest_framework.test import APIRequestFactory
 from rest_framework.test import APIClient
 
 from .models import User
+from .permissions import IsLtfFinance, IsLtfFinanceOrLtfAdmin
 
 
 class UserModelTests(TestCase):
@@ -79,6 +81,41 @@ class AuthApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         email_address.refresh_from_db()
         self.assertTrue(email_address.verified)
-from django.test import TestCase
 
-# Create your tests here.
+
+class FinancePermissionTests(TestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.permission = IsLtfFinance()
+        self.permission_with_admin = IsLtfFinanceOrLtfAdmin()
+
+    def _request_for_user(self, user):
+        request = self.factory.get("/api/finance/")
+        request.user = user
+        return request
+
+    def test_ltf_finance_allowed(self):
+        user = User.objects.create_user(username="finance", password="pass12345")
+        user.role = User.Roles.LTF_FINANCE
+        user.save(update_fields=["role"])
+        request = self._request_for_user(user)
+        self.assertTrue(self.permission.has_permission(request, None))
+        self.assertTrue(self.permission_with_admin.has_permission(request, None))
+
+    def test_ltf_admin_allowed_in_fallback(self):
+        user = User.objects.create_user(username="admin", password="pass12345")
+        user.role = User.Roles.LTF_ADMIN
+        user.save(update_fields=["role"])
+        request = self._request_for_user(user)
+        self.assertFalse(self.permission.has_permission(request, None))
+        self.assertTrue(self.permission_with_admin.has_permission(request, None))
+
+    def test_non_finance_roles_denied(self):
+        roles = [User.Roles.CLUB_ADMIN, User.Roles.COACH, User.Roles.MEMBER]
+        for index, role in enumerate(roles, start=1):
+            user = User.objects.create_user(username=f"role{index}", password="pass12345")
+            user.role = role
+            user.save(update_fields=["role"])
+            request = self._request_for_user(user)
+            self.assertFalse(self.permission.has_permission(request, None))
+            self.assertFalse(self.permission_with_admin.has_permission(request, None))

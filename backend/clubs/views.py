@@ -41,7 +41,7 @@ class ClubViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if not user or not user.is_authenticated:
             return Club.objects.none()
-        if user.role == "nma_admin":
+        if user.role == "ltf_admin":
             return Club.objects.all()
         return (
             Club.objects.filter(admins=user)
@@ -68,7 +68,7 @@ class ClubViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], permission_classes=[permissions.IsAuthenticated])
     def admins(self, request, pk=None):
         club = self.get_object()
-        if request.user.role != "nma_admin":
+        if request.user.role != "ltf_admin":
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
         admins = club.admins.all().values("id", "username", "email")
         return Response(
@@ -82,7 +82,7 @@ class ClubViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], permission_classes=[permissions.IsAuthenticated])
     def eligible_members(self, request, pk=None):
         club = self.get_object()
-        if request.user.role != "nma_admin":
+        if request.user.role != "ltf_admin":
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
         queryset = (
             Member.objects.filter(user__isnull=True)
@@ -105,7 +105,7 @@ class ClubViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], permission_classes=[permissions.IsAuthenticated])
     def add_admin(self, request, pk=None):
         club = self.get_object()
-        if request.user.role != "nma_admin":
+        if request.user.role != "ltf_admin":
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
         user_id = request.data.get("user_id")
         member_id = request.data.get("member_id")
@@ -179,7 +179,7 @@ class ClubViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], permission_classes=[permissions.IsAuthenticated])
     def remove_admin(self, request, pk=None):
         club = self.get_object()
-        if request.user.role != "nma_admin":
+        if request.user.role != "ltf_admin":
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
         user_id = request.data.get("user_id")
         if not user_id:
@@ -194,7 +194,7 @@ class ClubViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["patch"], permission_classes=[permissions.IsAuthenticated])
     def set_max_admins(self, request, pk=None):
         club = self.get_object()
-        if request.user.role != "nma_admin":
+        if request.user.role != "ltf_admin":
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
         try:
             max_admins = int(request.data.get("max_admins"))

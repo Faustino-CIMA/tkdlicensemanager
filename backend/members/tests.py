@@ -14,10 +14,10 @@ from .models import Member
 class MemberApiTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.nma_admin = User.objects.create_user(
-            username="nmaadmin",
+        self.ltf_admin = User.objects.create_user(
+            username="ltfadmin",
             password="pass12345",
-            role=User.Roles.NMA_ADMIN,
+            role=User.Roles.LTF_ADMIN,
         )
         self.club_admin = User.objects.create_user(
             username="clubadmin",
@@ -34,7 +34,7 @@ class MemberApiTests(TestCase):
             name="Central Club",
             city="Luxembourg",
             address="10 Center Rd",
-            created_by=self.nma_admin,
+            created_by=self.ltf_admin,
         )
         self.club.admins.add(self.club_admin)
 
@@ -61,10 +61,10 @@ class MemberApiTests(TestCase):
 class MemberImportTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.nma_admin = User.objects.create_user(
-            username="nmaadmin",
+        self.ltf_admin = User.objects.create_user(
+            username="ltfadmin",
             password="pass12345",
-            role=User.Roles.NMA_ADMIN,
+            role=User.Roles.LTF_ADMIN,
         )
         self.club_admin = User.objects.create_user(
             username="clubadmin",
@@ -75,7 +75,7 @@ class MemberImportTests(TestCase):
             name="North Club",
             city="Luxembourg",
             address="12 North Rd",
-            created_by=self.nma_admin,
+            created_by=self.ltf_admin,
         )
         self.club.admins.add(self.club_admin)
 
@@ -105,7 +105,7 @@ class MemberImportTests(TestCase):
         self.assertIn("headers", response.data)
 
     def test_confirm_creates_members(self):
-        self.client.force_authenticate(user=self.nma_admin)
+        self.client.force_authenticate(user=self.ltf_admin)
         csv_data = "first_name,last_name,date_of_birth\nAna,Ng,2000-01-01\n"
         file_obj = BytesIO(csv_data.encode("utf-8"))
         file_obj.name = "members.csv"

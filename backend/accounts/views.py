@@ -285,7 +285,7 @@ class ResendStatusView(views.APIView):
     serializer_class = EmptySerializer
 
     def get(self, request):
-        if not request.user or request.user.role != "nma_admin":
+        if not request.user or request.user.role != "ltf_admin":
             return response.Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
         api_key = settings.RESEND_API_KEY or ""
         return response.Response(

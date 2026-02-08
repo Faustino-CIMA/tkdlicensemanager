@@ -10,3 +10,7 @@ psycopg[binary]>=3.1
 redis>=5.0
 whitenoise>=6.7
 resend
+celery>=5.3
+stripe>=14.3.0
+cryptography>=42.0
+weasyprint>=62.3

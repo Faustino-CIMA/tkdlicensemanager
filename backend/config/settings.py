@@ -2,6 +2,8 @@
 Django settings for LTF License Manager.
 """
 
+import base64
+import hashlib
 from pathlib import Path
 
 from decouple import config
@@ -14,6 +16,11 @@ FRONTEND_BASE_URL = config("FRONTEND_BASE_URL", default="http://localhost:3000")
 FRONTEND_DEFAULT_LOCALE = config("FRONTEND_DEFAULT_LOCALE", default="en")
 def split_csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def derive_fernet_key(secret: str) -> str:
+    digest = hashlib.sha256(secret.encode("utf-8")).digest()
+    return base64.urlsafe_b64encode(digest).decode("utf-8")
 
 
 ALLOWED_HOSTS = split_csv(config("DJANGO_ALLOWED_HOSTS", default="localhost,127.0.0.1"))
@@ -103,7 +110,7 @@ USE_TZ = True
 LOCALE_PATHS = [BASE_DIR / "locale"]
 
 STATIC_URL = "static/"
-STATIC_ROOT = Path("/var/www/staticfiles")
+STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STORAGES = {
     "staticfiles": {
@@ -167,3 +174,26 @@ CSRF_TRUSTED_ORIGINS = [
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 RESEND_API_KEY = config("RESEND_API_KEY", default="")
 RESEND_FROM_EMAIL = config("RESEND_FROM_EMAIL", default="no-reply@ltf-license-manager.local")
+
+FERNET_KEYS = split_csv(
+    config("FERNET_KEYS", default=derive_fernet_key(SECRET_KEY))
+)
+
+CELERY_BROKER_URL = config("CELERY_BROKER_URL", default="redis://redis:6379/0")
+CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default="redis://redis:6379/1")
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = TIME_ZONE
+
+STRIPE_SECRET_KEY = config("STRIPE_SECRET_KEY", default="")
+STRIPE_WEBHOOK_SECRET = config("STRIPE_WEBHOOK_SECRET", default="")
+STRIPE_API_VERSION = config("STRIPE_API_VERSION", default="2026-01-28.clover")
+STRIPE_CHECKOUT_SUCCESS_URL = config(
+    "STRIPE_CHECKOUT_SUCCESS_URL",
+    default=f"{FRONTEND_BASE_URL}/checkout/success",
+)
+STRIPE_CHECKOUT_CANCEL_URL = config(
+    "STRIPE_CHECKOUT_CANCEL_URL",
+    default=f"{FRONTEND_BASE_URL}/checkout/cancel",
+)

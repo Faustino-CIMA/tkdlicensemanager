@@ -4,6 +4,8 @@ from .models import Member
 
 
 class MemberSerializer(serializers.ModelSerializer):
+    sex = serializers.ChoiceField(choices=Member.Sex.choices, default=Member.Sex.MALE)
+
     class Meta:
         model = Member
         fields = [

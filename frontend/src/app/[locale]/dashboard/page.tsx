@@ -27,8 +27,12 @@ export default function DashboardPage() {
       try {
         const response = await apiRequest<MeResponse>("/api/auth/me/");
         setUser(response);
-        if (response.role === "nma_admin") {
-          router.push(`/${locale}/dashboard/nma`);
+        if (response.role === "ltf_admin") {
+          router.push(`/${locale}/dashboard/ltf`);
+          return;
+        }
+        if (response.role === "ltf_finance") {
+          router.push(`/${locale}/dashboard/ltf-finance`);
           return;
         }
         if (response.role === "club_admin") {

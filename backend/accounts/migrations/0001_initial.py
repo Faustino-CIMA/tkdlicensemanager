@@ -29,7 +29,7 @@ class Migration(migrations.Migration):
                 ('is_staff', models.BooleanField(default=False, help_text='Designates whether the user can log into this admin site.', verbose_name='staff status')),
                 ('is_active', models.BooleanField(default=True, help_text='Designates whether this user should be treated as active. Unselect this instead of deleting accounts.', verbose_name='active')),
                 ('date_joined', models.DateTimeField(default=django.utils.timezone.now, verbose_name='date joined')),
-                ('role', models.CharField(choices=[('nma_admin', 'NMA Admin'), ('club_admin', 'Club Admin'), ('coach', 'Coach'), ('member', 'Member')], default='member', max_length=20)),
+                ('role', models.CharField(choices=[('ltf_admin', 'LTF Admin'), ('club_admin', 'Club Admin'), ('coach', 'Coach'), ('member', 'Member')], default='member', max_length=20)),
                 ('is_email_verified', models.BooleanField(default=False)),
                 ('consent_given', models.BooleanField(default=False)),
                 ('consent_given_at', models.DateTimeField(blank=True, null=True)),

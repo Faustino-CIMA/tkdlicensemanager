@@ -7,12 +7,15 @@ type Column<T> = {
 type EntityTableProps<T> = {
   columns: Array<Column<T>>;
   rows: T[];
+  onRowClick?: (row: T) => void;
 };
 
 export function EntityTable<T extends { id: number | string }>({
   columns,
   rows,
+  onRowClick,
 }: EntityTableProps<T>) {
+  const isClickable = Boolean(onRowClick);
   return (
     <div className="overflow-x-auto rounded-2xl border border-zinc-100 bg-white shadow-sm">
       <table className="min-w-full text-left text-sm">
@@ -27,7 +30,31 @@ export function EntityTable<T extends { id: number | string }>({
         </thead>
         <tbody className="divide-y divide-zinc-100">
           {rows.map((row) => (
-            <tr key={row.id} className="text-zinc-700">
+            <tr
+              key={row.id}
+              className={`text-zinc-700 ${isClickable ? "cursor-pointer hover:bg-zinc-50" : ""}`}
+              onClick={(event) => {
+                if (!onRowClick) {
+                  return;
+                }
+                const target = event.target as HTMLElement | null;
+                if (target?.closest("button, a, input, select, textarea")) {
+                  return;
+                }
+                onRowClick(row);
+              }}
+              onKeyDown={(event) => {
+                if (!onRowClick) {
+                  return;
+                }
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onRowClick(row);
+                }
+              }}
+              tabIndex={isClickable ? 0 : undefined}
+              role={isClickable ? "button" : undefined}
+            >
               {columns.map((column) => (
                 <td key={column.key} className="px-4 py-3">
                   {column.render ? column.render(row) : (row as Record<string, React.ReactNode>)[column.key]}

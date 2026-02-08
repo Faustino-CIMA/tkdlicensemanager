@@ -2,7 +2,7 @@ from django.conf import settings
 from django.template.loader import render_to_string
 
 
-def send_resend_email(to_email, subject, html, text):
+def send_resend_email(to_email, subject, html, text, attachments=None):
     if not settings.RESEND_API_KEY:
         return False, "missing_resend_api_key"
     try:
@@ -15,6 +15,8 @@ def send_resend_email(to_email, subject, html, text):
         "to": [to_email],
         "subject": subject,
     }
+    if attachments:
+        payload["attachments"] = attachments
     try:
         resend.Emails.send(
             {

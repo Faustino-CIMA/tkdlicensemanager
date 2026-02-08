@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.contrib import admin
+from django.http import JsonResponse
 from django.urls import include, path
 from django.views.generic.base import RedirectView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
@@ -26,7 +27,18 @@ from imports.views import (
     MemberImportPreviewView,
 )
 from clubs.views import ClubViewSet
-from licenses.views import LicenseTypeViewSet, LicenseViewSet
+from licenses.views import (
+    ClubInvoiceViewSet,
+    ClubOrderViewSet,
+    FinanceAuditLogViewSet,
+    InvoiceViewSet,
+    InvoicePdfView,
+    LicensePriceViewSet,
+    LicenseTypeViewSet,
+    LicenseViewSet,
+    OrderViewSet,
+    StripeWebhookView,
+)
 from members.views import MemberViewSet
 
 router = DefaultRouter()
@@ -34,6 +46,16 @@ router.register(r"clubs", ClubViewSet, basename="club")
 router.register(r"members", MemberViewSet, basename="member")
 router.register(r"licenses", LicenseViewSet, basename="license")
 router.register(r"license-types", LicenseTypeViewSet, basename="license-type")
+router.register(r"license-prices", LicensePriceViewSet, basename="license-price")
+router.register(r"orders", OrderViewSet, basename="order")
+router.register(r"invoices", InvoiceViewSet, basename="invoice")
+router.register(r"club-orders", ClubOrderViewSet, basename="club-order")
+router.register(r"club-invoices", ClubInvoiceViewSet, basename="club-invoice")
+router.register(r"finance-audit-logs", FinanceAuditLogViewSet, basename="finance-audit-log")
+
+def health_check(request):
+    return JsonResponse({"status": "ok"})
+
 
 schema_view = (
     SpectacularAPIView.as_view(throttle_classes=[])
@@ -69,6 +91,9 @@ urlpatterns = [
     path("api/imports/clubs/confirm/", ClubImportConfirmView.as_view(), name="import-clubs-confirm"),
     path("api/imports/members/preview/", MemberImportPreviewView.as_view(), name="import-members-preview"),
     path("api/imports/members/confirm/", MemberImportConfirmView.as_view(), name="import-members-confirm"),
+    path("api/health/", health_check, name="health-check"),
+    path("api/stripe/webhook/", StripeWebhookView.as_view(), name="stripe-webhook"),
+    path("api/invoices/<int:invoice_id>/pdf/", InvoicePdfView.as_view(), name="invoice-pdf"),
     path("api/", include(router.urls)),
     path("api/schema/", schema_view, name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="docs"),

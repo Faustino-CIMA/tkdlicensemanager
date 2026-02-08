@@ -1,0 +1,147 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Invoice {{ invoice.invoice_number }}</title>
+    <style>
+      body {
+        font-family: "DejaVu Sans", Arial, sans-serif;
+        color: #1f2937;
+        margin: 32px;
+        font-size: 14px;
+      }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 24px;
+      }
+      .brand {
+        font-size: 20px;
+        font-weight: 700;
+      }
+      .section-title {
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+      .grid {
+        display: flex;
+        gap: 32px;
+        margin-bottom: 24px;
+      }
+      .box {
+        flex: 1;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 16px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 8px;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      th {
+        background: #f8fafc;
+        text-transform: uppercase;
+        font-size: 12px;
+        letter-spacing: 0.02em;
+        color: #6b7280;
+      }
+      .totals {
+        margin-top: 16px;
+        width: 100%;
+        max-width: 320px;
+        margin-left: auto;
+      }
+      .totals-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 6px 0;
+      }
+      .totals-row.total {
+        font-weight: 700;
+        border-top: 1px solid #e5e7eb;
+        margin-top: 6px;
+        padding-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div class="brand">LTF License Manager</div>
+      <div>
+        <div><strong>Invoice:</strong> {{ invoice.invoice_number }}</div>
+        <div><strong>Status:</strong> {{ invoice.status|title }}</div>
+        <div><strong>Issued:</strong> {{ invoice.issued_at|date:"Y-m-d" }}</div>
+        {% if invoice.paid_at %}
+        <div><strong>Paid:</strong> {{ invoice.paid_at|date:"Y-m-d" }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="box">
+        <div class="section-title">Club</div>
+        <div>{{ club.name }}</div>
+        {% if club.address %}<div>{{ club.address }}</div>{% endif %}
+        {% if club.city %}<div>{{ club.city }}</div>{% endif %}
+      </div>
+      <div class="box">
+        <div class="section-title">Member</div>
+        {% if member %}
+        <div>{{ member.first_name }} {{ member.last_name }}</div>
+        {% if member.email %}<div>{{ member.email }}</div>{% endif %}
+        {% else %}
+        <div>-</div>
+        {% endif %}
+      </div>
+      <div class="box">
+        <div class="section-title">Order</div>
+        <div>{{ order.order_number }}</div>
+        <div>Status: {{ order.status|title }}</div>
+        <div>Currency: {{ order.currency }}</div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>License</th>
+          <th>Year</th>
+          <th>Qty</th>
+          <th>Unit price</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>{{ item.license_type }}</td>
+          <td>{{ item.year }}</td>
+          <td>{{ item.quantity }}</td>
+          <td>{{ item.unit_price|floatformat:2 }}</td>
+          <td>{{ item.line_total|floatformat:2 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="totals">
+      <div class="totals-row">
+        <span>Subtotal</span>
+        <span>{{ invoice.subtotal }}</span>
+      </div>
+      <div class="totals-row">
+        <span>Tax</span>
+        <span>{{ invoice.tax_total }}</span>
+      </div>
+      <div class="totals-row total">
+        <span>Total</span>
+        <span>{{ invoice.total }}</span>
+      </div>
+    </div>
+  </body>
+</html>

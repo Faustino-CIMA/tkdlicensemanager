@@ -16,7 +16,7 @@ class MemberViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if not user or not user.is_authenticated:
             return Member.objects.none()
-        if user.role == "nma_admin":
+        if user.role == "ltf_admin":
             return Member.objects.all()
         if user.role in ["club_admin", "coach"]:
             return Member.objects.filter(club__admins=user)
