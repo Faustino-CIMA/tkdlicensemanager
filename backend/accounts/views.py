@@ -1,14 +1,15 @@
 from allauth.account.models import EmailAddress, EmailConfirmationHMAC
 from django.conf import settings
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from django.db import transaction
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, response, status, views
 from rest_framework.authtoken.models import Token
 
-from members.models import Member
-from licenses.models import License
+from members.models import GradePromotionHistory, Member
+from licenses.models import License, LicenseHistoryEvent
 
 from .email_utils import send_password_reset_email
 from .models import User
@@ -133,10 +134,35 @@ class DataExportView(views.APIView):
             "start_date",
             "end_date",
         )
+        license_history = LicenseHistoryEvent.objects.filter(member=member).values(
+            "id",
+            "license_id",
+            "event_type",
+            "event_at",
+            "reason",
+            "license_year",
+            "status_before",
+            "status_after",
+            "club_name_snapshot",
+            "order_id",
+            "payment_id",
+        )
+        grade_history = GradePromotionHistory.objects.filter(member=member).values(
+            "id",
+            "from_grade",
+            "to_grade",
+            "promotion_date",
+            "exam_date",
+            "proof_ref",
+            "notes",
+            "created_at",
+        )
         export = {
             "user": UserSerializer(request.user).data,
             "member": None,
             "licenses": list(licenses),
+            "license_history": list(license_history),
+            "grade_history": list(grade_history),
         }
         if member:
             export["member"] = {
@@ -158,7 +184,15 @@ class DataDeleteView(views.APIView):
 
     def delete(self, request):
         user_id = request.user.id
-        request.user.delete()
+        member = Member.objects.filter(user=request.user).first()
+        with transaction.atomic():
+            if member:
+                GradePromotionHistory.objects.filter(member=member).update(
+                    notes="",
+                    proof_ref="",
+                    metadata={"anonymized": True},
+                )
+            request.user.delete()
         return response.Response({"deleted_user_id": user_id}, status=status.HTTP_200_OK)
 
 

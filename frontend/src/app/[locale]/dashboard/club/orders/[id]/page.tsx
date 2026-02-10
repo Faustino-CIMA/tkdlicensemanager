@@ -11,7 +11,13 @@ import { EntityTable } from "@/components/club-admin/entity-table";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Member, getMembers } from "@/lib/club-admin-api";
-import { FinanceOrder, getClubOrder } from "@/lib/club-finance-api";
+import {
+  FinanceOrder,
+  PayconiqPayment,
+  createPayconiqPayment,
+  getClubOrder,
+  getPayconiqPaymentStatus,
+} from "@/lib/club-finance-api";
 
 type OrderItemRow = {
   id: number;
@@ -27,6 +33,9 @@ export default function ClubOrderDetailPage() {
   const params = useParams();
   const [order, setOrder] = useState<FinanceOrder | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
+  const [payconiqPayment, setPayconiqPayment] = useState<PayconiqPayment | null>(null);
+  const [payconiqError, setPayconiqError] = useState<string | null>(null);
+  const [isPayconiqBusy, setIsPayconiqBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -151,6 +160,79 @@ export default function ClubOrderDetailPage() {
         <h2 className="mb-3 text-sm font-semibold text-zinc-700">{t("orderItemsTitle")}</h2>
         <EntityTable columns={columns} rows={items} />
       </section>
+
+      {order.invoice ? (
+        <section className="mt-6 rounded-3xl border border-zinc-100 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-3">
+            <h2 className="text-sm font-semibold text-zinc-700">{t("payconiqTitle")}</h2>
+            <p className="text-sm text-zinc-600">{t("payconiqHint")}</p>
+            {payconiqError ? (
+              <p className="text-sm text-red-600">{payconiqError}</p>
+            ) : null}
+            {payconiqPayment ? (
+              <div className="flex flex-col gap-2 text-sm text-zinc-700">
+                <div>
+                  <span className="font-medium">{t("payconiqStatusLabel")}</span>{" "}
+                  {payconiqPayment.payconiq_status || payconiqPayment.status}
+                </div>
+                <div>
+                  <span className="font-medium">{t("payconiqLinkLabel")}</span>{" "}
+                  <a className="text-blue-600 underline" href={payconiqPayment.payconiq_payment_url}>
+                    {payconiqPayment.payconiq_payment_url}
+                  </a>
+                </div>
+              </div>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                disabled={isPayconiqBusy}
+                onClick={async () => {
+                  if (!order.invoice) {
+                    return;
+                  }
+                  setIsPayconiqBusy(true);
+                  setPayconiqError(null);
+                  try {
+                    const payment = await createPayconiqPayment(order.invoice.id);
+                    setPayconiqPayment(payment);
+                  } catch (error) {
+                    setPayconiqError(
+                      error instanceof Error ? error.message : t("payconiqError")
+                    );
+                  } finally {
+                    setIsPayconiqBusy(false);
+                  }
+                }}
+              >
+                {t("payconiqCreateButton")}
+              </Button>
+              {payconiqPayment ? (
+                <Button
+                  variant="outline"
+                  disabled={isPayconiqBusy}
+                  onClick={async () => {
+                    setIsPayconiqBusy(true);
+                    setPayconiqError(null);
+                    try {
+                      const payment = await getPayconiqPaymentStatus(payconiqPayment.id);
+                      setPayconiqPayment(payment);
+                    } catch (error) {
+                      setPayconiqError(
+                        error instanceof Error ? error.message : t("payconiqError")
+                      );
+                    } finally {
+                      setIsPayconiqBusy(false);
+                    }
+                  }}
+                >
+                  {t("payconiqRefreshButton")}
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      ) : null}
     </ClubAdminLayout>
   );
 }

@@ -37,6 +37,8 @@ from licenses.views import (
     LicenseTypeViewSet,
     LicenseViewSet,
     OrderViewSet,
+    PayconiqPaymentViewSet,
+    PaymentViewSet,
     StripeWebhookView,
 )
 from members.views import MemberViewSet
@@ -49,6 +51,8 @@ router.register(r"license-types", LicenseTypeViewSet, basename="license-type")
 router.register(r"license-prices", LicensePriceViewSet, basename="license-price")
 router.register(r"orders", OrderViewSet, basename="order")
 router.register(r"invoices", InvoiceViewSet, basename="invoice")
+router.register(r"payments", PaymentViewSet, basename="payment")
+router.register(r"payconiq", PayconiqPaymentViewSet, basename="payconiq")
 router.register(r"club-orders", ClubOrderViewSet, basename="club-order")
 router.register(r"club-invoices", ClubInvoiceViewSet, basename="club-invoice")
 router.register(r"finance-audit-logs", FinanceAuditLogViewSet, basename="finance-audit-log")

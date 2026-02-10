@@ -111,6 +111,33 @@ services:
     networks:
       - app-net
 
+  beat:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      REDIS_URL: ${REDIS_URL}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A config beat -l info
+    volumes:
+      - ./backend:/app
+      # Keep for debug-mode logging (shared host log path)
+      - /home/faustino/Developments/Applications/tkdlicensemanager/.cursor:/home/faustino/Developments/Applications/tkdlicensemanager/.cursor
+    networks:
+      - app-net
+
   frontend:
     build:
       context: ./frontend

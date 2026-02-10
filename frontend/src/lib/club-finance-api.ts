@@ -6,6 +6,20 @@ export type CheckoutSession = {
   url: string;
 };
 
+export type PayconiqPayment = {
+  id: number;
+  invoice: number;
+  order: number;
+  amount: string;
+  currency: string;
+  status: string;
+  reference: string;
+  payconiq_payment_id: string;
+  payconiq_payment_url: string;
+  payconiq_status: string;
+  created_at: string;
+};
+
 export function getClubOrders(clubId?: number | null) {
   const query = clubId ? `?club_id=${encodeURIComponent(String(clubId))}` : "";
   return apiRequest<FinanceOrder[]>(`/api/club-orders/${query}`);
@@ -24,10 +38,25 @@ export function getClubInvoice(invoiceId: number) {
   return apiRequest<FinanceInvoice>(`/api/club-invoices/${invoiceId}/`);
 }
 
-export function createClubCheckoutSession(orderId: number) {
+export function createClubCheckoutSession(
+  orderId: number,
+  payload?: { club_admin_consent_confirmed?: boolean }
+) {
   return apiRequest<CheckoutSession>(`/api/club-orders/${orderId}/create-checkout-session/`, {
     method: "POST",
+    body: JSON.stringify(payload ?? {}),
   });
+}
+
+export function createPayconiqPayment(invoiceId: number) {
+  return apiRequest<PayconiqPayment>("/api/payconiq/create/", {
+    method: "POST",
+    body: JSON.stringify({ invoice_id: invoiceId }),
+  });
+}
+
+export function getPayconiqPaymentStatus(paymentId: number) {
+  return apiRequest<PayconiqPayment>(`/api/payconiq/${paymentId}/status/`);
 }
 
 type ClubOrderBatchInput = {

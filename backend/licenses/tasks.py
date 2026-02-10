@@ -9,9 +9,11 @@ from django.utils import timezone
 
 from accounts.email_utils import send_resend_email
 
+from .history import expire_outdated_licenses
 from .models import FinanceAuditLog, Invoice, Order
 from .pdf_utils import build_invoice_context, render_invoice_pdf
 from .services import apply_payment_and_activate
+
 
 @shared_task
 def activate_order_from_stripe(order_id: int, stripe_data: dict | None = None) -> None:
@@ -35,7 +37,14 @@ def activate_order_from_stripe(order_id: int, stripe_data: dict | None = None) -
         )
         return
 
-    apply_payment_and_activate(order, actor=None, stripe_data=stripe_data or {})
+    stripe_data = stripe_data or {}
+    payment_details = stripe_data.pop("payment_details", None)
+    apply_payment_and_activate(
+        order,
+        actor=None,
+        stripe_data=stripe_data,
+        payment_details=payment_details,
+    )
 
 
 @shared_task
@@ -59,13 +68,31 @@ def process_stripe_webhook_event(event_payload: dict) -> None:
             "stripe_customer_id": event_payload.get("customer"),
         }
 
+    payment_details = {}
+    card_brand = event_payload.get("card_brand")
+    card_last4 = event_payload.get("card_last4")
+    card_exp_month = event_payload.get("card_exp_month")
+    card_exp_year = event_payload.get("card_exp_year")
+    if card_brand or card_last4 or card_exp_month or card_exp_year:
+        payment_details.update(
+            {
+                "payment_method": "card",
+                "payment_provider": "stripe",
+                "card_brand": card_brand,
+                "card_last4": card_last4,
+                "card_exp_month": card_exp_month,
+                "card_exp_year": card_exp_year,
+            }
+        )
+    if payment_details:
+        stripe_data["payment_details"] = payment_details
+
     try:
         order_id_int = int(order_id)
     except (TypeError, ValueError):
         order_id_int = None
     if not order_id_int:
         return
-
     order = Order.objects.filter(id=order_id_int).select_related("member__user").first()
     if not order:
         return
@@ -160,3 +187,15 @@ def send_invoice_email(invoice_id: int, recipients: list[str] | None = None) -> 
                 "error": error if not success else "",
             },
         )
+
+
+@shared_task
+def reconcile_expired_licenses() -> int:
+    expired_count = expire_outdated_licenses(actor=None)
+    if expired_count:
+        FinanceAuditLog.objects.create(
+            action="licenses.expiry_reconciled",
+            message=f"Automatically expired {expired_count} licenses.",
+            metadata={"expired_count": expired_count},
+        )
+    return expired_count

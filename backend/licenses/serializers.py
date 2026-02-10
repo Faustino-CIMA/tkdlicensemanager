@@ -7,6 +7,7 @@ from rest_framework import serializers
 from clubs.models import Club
 from members.models import Member
 
+from .history import log_license_created
 from .models import (
     FinanceAuditLog,
     Invoice,
@@ -15,6 +16,7 @@ from .models import (
     LicenseType,
     Order,
     OrderItem,
+    Payment,
     get_default_license_type,
 )
 
@@ -168,6 +170,13 @@ class OrderCreateSerializer(serializers.Serializer):
                     year=item["year"],
                     status=License.Status.PENDING,
                 )
+                log_license_created(
+                    license_record,
+                    actor=actor,
+                    order=order,
+                    reason="License created from order item.",
+                    metadata={"source": "order.create"},
+                )
                 created_license_ids.append(license_record.id)
                 OrderItem.objects.create(
                     order=order,
@@ -248,6 +257,19 @@ class ConfirmPaymentSerializer(serializers.Serializer):
     stripe_invoice_id = serializers.CharField(max_length=255, required=False)
     stripe_customer_id = serializers.CharField(max_length=255, required=False)
     club_admin_consent_confirmed = serializers.BooleanField(required=False, default=False)
+    payment_method = serializers.ChoiceField(
+        choices=Payment.Method.choices, required=False
+    )
+    payment_provider = serializers.ChoiceField(
+        choices=Payment.Provider.choices, required=False
+    )
+    payment_reference = serializers.CharField(required=False, allow_blank=True)
+    payment_notes = serializers.CharField(required=False, allow_blank=True)
+    paid_at = serializers.DateTimeField(required=False)
+    card_brand = serializers.CharField(required=False, allow_blank=True)
+    card_last4 = serializers.CharField(required=False, allow_blank=True)
+    card_exp_month = serializers.IntegerField(required=False)
+    card_exp_year = serializers.IntegerField(required=False)
 
 
 class CheckoutSessionRequestSerializer(serializers.Serializer):
@@ -261,6 +283,40 @@ class CheckoutSessionSerializer(serializers.Serializer):
 
 class ActivateLicensesSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True)
+
+
+class PayconiqPaymentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Payment
+        fields = [
+            "id",
+            "invoice",
+            "order",
+            "amount",
+            "currency",
+            "method",
+            "provider",
+            "status",
+            "reference",
+            "payconiq_payment_id",
+            "payconiq_payment_url",
+            "payconiq_status",
+            "paid_at",
+            "created_at",
+        ]
+        read_only_fields = ["created_at"]
+
+
+class PayconiqCreateSerializer(serializers.Serializer):
+    invoice_id = serializers.IntegerField(required=False)
+    order_id = serializers.IntegerField(required=False)
+
+    def validate(self, attrs):
+        if not attrs.get("invoice_id") and not attrs.get("order_id"):
+            raise serializers.ValidationError(
+                {"detail": "Either invoice_id or order_id is required."}
+            )
+        return attrs
 
 
 class FinanceAuditLogSerializer(serializers.ModelSerializer):
@@ -324,3 +380,31 @@ class LicenseTypeSerializer(serializers.ModelSerializer):
         instance.code = code
         instance.save()
         return instance
+
+
+class PaymentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Payment
+        fields = [
+            "id",
+            "invoice",
+            "order",
+            "amount",
+            "currency",
+            "method",
+            "provider",
+            "status",
+            "reference",
+            "notes",
+            "payconiq_payment_id",
+            "payconiq_payment_url",
+            "payconiq_status",
+            "card_brand",
+            "card_last4",
+            "card_exp_month",
+            "card_exp_year",
+            "paid_at",
+            "created_by",
+            "created_at",
+        ]
+        read_only_fields = ["created_at"]

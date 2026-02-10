@@ -1,7 +1,9 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="description" content="LTF License Manager invoice" />
+    <meta name="keywords" content="LTF, invoice, taekwondo, license" />
     <title>Invoice {{ invoice.invoice_number }}</title>
     <style>
       body {
@@ -66,6 +68,23 @@
         border-top: 1px solid #e5e7eb;
         margin-top: 6px;
         padding-top: 10px;
+      }
+      .qr-section {
+        display: flex;
+        gap: 24px;
+        margin-top: 24px;
+      }
+      .qr-card {
+        border: 1px solid #e5e7eb;
+        padding: 12px;
+        border-radius: 8px;
+        width: 240px;
+      }
+      .qr-card img {
+        width: 180px;
+        height: 180px;
+        display: block;
+        margin: 8px 0;
       }
     </style>
   </head>
@@ -141,6 +160,37 @@
       <div class="totals-row total">
         <span>Total</span>
         <span>{{ invoice.total }}</span>
+      </div>
+    </div>
+
+    <div class="qr-section">
+      <div class="qr-card">
+        <div class="section-title">Payconiq</div>
+        {% if payconiq_qr %}
+        <img
+          alt="Payconiq QR"
+          width="180"
+          height="180"
+          src="data:image/png;base64,{{ payconiq_qr }}"
+        />
+        <div>Scan to pay (Payconiq)</div>
+        {% else %}
+        <div>Payconiq QR not available</div>
+        {% endif %}
+      </div>
+      <div class="qr-card">
+        <div class="section-title">SEPA</div>
+        {% if sepa_qr %}
+        <img
+          alt="SEPA QR"
+          width="180"
+          height="180"
+          src="data:image/png;base64,{{ sepa_qr }}"
+        />
+        <div>Scan to pay (SEPA transfer)</div>
+        {% else %}
+        <div>SEPA QR not available</div>
+        {% endif %}
       </div>
     </div>
   </body>

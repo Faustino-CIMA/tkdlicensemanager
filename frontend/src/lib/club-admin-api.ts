@@ -36,10 +36,56 @@ export type License = {
   year: number;
   start_date: string;
   end_date: string;
-  status: "pending" | "active" | "expired";
+  status: "pending" | "active" | "expired" | "revoked";
   issued_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type LicenseHistoryEvent = {
+  id: number;
+  member: number;
+  license: number;
+  club: number;
+  order: number | null;
+  payment: number | null;
+  actor: number | null;
+  event_type:
+    | "issued"
+    | "renewed"
+    | "status_changed"
+    | "expired"
+    | "revoked"
+    | "payment_linked";
+  event_at: string;
+  reason: string;
+  metadata: Record<string, unknown>;
+  license_year: number;
+  status_before: string;
+  status_after: string;
+  club_name_snapshot: string;
+  created_at: string;
+};
+
+export type GradeHistoryEntry = {
+  id: number;
+  member: number;
+  club: number;
+  examiner_user: number | null;
+  from_grade: string;
+  to_grade: string;
+  promotion_date: string;
+  exam_date: string | null;
+  proof_ref: string;
+  notes: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type MemberHistoryResponse = {
+  member_id: number;
+  license_history: LicenseHistoryEvent[];
+  grade_history: GradeHistoryEntry[];
 };
 
 export type MemberInput = {
@@ -105,6 +151,10 @@ export function createMember(input: MemberInput) {
   });
 }
 
+export function getMember(id: number) {
+  return apiRequest<Member>(`/api/members/${id}/`);
+}
+
 export function updateMember(id: number, input: MemberInput) {
   return apiRequest<Member>(`/api/members/${id}/`, {
     method: "PATCH",
@@ -115,6 +165,34 @@ export function updateMember(id: number, input: MemberInput) {
 export function deleteMember(id: number) {
   return apiRequest<void>(`/api/members/${id}/`, {
     method: "DELETE",
+  });
+}
+
+export function getMemberLicenseHistory(memberId: number) {
+  return apiRequest<LicenseHistoryEvent[]>(`/api/members/${memberId}/license-history/`);
+}
+
+export function getMemberGradeHistory(memberId: number) {
+  return apiRequest<GradeHistoryEntry[]>(`/api/members/${memberId}/grade-history/`);
+}
+
+export function getMemberHistory(memberId: number) {
+  return apiRequest<MemberHistoryResponse>(`/api/members/${memberId}/history/`);
+}
+
+export type GradePromotionInput = {
+  to_grade: string;
+  promotion_date?: string;
+  exam_date?: string | null;
+  proof_ref?: string;
+  notes?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export function promoteMemberGrade(memberId: number, input: GradePromotionInput) {
+  return apiRequest<GradeHistoryEntry>(`/api/members/${memberId}/promote-grade/`, {
+    method: "POST",
+    body: JSON.stringify(input),
   });
 }
 

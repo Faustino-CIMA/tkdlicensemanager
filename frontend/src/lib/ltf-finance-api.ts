@@ -7,6 +7,34 @@ export type FinanceOrderItem = {
   quantity: number;
 };
 
+export type Club = {
+  id: number;
+  name: string;
+  city: string;
+  address: string;
+  created_by: number;
+  admins: number[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type Member = {
+  id: number;
+  user: number | null;
+  club: number;
+  first_name: string;
+  last_name: string;
+  sex: "M" | "F";
+  email: string;
+  wt_licenseid: string;
+  ltf_licenseid: string;
+  date_of_birth: string | null;
+  belt_rank: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type FinanceLicense = {
   id: number;
   member: number;
@@ -70,6 +98,29 @@ export type FinanceAuditLog = {
   created_at: string;
 };
 
+export type Payment = {
+  id: number;
+  invoice: number;
+  order: number;
+  amount: string;
+  currency: string;
+  method: string;
+  provider: string;
+  status: string;
+  reference: string;
+  notes: string;
+  payconiq_payment_id: string | null;
+  payconiq_payment_url: string | null;
+  payconiq_status: string | null;
+  card_brand: string;
+  card_last4: string;
+  card_exp_month: number | null;
+  card_exp_year: number | null;
+  paid_at: string | null;
+  created_by: number | null;
+  created_at: string;
+};
+
 export type LicensePrice = {
   id: number;
   amount: string;
@@ -83,8 +134,36 @@ export function getFinanceOrders() {
   return apiRequest<FinanceOrder[]>("/api/orders/");
 }
 
+export function getFinanceOrder(orderId: number) {
+  return apiRequest<FinanceOrder>(`/api/orders/${orderId}/`);
+}
+
 export function getFinanceInvoices() {
   return apiRequest<FinanceInvoice[]>("/api/invoices/");
+}
+
+export function getFinanceInvoice(invoiceId: number) {
+  return apiRequest<FinanceInvoice>(`/api/invoices/${invoiceId}/`);
+}
+
+export function getFinancePayments(params?: { invoiceId?: number; orderId?: number }) {
+  const search = new URLSearchParams();
+  if (params?.invoiceId) {
+    search.set("invoice_id", String(params.invoiceId));
+  }
+  if (params?.orderId) {
+    search.set("order_id", String(params.orderId));
+  }
+  const suffix = search.toString();
+  return apiRequest<Payment[]>(`/api/payments/${suffix ? `?${suffix}` : ""}`);
+}
+
+export function getFinanceClubs() {
+  return apiRequest<Club[]>("/api/clubs/");
+}
+
+export function getFinanceMembers() {
+  return apiRequest<Member[]>("/api/members/");
 }
 
 export function getFinanceAuditLogs() {
@@ -113,6 +192,15 @@ export function confirmOrderPayment(
     stripe_checkout_session_id?: string;
     stripe_invoice_id?: string;
     stripe_customer_id?: string;
+    payment_method?: string;
+    payment_provider?: string;
+    payment_reference?: string;
+    payment_notes?: string;
+    paid_at?: string;
+    card_brand?: string;
+    card_last4?: string;
+    card_exp_month?: number;
+    card_exp_year?: number;
   } = {}
 ) {
   return apiRequest<FinanceOrder>(`/api/orders/${orderId}/confirm-payment/`, {

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
 
 import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
@@ -19,9 +20,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Club,
   FinanceOrder,
   LicensePrice,
   createLicensePrice,
+  getFinanceClubs,
   getFinanceOrders,
   getLicensePrices,
 } from "@/lib/ltf-finance-api";
@@ -29,7 +32,10 @@ import {
 export default function LtfFinanceOrdersPage() {
   const t = useTranslations("LtfFinance");
   const common = useTranslations("Common");
+  const locale = useLocale();
+  const router = useRouter();
   const [orders, setOrders] = useState<FinanceOrder[]>([]);
+  const [clubs, setClubs] = useState<Club[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("25");
@@ -49,12 +55,14 @@ export default function LtfFinanceOrdersPage() {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const [ordersResponse, pricesResponse] = await Promise.all([
+      const [ordersResponse, pricesResponse, clubsResponse] = await Promise.all([
         getFinanceOrders(),
         getLicensePrices(),
+        getFinanceClubs(),
       ]);
       setOrders(ordersResponse);
       setPrices(pricesResponse);
+      setClubs(clubsResponse);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : t("ordersLoadError"));
     } finally {
@@ -66,6 +74,32 @@ export default function LtfFinanceOrdersPage() {
     loadOrders();
   }, []);
 
+  const clubNameById = useMemo(() => {
+    return clubs.reduce<Record<number, string>>((acc, club) => {
+      acc[club.id] = club.name;
+      return acc;
+    }, {});
+  }, [clubs]);
+
+  const getOrderQuantity = (order: FinanceOrder) => {
+    return order.items.reduce((sum, item) => sum + item.quantity, 0);
+  };
+
+  const getOrderStatusMeta = (status: string) => {
+    switch (status) {
+      case "draft":
+      case "pending":
+        return { label: t("orderStatusReceived"), tone: "info" as const, bucket: "received" };
+      case "paid":
+        return { label: t("orderStatusDelivered"), tone: "success" as const, bucket: "delivered" };
+      case "cancelled":
+      case "refunded":
+        return { label: t("orderStatusCancelled"), tone: "danger" as const, bucket: "cancelled" };
+      default:
+        return { label: t("orderStatusReceived"), tone: "neutral" as const, bucket: "received" };
+    }
+  };
+
   const searchedOrders = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
     if (!normalizedQuery) {
@@ -73,19 +107,19 @@ export default function LtfFinanceOrdersPage() {
     }
     return orders.filter((order) => {
       const orderNumber = order.order_number.toLowerCase();
-      const statusText = order.status.toLowerCase();
-      const clubText = String(order.club);
-      const memberText = order.member ? String(order.member) : "";
+      const statusText = getOrderStatusMeta(order.status).label.toLowerCase();
+      const clubText = (clubNameById[order.club] ?? String(order.club)).toLowerCase();
+      const quantityText = String(getOrderQuantity(order));
       const totalText = `${order.total} ${order.currency}`.toLowerCase();
       return (
         orderNumber.includes(normalizedQuery) ||
         statusText.includes(normalizedQuery) ||
         clubText.includes(normalizedQuery) ||
-        memberText.includes(normalizedQuery) ||
+        quantityText.includes(normalizedQuery) ||
         totalText.includes(normalizedQuery)
       );
     });
-  }, [orders, searchQuery]);
+  }, [orders, searchQuery, clubNameById]);
 
   const resolvedPageSize =
     pageSize === "all" ? Math.max(searchedOrders.length, 1) : Number(pageSize);
@@ -133,27 +167,11 @@ export default function LtfFinanceOrdersPage() {
 
   const orderCounts = useMemo(() => {
     return orders.reduce<Record<string, number>>((acc, order) => {
-      acc[order.status] = (acc[order.status] || 0) + 1;
+      const bucket = getOrderStatusMeta(order.status).bucket;
+      acc[bucket] = (acc[bucket] || 0) + 1;
       return acc;
     }, {});
   }, [orders]);
-
-  const getOrderStatusMeta = (status: string) => {
-    switch (status) {
-      case "draft":
-        return { label: common("statusDraft"), tone: "neutral" as const };
-      case "pending":
-        return { label: common("statusPending"), tone: "warning" as const };
-      case "paid":
-        return { label: common("statusPaid"), tone: "success" as const };
-      case "cancelled":
-        return { label: common("statusCancelled"), tone: "danger" as const };
-      case "refunded":
-        return { label: common("statusRefunded"), tone: "info" as const };
-      default:
-        return { label: status, tone: "neutral" as const };
-    }
-  };
 
   const columns = [
     { key: "order_number", header: t("orderNumberLabel") },
@@ -165,11 +183,15 @@ export default function LtfFinanceOrdersPage() {
         return <StatusBadge label={meta.label} tone={meta.tone} />;
       },
     },
-    { key: "club", header: t("clubLabel") },
     {
-      key: "member",
-      header: t("memberLabel"),
-      render: (row: FinanceOrder) => row.member ?? "-",
+      key: "club",
+      header: t("clubLabel"),
+      render: (row: FinanceOrder) => clubNameById[row.club] ?? String(row.club),
+    },
+    {
+      key: "quantity",
+      header: common("qtyLabel"),
+      render: (row: FinanceOrder) => getOrderQuantity(row),
     },
     {
       key: "total",
@@ -179,7 +201,7 @@ export default function LtfFinanceOrdersPage() {
     {
       key: "created_at",
       header: t("createdAtLabel"),
-      render: (row: FinanceOrder) => new Date(row.created_at).toLocaleDateString(),
+      render: (row: FinanceOrder) => new Date(row.created_at).toLocaleString(),
     },
   ];
 
@@ -187,24 +209,16 @@ export default function LtfFinanceOrdersPage() {
     <LtfFinanceLayout title={t("ordersTitle")} subtitle={t("ordersSubtitle")}>
       <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
         <SummaryCard
-          title={t("ordersDraftCountLabel")}
-          value={String(orderCounts.draft ?? 0)}
+          title={t("ordersReceivedCountLabel")}
+          value={String(orderCounts.received ?? 0)}
         />
         <SummaryCard
-          title={t("ordersPendingCountLabel")}
-          value={String(orderCounts.pending ?? 0)}
-        />
-        <SummaryCard
-          title={t("ordersPaidCountLabel")}
-          value={String(orderCounts.paid ?? 0)}
+          title={t("ordersDeliveredCountLabel")}
+          value={String(orderCounts.delivered ?? 0)}
         />
         <SummaryCard
           title={t("ordersCancelledCountLabel")}
           value={String(orderCounts.cancelled ?? 0)}
-        />
-        <SummaryCard
-          title={t("ordersRefundedCountLabel")}
-          value={String(orderCounts.refunded ?? 0)}
         />
         <SummaryCard
           title={t("licensePriceLabel")}
@@ -284,7 +298,13 @@ export default function LtfFinanceOrdersPage() {
         <EmptyState title={t("noOrdersTitle")} description={t("noOrdersSubtitle")} />
       ) : (
         <>
-          <EntityTable columns={columns} rows={pagedOrders} />
+          <EntityTable
+            columns={columns}
+            rows={pagedOrders}
+            onRowClick={(row) => {
+              router.push(`/${locale}/dashboard/ltf-finance/orders/${row.id}`);
+            }}
+          />
           <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-600">
             <span>{t("pageLabel", { current: currentPage, total: totalPages })}</span>
             <div className="flex gap-2">

@@ -64,6 +64,12 @@ class DataExportSerializer(serializers.Serializer):
     user = UserSerializer()
     member = MemberExportSerializer(allow_null=True)
     licenses = LicenseExportSerializer(many=True)
+    license_history = serializers.ListSerializer(
+        child=serializers.DictField(), required=False
+    )
+    grade_history = serializers.ListSerializer(
+        child=serializers.DictField(), required=False
+    )
 
 
 class RegisterSerializer(serializers.ModelSerializer):

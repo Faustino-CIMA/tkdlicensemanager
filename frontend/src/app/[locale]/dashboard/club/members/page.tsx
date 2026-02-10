@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -54,6 +56,8 @@ export default function ClubAdminMembersPage() {
   const t = useTranslations("ClubAdmin");
   const importT = useTranslations("Import");
   const common = useTranslations("Common");
+  const pathname = usePathname();
+  const locale = pathname?.split("/")[1] || "en";
   const { selectedClubId, setSelectedClubId } = useClubSelection();
   const [clubs, setClubs] = useState<Club[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -470,6 +474,9 @@ export default function ClubAdminMembersPage() {
                       onClick={() => startEdit(member)}
                     >
                       <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" size="sm" asChild>
+                      <Link href={`/${locale}/dashboard/club/members/${member.id}`}>{t("viewMemberAction")}</Link>
                     </Button>
                     <Button
                       variant="destructive"

@@ -6,6 +6,7 @@ from .models import Club
 from .serializers import ClubSerializer
 import re
 
+from accounts.permissions import IsLtfAdmin
 from django.conf import settings
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.utils.crypto import get_random_string
@@ -35,13 +36,18 @@ class ClubViewSet(viewsets.ModelViewSet):
     serializer_class = ClubSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_permissions(self):
+        if self.action in ["create", "update", "partial_update", "destroy"]:
+            return [IsLtfAdmin()]
+        return [permissions.IsAuthenticated()]
+
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
             return Club.objects.none()
         user = self.request.user
         if not user or not user.is_authenticated:
             return Club.objects.none()
-        if user.role == "ltf_admin":
+        if user.role in ["ltf_admin", "ltf_finance"]:
             return Club.objects.all()
         return (
             Club.objects.filter(admins=user)

@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 
 import { apiRequest } from "@/lib/api";
 import { clearToken } from "@/lib/auth";
+import { getDashboardRouteForRole } from "@/lib/dashboard-routing";
 import { Button } from "@/components/ui/button";
 
 type MeResponse = {
@@ -27,16 +28,9 @@ export default function DashboardPage() {
       try {
         const response = await apiRequest<MeResponse>("/api/auth/me/");
         setUser(response);
-        if (response.role === "ltf_admin") {
-          router.push(`/${locale}/dashboard/ltf`);
-          return;
-        }
-        if (response.role === "ltf_finance") {
-          router.push(`/${locale}/dashboard/ltf-finance`);
-          return;
-        }
-        if (response.role === "club_admin") {
-          router.push(`/${locale}/dashboard/club`);
+        const targetRoute = getDashboardRouteForRole(response.role, locale);
+        if (targetRoute) {
+          router.push(targetRoute);
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to load user";

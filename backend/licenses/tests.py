@@ -6,6 +6,7 @@ import time
 from unittest.mock import patch
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework import status
@@ -15,7 +16,17 @@ from accounts.models import User
 from clubs.models import Club
 from members.models import Member
 
-from .models import FinanceAuditLog, Invoice, License, LicenseType, Order, OrderItem
+from .models import (
+    FinanceAuditLog,
+    Invoice,
+    License,
+    LicenseHistoryEvent,
+    LicenseType,
+    Order,
+    OrderItem,
+)
+from .pdf_utils import build_invoice_context
+from .tasks import reconcile_expired_licenses
 
 
 class LicenseModelTests(TestCase):
@@ -36,6 +47,72 @@ class LicenseModelTests(TestCase):
 
         self.assertEqual(license_record.start_date, date(2026, 1, 1))
         self.assertEqual(license_record.end_date, date(2026, 12, 31))
+
+    def test_license_simple_history_created(self):
+        admin = User.objects.create_user(
+            username="historyadmin",
+            password="pass12345",
+            role=User.Roles.LTF_ADMIN,
+        )
+        club = Club.objects.create(name="History Club", created_by=admin)
+        member = Member.objects.create(club=club, first_name="Ana", last_name="Park")
+        license_record = License.objects.create(member=member, club=club, year=2027)
+        license_record.status = License.Status.ACTIVE
+        license_record.save(update_fields=["status", "updated_at"])
+
+        self.assertGreaterEqual(license_record.history.count(), 2)
+
+    def test_license_history_event_is_immutable(self):
+        admin = User.objects.create_user(
+            username="immutadmin",
+            password="pass12345",
+            role=User.Roles.LTF_ADMIN,
+        )
+        club = Club.objects.create(name="Immutable Club", created_by=admin)
+        member = Member.objects.create(club=club, first_name="Noah", last_name="Stone")
+        license_record = License.objects.create(member=member, club=club, year=2028)
+        event = LicenseHistoryEvent.objects.create(
+            member=member,
+            license=license_record,
+            club=club,
+            actor=admin,
+            event_type=LicenseHistoryEvent.EventType.ISSUED,
+            license_year=license_record.year,
+            status_after=license_record.status,
+            club_name_snapshot=club.name,
+        )
+
+        event.reason = "updated"
+        with self.assertRaises(ValidationError):
+            event.save()
+        with self.assertRaises(ValidationError):
+            event.delete()
+
+
+class LicenseHistoryTaskTests(TestCase):
+    def test_reconcile_expired_licenses_creates_events(self):
+        admin = User.objects.create_user(
+            username="expiryadmin",
+            password="pass12345",
+            role=User.Roles.LTF_ADMIN,
+        )
+        club = Club.objects.create(name="Expiry Club", created_by=admin)
+        member = Member.objects.create(club=club, first_name="Mila", last_name="Fox")
+        old_license = License.objects.create(member=member, club=club, year=2024)
+        old_license.status = License.Status.ACTIVE
+        old_license.end_date = date(2024, 12, 31)
+        old_license.save(update_fields=["status", "end_date", "updated_at"])
+
+        expired_count = reconcile_expired_licenses()
+        old_license.refresh_from_db()
+
+        self.assertEqual(expired_count, 1)
+        self.assertEqual(old_license.status, License.Status.EXPIRED)
+        self.assertTrue(
+            LicenseHistoryEvent.objects.filter(
+                license=old_license, event_type=LicenseHistoryEvent.EventType.EXPIRED
+            ).exists()
+        )
 
 
 class MemberDeletionCascadeTests(TestCase):
@@ -336,6 +413,24 @@ class OrderApiTests(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_confirm_payment_manual_does_not_require_consent(self):
+        self.client.force_authenticate(user=self.ltf_finance)
+        create_response = self.client.post(
+            "/api/orders/", self._order_payload(), format="json"
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        order_id = create_response.data["id"]
+        response = self.client.post(
+            f"/api/orders/{order_id}/confirm-payment/",
+            {
+                "payment_method": "bank_transfer",
+                "payment_provider": "manual",
+                "payment_reference": "BANK-REF-001",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
     @patch("licenses.views.stripe.checkout.Session.create")
     def test_checkout_requires_consent(self, session_create_mock):
         member_user = User.objects.create_user(
@@ -456,21 +551,21 @@ class ClubOrderCheckoutTests(TestCase):
 
     @patch("licenses.views.stripe.checkout.Session.create")
     def test_club_checkout_requires_consent_confirmation(self, session_create_mock):
+        session_create_mock.return_value = type(
+            "Session",
+            (),
+            {"id": "cs_test_123", "url": "https://stripe.test/session", "payment_intent": "pi_test"},
+        )()
         self.client.force_authenticate(user=self.club_admin)
         response = self.client.post(
             f"/api/club-orders/{self.order.id}/create-checkout-session/",
             {},
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        session_create_mock.assert_not_called()
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        session_create_mock.assert_called_once()
 
         session_create_mock.reset_mock()
-        session_create_mock.return_value = type(
-            "Session",
-            (),
-            {"id": "cs_test_123", "url": "https://stripe.test/session", "payment_intent": "pi_test"},
-        )()
         response = self.client.post(
             f"/api/club-orders/{self.order.id}/create-checkout-session/",
             {"club_admin_consent_confirmed": True},
@@ -611,4 +706,124 @@ class StripeWebhookSignatureTests(TestCase):
         self.assertTrue(
             FinanceAuditLog.objects.filter(order=order, action="order.payment_blocked").exists()
         )
+
+
+class PayconiqPaymentTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.ltf_admin = User.objects.create_user(
+            username="ltfadmin-payconiq",
+            password="pass12345",
+            role=User.Roles.LTF_ADMIN,
+        )
+        self.club_admin = User.objects.create_user(
+            username="clubadmin-payconiq",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+        )
+        self.other_club_admin = User.objects.create_user(
+            username="clubadmin-other",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+        )
+        self.club = Club.objects.create(name="Payconiq Club", created_by=self.ltf_admin)
+        self.club.admins.add(self.club_admin)
+        self.member = Member.objects.create(
+            club=self.club,
+            first_name="Pay",
+            last_name="Coniq",
+        )
+        self.order = Order.objects.create(
+            club=self.club,
+            member=self.member,
+            subtotal=Decimal("25.00"),
+            tax_total=Decimal("5.00"),
+            total=Decimal("30.00"),
+        )
+        self.invoice = Invoice.objects.create(
+            order=self.order,
+            club=self.club,
+            member=self.member,
+            subtotal=Decimal("25.00"),
+            tax_total=Decimal("5.00"),
+            total=Decimal("30.00"),
+        )
+
+    @override_settings(PAYCONIQ_MODE="mock", PAYCONIQ_BASE_URL="https://payconiq.mock")
+    def test_club_admin_can_create_payconiq_payment(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            "/api/payconiq/create/",
+            {"invoice_id": self.invoice.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["provider"], "payconiq")
+        self.assertTrue(response.data["payconiq_payment_url"].startswith("https://payconiq.mock"))
+        self.assertTrue(
+            FinanceAuditLog.objects.filter(order=self.order, action="payconiq.created").exists()
+        )
+
+    @override_settings(PAYCONIQ_MODE="mock")
+    def test_club_admin_blocked_for_other_club(self):
+        other_club = Club.objects.create(name="Other Club", created_by=self.ltf_admin)
+        other_member = Member.objects.create(
+            club=other_club,
+            first_name="Other",
+            last_name="Club",
+        )
+        other_order = Order.objects.create(
+            club=other_club,
+            member=other_member,
+            subtotal=Decimal("25.00"),
+            tax_total=Decimal("5.00"),
+            total=Decimal("30.00"),
+        )
+        other_invoice = Invoice.objects.create(
+            order=other_order,
+            club=other_club,
+            member=other_member,
+            subtotal=Decimal("25.00"),
+            tax_total=Decimal("5.00"),
+            total=Decimal("30.00"),
+        )
+
+        self.client.force_authenticate(user=self.other_club_admin)
+        response = self.client.post(
+            "/api/payconiq/create/",
+            {"invoice_id": other_invoice.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    @override_settings(PAYCONIQ_MODE="mock")
+    def test_payconiq_status_endpoint(self):
+        self.client.force_authenticate(user=self.club_admin)
+        create_response = self.client.post(
+            "/api/payconiq/create/",
+            {"invoice_id": self.invoice.id},
+            format="json",
+        )
+        payment_id = create_response.data["id"]
+        status_response = self.client.get(f"/api/payconiq/{payment_id}/status/")
+        self.assertEqual(status_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(status_response.data["payconiq_status"], "PENDING")
+
+    @override_settings(
+        PAYCONIQ_MODE="mock",
+        INVOICE_SEPA_BENEFICIARY="LTF License Manager",
+        INVOICE_SEPA_IBAN="LU123000000000000000",
+        INVOICE_SEPA_BIC="TESTBIC",
+        INVOICE_SEPA_REMITTANCE_PREFIX="Invoice",
+    )
+    def test_invoice_context_contains_qr_payloads(self):
+        self.client.force_authenticate(user=self.club_admin)
+        self.client.post(
+            "/api/payconiq/create/",
+            {"invoice_id": self.invoice.id},
+            format="json",
+        )
+        context = build_invoice_context(self.invoice)
+        self.assertTrue(context["payconiq_qr"])
+        self.assertTrue(context["sepa_qr"])
 

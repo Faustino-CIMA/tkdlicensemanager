@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
 
 import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Select,
@@ -16,13 +18,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FinanceInvoice, confirmOrderPayment, getFinanceInvoices } from "@/lib/ltf-finance-api";
+import {
+  Club,
+  FinanceInvoice,
+  FinanceOrder,
+  confirmOrderPayment,
+  getFinanceClubs,
+  getFinanceInvoices,
+  getFinanceOrders,
+} from "@/lib/ltf-finance-api";
 import { openInvoicePdf } from "@/lib/invoice-pdf";
 
 export default function LtfFinancePaymentsPage() {
   const t = useTranslations("LtfFinance");
   const common = useTranslations("Common");
+  const locale = useLocale();
+  const router = useRouter();
   const [invoices, setInvoices] = useState<FinanceInvoice[]>([]);
+  const [orders, setOrders] = useState<FinanceOrder[]>([]);
+  const [clubs, setClubs] = useState<Club[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("25");
@@ -31,16 +45,43 @@ export default function LtfFinancePaymentsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [activeInvoiceId, setActiveInvoiceId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
+  const [recordInvoice, setRecordInvoice] = useState<FinanceInvoice | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState("offline");
+  const [paymentProvider, setPaymentProvider] = useState("manual");
+  const [paymentReference, setPaymentReference] = useState("");
+  const [paymentNotes, setPaymentNotes] = useState("");
+  const [paymentDate, setPaymentDate] = useState("");
 
   const pageSizeOptions = ["25", "50", "100", "150", "200", "all"];
   const statusOptions = ["all", "draft", "issued", "paid", "void"];
+  const paymentMethodOptions = [
+    { value: "card", label: t("paymentMethodCard") },
+    { value: "bank_transfer", label: t("paymentMethodBankTransfer") },
+    { value: "cash", label: t("paymentMethodCash") },
+    { value: "offline", label: t("paymentMethodOffline") },
+    { value: "other", label: t("paymentMethodOther") },
+  ];
+  const paymentProviderOptions = [
+    { value: "stripe", label: t("paymentProviderStripe") },
+    { value: "payconiq", label: t("paymentProviderPayconiq") },
+    { value: "paypal", label: t("paymentProviderPaypal") },
+    { value: "manual", label: t("paymentProviderManual") },
+    { value: "other", label: t("paymentProviderOther") },
+  ];
 
   const loadInvoices = async () => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const response = await getFinanceInvoices();
-      setInvoices(response);
+      const [invoiceResponse, ordersResponse, clubsResponse] = await Promise.all([
+        getFinanceInvoices(),
+        getFinanceOrders(),
+        getFinanceClubs(),
+      ]);
+      setInvoices(invoiceResponse);
+      setOrders(ordersResponse);
+      setClubs(clubsResponse);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : t("paymentsLoadError"));
     } finally {
@@ -59,6 +100,27 @@ export default function LtfFinancePaymentsPage() {
     return invoices.filter((invoice) => invoice.status === statusFilter);
   }, [invoices, statusFilter]);
 
+  const clubNameById = useMemo(() => {
+    return clubs.reduce<Record<number, string>>((acc, club) => {
+      acc[club.id] = club.name;
+      return acc;
+    }, {});
+  }, [clubs]);
+
+  const orderQuantityById = useMemo(() => {
+    return orders.reduce<Record<number, number>>((acc, order) => {
+      acc[order.id] = order.items.reduce((sum, item) => sum + (item.quantity ?? 0), 0);
+      return acc;
+    }, {});
+  }, [orders]);
+
+  const getInvoiceQuantity = (invoice: FinanceInvoice) => {
+    if (!invoice.order) {
+      return "-";
+    }
+    return orderQuantityById[invoice.order] ?? 0;
+  };
+
   const searchedInvoices = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
     if (!normalizedQuery) {
@@ -67,18 +129,18 @@ export default function LtfFinancePaymentsPage() {
     return filteredInvoices.filter((invoice) => {
       const numberText = invoice.invoice_number.toLowerCase();
       const statusText = invoice.status.toLowerCase();
-      const clubText = String(invoice.club);
-      const memberText = invoice.member ? String(invoice.member) : "";
+      const clubText = (clubNameById[invoice.club] ?? String(invoice.club)).toLowerCase();
+      const qtyText = String(getInvoiceQuantity(invoice));
       const totalText = `${invoice.total} ${invoice.currency}`.toLowerCase();
       return (
         numberText.includes(normalizedQuery) ||
         statusText.includes(normalizedQuery) ||
         clubText.includes(normalizedQuery) ||
-        memberText.includes(normalizedQuery) ||
+        qtyText.includes(normalizedQuery) ||
         totalText.includes(normalizedQuery)
       );
     });
-  }, [filteredInvoices, searchQuery]);
+  }, [filteredInvoices, searchQuery, clubNameById, orderQuantityById]);
 
   const resolvedPageSize =
     pageSize === "all" ? Math.max(searchedInvoices.length, 1) : Number(pageSize);
@@ -107,16 +169,37 @@ export default function LtfFinancePaymentsPage() {
     }
   };
 
-  const handleRecordPayment = async (invoice: FinanceInvoice) => {
-    if (!invoice.order) {
+  const openRecordModal = (invoice: FinanceInvoice) => {
+    setActionError(null);
+    setRecordInvoice(invoice);
+    setPaymentMethod("offline");
+    setPaymentProvider("manual");
+    setPaymentReference("");
+    setPaymentNotes("");
+    setPaymentDate("");
+    setIsRecordModalOpen(true);
+  };
+
+  const handleRecordPayment = async () => {
+    if (!recordInvoice) {
+      return;
+    }
+    if (!recordInvoice.order) {
       setActionError(common("paymentMissingOrder"));
       return;
     }
     setActionError(null);
-    setActiveInvoiceId(invoice.id);
+    setActiveInvoiceId(recordInvoice.id);
     try {
-      await confirmOrderPayment(invoice.order);
+      await confirmOrderPayment(recordInvoice.order, {
+        payment_method: paymentMethod,
+        payment_provider: paymentProvider,
+        payment_reference: paymentReference || undefined,
+        payment_notes: paymentNotes || undefined,
+        paid_at: paymentDate ? new Date(paymentDate).toISOString() : undefined,
+      });
       await loadInvoices();
+      setIsRecordModalOpen(false);
     } catch (error) {
       setActionError(
         error instanceof Error ? error.message : common("paymentFailed")
@@ -136,11 +219,15 @@ export default function LtfFinancePaymentsPage() {
         return <StatusBadge label={meta.label} tone={meta.tone} />;
       },
     },
-    { key: "club", header: t("clubLabel") },
     {
-      key: "member",
-      header: t("memberLabel"),
-      render: (row: FinanceInvoice) => row.member ?? "-",
+      key: "club",
+      header: t("clubLabel"),
+      render: (row: FinanceInvoice) => clubNameById[row.club] ?? String(row.club),
+    },
+    {
+      key: "quantity",
+      header: common("qtyLabel"),
+      render: (row: FinanceInvoice) => getInvoiceQuantity(row),
     },
     {
       key: "total",
@@ -151,7 +238,7 @@ export default function LtfFinancePaymentsPage() {
       key: "paid_at",
       header: t("paidAtLabel"),
       render: (row: FinanceInvoice) =>
-        row.paid_at ? new Date(row.paid_at).toLocaleDateString() : "-",
+        row.paid_at ? new Date(row.paid_at).toLocaleString() : "-",
     },
     {
       key: "pdf",
@@ -184,16 +271,14 @@ export default function LtfFinancePaymentsPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => handleRecordPayment(row)}
+            onClick={() => openRecordModal(row)}
             disabled={activeInvoiceId === row.id}
           >
             {activeInvoiceId === row.id
               ? common("paymentProcessing")
               : t("recordPaymentButton")}
           </Button>
-        ) : (
-          <span className="text-xs text-zinc-500">{common("paymentNotAvailable")}</span>
-        );
+        ) : null;
       },
     },
   ];
@@ -242,7 +327,11 @@ export default function LtfFinancePaymentsPage() {
         <EmptyState title={t("noPaymentsTitle")} description={t("noPaymentsSubtitle")} />
       ) : (
         <>
-          <EntityTable columns={columns} rows={pagedInvoices} />
+          <EntityTable
+            columns={columns}
+            rows={pagedInvoices}
+            onRowClick={(row) => router.push(`/${locale}/dashboard/ltf-finance/payments/${row.id}`)}
+          />
           <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-600">
             <span>{t("pageLabel", { current: currentPage, total: totalPages })}</span>
             <div className="flex gap-2">
@@ -267,6 +356,88 @@ export default function LtfFinancePaymentsPage() {
 
       {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
       {actionError ? <p className="text-sm text-red-600">{actionError}</p> : null}
+
+      <Modal
+        title={t("recordPaymentTitle")}
+        description={t("recordPaymentSubtitle")}
+        isOpen={isRecordModalOpen}
+        onClose={() => setIsRecordModalOpen(false)}
+      >
+        <div className="grid gap-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-zinc-700">
+              {t("paymentMethodLabel")}
+            </label>
+            <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {paymentMethodOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-zinc-700">
+              {t("paymentProviderLabel")}
+            </label>
+            <Select value={paymentProvider} onValueChange={setPaymentProvider}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {paymentProviderOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-zinc-700">
+              {t("paymentReferenceLabel")}
+            </label>
+            <Input
+              value={paymentReference}
+              onChange={(event) => setPaymentReference(event.target.value)}
+              placeholder={t("paymentReferencePlaceholder")}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-zinc-700">
+              {t("paymentNotesLabel")}
+            </label>
+            <Input
+              value={paymentNotes}
+              onChange={(event) => setPaymentNotes(event.target.value)}
+              placeholder={t("paymentNotesPlaceholder")}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-zinc-700">
+              {t("paymentDateLabel")}
+            </label>
+            <Input
+              type="datetime-local"
+              value={paymentDate}
+              onChange={(event) => setPaymentDate(event.target.value)}
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <Button onClick={handleRecordPayment} disabled={activeInvoiceId !== null}>
+              {activeInvoiceId ? common("paymentProcessing") : t("recordPaymentButton")}
+            </Button>
+            <Button variant="outline" onClick={() => setIsRecordModalOpen(false)}>
+              {t("paymentCancelButton")}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </LtfFinanceLayout>
   );
 }

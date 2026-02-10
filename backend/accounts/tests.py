@@ -4,6 +4,9 @@ from django.utils import timezone
 from rest_framework.test import APIRequestFactory
 from rest_framework.test import APIClient
 
+from clubs.models import Club
+from licenses.models import License, LicenseHistoryEvent
+from members.models import GradePromotionHistory, Member
 from .models import User
 from .permissions import IsLtfFinance, IsLtfFinanceOrLtfAdmin
 
@@ -35,6 +38,19 @@ class AuthApiTests(TestCase):
             username="verifyme",
             email="verify@example.com",
             password="pass12345",
+        )
+        self.admin = User.objects.create_user(
+            username="adminhistory",
+            password="pass12345",
+            role=User.Roles.LTF_ADMIN,
+        )
+        self.club = Club.objects.create(name="Export Club", created_by=self.admin)
+        self.member = Member.objects.create(
+            user=self.user,
+            club=self.club,
+            first_name="Mia",
+            last_name="Stone",
+            belt_rank="4th Kup",
         )
 
     def test_login_requires_verified_email(self):
@@ -81,6 +97,51 @@ class AuthApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         email_address.refresh_from_db()
         self.assertTrue(email_address.verified)
+
+    def test_data_export_contains_history_payloads(self):
+        license_record = License.objects.create(member=self.member, club=self.club, year=2026)
+        LicenseHistoryEvent.objects.create(
+            member=self.member,
+            license=license_record,
+            club=self.club,
+            event_type=LicenseHistoryEvent.EventType.ISSUED,
+            license_year=license_record.year,
+            status_after=license_record.status,
+            club_name_snapshot=self.club.name,
+        )
+        GradePromotionHistory.objects.create(
+            member=self.member,
+            club=self.club,
+            examiner_user=self.admin,
+            from_grade="4th Kup",
+            to_grade="3rd Kup",
+        )
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get("/api/auth/data-export/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("license_history", response.data)
+        self.assertIn("grade_history", response.data)
+        self.assertEqual(len(response.data["license_history"]), 1)
+        self.assertEqual(len(response.data["grade_history"]), 1)
+
+    def test_data_delete_anonymizes_grade_history_notes(self):
+        GradePromotionHistory.objects.create(
+            member=self.member,
+            club=self.club,
+            examiner_user=self.admin,
+            from_grade="4th Kup",
+            to_grade="3rd Kup",
+            notes="Contains personal context",
+            proof_ref="file://proof",
+        )
+        self.client.force_authenticate(user=self.user)
+        response = self.client.delete("/api/auth/data-delete/")
+        self.assertEqual(response.status_code, 200)
+        grade_record = GradePromotionHistory.objects.first()
+        self.assertIsNotNone(grade_record)
+        assert grade_record is not None
+        self.assertEqual(grade_record.notes, "")
+        self.assertEqual(grade_record.proof_ref, "")
 
 
 class FinancePermissionTests(TestCase):

@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.sites",
+    "simple_history",
     "rest_framework",
     "rest_framework.authtoken",
     "drf_spectacular",
@@ -56,6 +57,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "simple_history.middleware.HistoryRequestMiddleware",
     "allauth.account.middleware.AccountMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -185,6 +187,12 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
+CELERY_BEAT_SCHEDULE = {
+    "reconcile-expired-licenses-daily": {
+        "task": "licenses.tasks.reconcile_expired_licenses",
+        "schedule": 60 * 60 * 24,
+    },
+}
 
 STRIPE_SECRET_KEY = config("STRIPE_SECRET_KEY", default="")
 STRIPE_WEBHOOK_SECRET = config("STRIPE_WEBHOOK_SECRET", default="")
@@ -197,3 +205,13 @@ STRIPE_CHECKOUT_CANCEL_URL = config(
     "STRIPE_CHECKOUT_CANCEL_URL",
     default=f"{FRONTEND_BASE_URL}/checkout/cancel",
 )
+
+PAYCONIQ_MODE = config("PAYCONIQ_MODE", default="mock")
+PAYCONIQ_API_KEY = config("PAYCONIQ_API_KEY", default="")
+PAYCONIQ_MERCHANT_ID = config("PAYCONIQ_MERCHANT_ID", default="")
+PAYCONIQ_BASE_URL = config("PAYCONIQ_BASE_URL", default="https://payconiq.mock")
+
+INVOICE_SEPA_BENEFICIARY = config("INVOICE_SEPA_BENEFICIARY", default="LTF License Manager")
+INVOICE_SEPA_IBAN = config("INVOICE_SEPA_IBAN", default="")
+INVOICE_SEPA_BIC = config("INVOICE_SEPA_BIC", default="")
+INVOICE_SEPA_REMITTANCE_PREFIX = config("INVOICE_SEPA_REMITTANCE_PREFIX", default="Invoice")

@@ -4,11 +4,13 @@ from typing import cast
 from uuid import uuid4
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
 from .fields import EncryptedCharField
+from simple_history.models import HistoricalRecords
 from django.utils.text import slugify
-from django.utils import timezone
 
 from clubs.models import Club
 from members.models import Member
@@ -80,6 +82,7 @@ class License(models.Model):
         PENDING = "pending", "Pending"
         ACTIVE = "active", "Active"
         EXPIRED = "expired", "Expired"
+        REVOKED = "revoked", "Revoked"
 
     member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name="licenses")
     club = models.ForeignKey(Club, on_delete=models.PROTECT, related_name="licenses")
@@ -96,6 +99,7 @@ class License(models.Model):
     issued_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    history = HistoricalRecords()
 
     def save(self, *args, **kwargs):
         if not self.start_date or not self.end_date:
@@ -106,6 +110,77 @@ class License(models.Model):
 
     def __str__(self):
         return f"{self.member} - {self.year}"
+
+
+class LicenseHistoryEvent(models.Model):
+    class EventType(models.TextChoices):
+        ISSUED = "issued", "Issued"
+        RENEWED = "renewed", "Renewed"
+        STATUS_CHANGED = "status_changed", "Status changed"
+        EXPIRED = "expired", "Expired"
+        REVOKED = "revoked", "Revoked"
+        PAYMENT_LINKED = "payment_linked", "Payment linked"
+
+    member = models.ForeignKey(
+        Member, on_delete=models.CASCADE, related_name="license_history_events"
+    )
+    license = models.ForeignKey(
+        License, on_delete=models.CASCADE, related_name="history_events"
+    )
+    club = models.ForeignKey(
+        Club,
+        on_delete=models.PROTECT,
+        related_name="license_history_events",
+    )
+    order = models.ForeignKey(
+        "Order",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="license_history_events",
+    )
+    payment = models.ForeignKey(
+        "Payment",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="license_history_events",
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="license_history_events",
+    )
+    event_type = models.CharField(max_length=30, choices=EventType.choices)
+    event_at = models.DateTimeField(default=timezone.now)
+    reason = models.CharField(max_length=255, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    license_year = models.PositiveIntegerField()
+    status_before = models.CharField(max_length=20, blank=True)
+    status_after = models.CharField(max_length=20, blank=True)
+    club_name_snapshot = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-event_at", "-id"]
+        indexes = [
+            models.Index(fields=["member", "-event_at"]),
+            models.Index(fields=["license", "-event_at"]),
+            models.Index(fields=["event_type", "-event_at"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("License history events are immutable.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("License history events are immutable.")
+
+    def __str__(self) -> str:
+        return f"{self.member} · {self.event_type} · {self.event_at:%Y-%m-%d}"
 
 
 class Order(models.Model):
@@ -194,6 +269,68 @@ class Invoice(models.Model):
 
     def __str__(self) -> str:
         return str(self.invoice_number)
+
+
+class Payment(models.Model):
+    class Method(models.TextChoices):
+        CARD = "card", "Card"
+        BANK_TRANSFER = "bank_transfer", "Bank transfer"
+        CASH = "cash", "Cash"
+        OFFLINE = "offline", "Offline"
+        OTHER = "other", "Other"
+
+    class Provider(models.TextChoices):
+        STRIPE = "stripe", "Stripe"
+        PAYCONIQ = "payconiq", "Payconiq"
+        PAYPAL = "paypal", "PayPal"
+        MANUAL = "manual", "Manual"
+        OTHER = "other", "Other"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        PAID = "paid", "Paid"
+        FAILED = "failed", "Failed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    invoice = models.ForeignKey(
+        Invoice, on_delete=models.PROTECT, related_name="payments"
+    )
+    order = models.ForeignKey(Order, on_delete=models.PROTECT, related_name="payments")
+    amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal("0.00")
+    )
+    currency = models.CharField(max_length=3, default="EUR")
+    method = models.CharField(
+        max_length=20, choices=Method.choices, default=Method.OFFLINE
+    )
+    provider = models.CharField(
+        max_length=20, choices=Provider.choices, default=Provider.MANUAL
+    )
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    reference = models.CharField(max_length=255, blank=True)
+    payconiq_payment_id = models.CharField(max_length=255, blank=True)
+    payconiq_payment_url = models.URLField(blank=True)
+    payconiq_status = models.CharField(max_length=50, blank=True)
+    notes = models.TextField(blank=True)
+    card_brand = models.CharField(max_length=50, blank=True)
+    card_last4 = models.CharField(max_length=4, blank=True)
+    card_exp_month = models.PositiveSmallIntegerField(null=True, blank=True)
+    card_exp_year = models.PositiveSmallIntegerField(null=True, blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="payments_recorded",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-paid_at", "-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.invoice} - {self.amount} {self.currency}"
 
 
 class FinanceAuditLog(models.Model):

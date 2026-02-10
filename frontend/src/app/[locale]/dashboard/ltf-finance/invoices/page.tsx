@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
 
 import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
@@ -17,13 +18,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FinanceInvoice, getFinanceInvoices } from "@/lib/ltf-finance-api";
+import {
+  Club,
+  FinanceInvoice,
+  FinanceOrder,
+  getFinanceClubs,
+  getFinanceInvoices,
+  getFinanceOrders,
+} from "@/lib/ltf-finance-api";
 import { openInvoicePdf } from "@/lib/invoice-pdf";
 
 export default function LtfFinanceInvoicesPage() {
   const t = useTranslations("LtfFinance");
   const common = useTranslations("Common");
+  const locale = useLocale();
+  const router = useRouter();
   const [invoices, setInvoices] = useState<FinanceInvoice[]>([]);
+  const [orders, setOrders] = useState<FinanceOrder[]>([]);
+  const [clubs, setClubs] = useState<Club[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("25");
@@ -37,8 +49,14 @@ export default function LtfFinanceInvoicesPage() {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const response = await getFinanceInvoices();
-      setInvoices(response);
+      const [invoiceResponse, orderResponse, clubResponse] = await Promise.all([
+        getFinanceInvoices(),
+        getFinanceOrders(),
+        getFinanceClubs(),
+      ]);
+      setInvoices(invoiceResponse);
+      setOrders(orderResponse);
+      setClubs(clubResponse);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : t("invoicesLoadError"));
     } finally {
@@ -50,6 +68,27 @@ export default function LtfFinanceInvoicesPage() {
     loadInvoices();
   }, []);
 
+  const clubNameById = useMemo(() => {
+    return clubs.reduce<Record<number, string>>((acc, club) => {
+      acc[club.id] = club.name;
+      return acc;
+    }, {});
+  }, [clubs]);
+
+  const orderQuantityById = useMemo(() => {
+    return orders.reduce<Record<number, number>>((acc, order) => {
+      acc[order.id] = order.items.reduce((sum, item) => sum + (item.quantity ?? 0), 0);
+      return acc;
+    }, {});
+  }, [orders]);
+
+  const getInvoiceQuantity = (invoice: FinanceInvoice) => {
+    if (!invoice.order) {
+      return "-";
+    }
+    return orderQuantityById[invoice.order] ?? 0;
+  };
+
   const searchedInvoices = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
     if (!normalizedQuery) {
@@ -58,18 +97,18 @@ export default function LtfFinanceInvoicesPage() {
     return invoices.filter((invoice) => {
       const numberText = invoice.invoice_number.toLowerCase();
       const statusText = invoice.status.toLowerCase();
-      const clubText = String(invoice.club);
-      const memberText = invoice.member ? String(invoice.member) : "";
+      const clubText = (clubNameById[invoice.club] ?? String(invoice.club)).toLowerCase();
+      const qtyText = String(getInvoiceQuantity(invoice));
       const totalText = `${invoice.total} ${invoice.currency}`.toLowerCase();
       return (
         numberText.includes(normalizedQuery) ||
         statusText.includes(normalizedQuery) ||
         clubText.includes(normalizedQuery) ||
-        memberText.includes(normalizedQuery) ||
+        qtyText.includes(normalizedQuery) ||
         totalText.includes(normalizedQuery)
       );
     });
-  }, [invoices, searchQuery]);
+  }, [invoices, searchQuery, clubNameById, orderQuantityById]);
 
   const resolvedPageSize =
     pageSize === "all" ? Math.max(searchedInvoices.length, 1) : Number(pageSize);
@@ -115,11 +154,15 @@ export default function LtfFinanceInvoicesPage() {
         return <StatusBadge label={meta.label} tone={meta.tone} />;
       },
     },
-    { key: "club", header: t("clubLabel") },
     {
-      key: "member",
-      header: t("memberLabel"),
-      render: (row: FinanceInvoice) => row.member ?? "-",
+      key: "club",
+      header: t("clubLabel"),
+      render: (row: FinanceInvoice) => clubNameById[row.club] ?? String(row.club),
+    },
+    {
+      key: "quantity",
+      header: common("qtyLabel"),
+      render: (row: FinanceInvoice) => getInvoiceQuantity(row),
     },
     {
       key: "total",
@@ -130,7 +173,7 @@ export default function LtfFinanceInvoicesPage() {
       key: "issued_at",
       header: t("issuedAtLabel"),
       render: (row: FinanceInvoice) =>
-        row.issued_at ? new Date(row.issued_at).toLocaleDateString() : "-",
+        row.issued_at ? new Date(row.issued_at).toLocaleString() : "-",
     },
     {
       key: "pdf",
@@ -207,7 +250,11 @@ export default function LtfFinanceInvoicesPage() {
         <EmptyState title={t("noInvoicesTitle")} description={t("noInvoicesSubtitle")} />
       ) : (
         <>
-          <EntityTable columns={columns} rows={pagedInvoices} />
+          <EntityTable
+            columns={columns}
+            rows={pagedInvoices}
+            onRowClick={(row) => router.push(`/${locale}/dashboard/ltf-finance/invoices/${row.id}`)}
+          />
           <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-600">
             <span>{t("pageLabel", { current: currentPage, total: totalPages })}</span>
             <div className="flex gap-2">
