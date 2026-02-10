@@ -80,7 +80,7 @@ Common Docker commands you will use:
 - Start everything: `docker compose up --build`
 - Stop everything: `docker compose down`
 - See running containers: `docker compose ps`
-- View logs: `docker compose logs -f backend` (or `frontend`, `db`, `redis`, `worker`)
+- View logs: `docker compose logs -f backend` (or `frontend`, `db`, `redis`, `worker`, `beat`)
 - Run a command inside a container: `docker compose exec backend python manage.py migrate`
 
 What the services are:
@@ -89,12 +89,17 @@ What the services are:
 - `db`: PostgreSQL database (data stored in a volume)
 - `redis`: Redis message broker/cache
 - `worker`: Celery background jobs (runs tasks like invoice emails)
+- `beat`: Celery scheduler (runs periodic jobs like license expiry reconciliation)
 
 Important volumes:
 - `postgres_data`: keeps your database data between restarts.
 - `redis_data`: keeps Redis data between restarts (AOF enabled).
 - `backend/staticfiles`: stores collected static files from Django.
 - `.cursor` bind‑mount: used for runtime debug logs (keep it if debugging is enabled).
+
+Compose user mapping (Linux):
+- `LOCAL_UID` and `LOCAL_GID` map container user permissions to your host user.
+- Defaults are `1000:1000`; if your host user is different, set both in `.env`.
 
 If Docker fails to start:
 - Reboot Docker Desktop (Windows/macOS) or restart the Docker daemon (Linux).
@@ -138,6 +143,18 @@ Stripe + payments:
 - `STRIPE_CHECKOUT_SUCCESS_URL`
 - `STRIPE_CHECKOUT_CANCEL_URL`
 
+Payconiq (dev/test):
+- `PAYCONIQ_MODE` (default `mock`)
+- `PAYCONIQ_API_KEY`
+- `PAYCONIQ_MERCHANT_ID`
+- `PAYCONIQ_BASE_URL`
+
+SEPA (invoice QR):
+- `INVOICE_SEPA_BENEFICIARY`
+- `INVOICE_SEPA_IBAN`
+- `INVOICE_SEPA_BIC`
+- `INVOICE_SEPA_REMITTANCE_PREFIX`
+
 Email (Resend):
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL`
@@ -146,6 +163,10 @@ Celery + Redis:
 - `CELERY_BROKER_URL` (default `redis://redis:6379/0`)
 - `CELERY_RESULT_BACKEND` (default `redis://redis:6379/1`)
 - `REDIS_URL` (used for general cache/queues)
+
+Encryption:
+- `FERNET_KEYS` (optional, comma-separated keys for encrypted finance fields)
+- If not set, the app derives one key from `DJANGO_SECRET_KEY` for local/dev.
 
 ## Finance Module Setup (Stripe + Webhooks + Celery)
 
@@ -156,9 +177,14 @@ Stripe configuration:
 - Stripe processing requires consent: if member consent is missing, Club Admins must explicitly confirm consent when creating a checkout session.
 - Finance access: LTF Finance has full access to orders/invoices/audit logs; LTF Admin can only perform fallback actions (confirm payment or activate licenses).
 
+Payconiq (dev/test):
+- Set `PAYCONIQ_MODE=mock` and `PAYCONIQ_BASE_URL` for local testing.
+- Use the Club Admin invoice page to generate a Payconiq payment link.
+- The printable invoice includes both Payconiq and SEPA QR codes (SEPA requires the `INVOICE_SEPA_*` fields).
+
 Webhook processing:
 - The Stripe webhook endpoint expects a valid signature and then dispatches work to Celery.
-- Make sure the `worker` service is running: `docker compose up -d worker`.
+- Make sure the `worker` and `beat` services are running: `docker compose up -d worker beat`.
 
 Stripe CLI testing (optional):
 - Install Stripe CLI: https://stripe.com/docs/stripe-cli
@@ -172,9 +198,19 @@ stripe listen --forward-to localhost:8000/api/stripe/webhook/
 stripe trigger checkout.session.completed
 ```
 
+Finance API quick reference:
+- `POST /api/stripe/webhook/` (Stripe events; signature required)
+- `GET /api/payments/` (LTF Finance, read-only; supports `invoice_id`/`order_id` filters)
+- `POST /api/payconiq/create/` (create Payconiq payment)
+- `GET /api/payconiq/{id}/status/` (refresh Payconiq status)
+- `GET /api/invoices/{id}/pdf/` (invoice PDF)
+- `GET /api/license-prices/` and `POST /api/license-prices/` (LTF Finance/Admin)
+- `GET /api/club-orders/` and `GET /api/club-invoices/` (Club Admin scoped endpoints)
+
 Celery + Redis:
 - `CELERY_BROKER_URL` and `CELERY_RESULT_BACKEND` must point to Redis.
 - Redis must be running for background jobs (invoice emails, webhook processing).
+- `beat` runs periodic jobs (for example daily expired-license reconciliation).
 
 ## Migrations and Role Rename Notes
 
@@ -232,8 +268,37 @@ docker compose exec backend python manage.py test
 Frontend:
 
 ```
-docker compose exec frontend npm test
+cd frontend
+npm test -- --runInBand
 ```
+
+or in Docker:
+
+```
+docker compose run --rm frontend npm test -- --runInBand
+```
+
+## History Tracking API (License + Grade)
+
+Member history endpoints:
+- `GET /api/members/{id}/history/` (combined license + grade history)
+- `GET /api/members/{id}/license-history/`
+- `GET /api/members/{id}/grade-history/`
+- `POST /api/members/{id}/promote-grade/` (LTF Admin / Club Admin / Coach)
+
+Role access:
+- Member: own history only
+- Club Admin / Coach: own-club members
+- LTF Admin: all members
+- LTF Finance: financially relevant license history only (order/payment-linked), grade history denied
+
+GDPR notes:
+- `GET /api/auth/data-export/` now includes `license_history` and `grade_history`
+- `DELETE /api/auth/data-delete/` anonymizes grade history free text/proof fields before user deletion
+
+Audit + immutability:
+- `License` uses `django-simple-history` (`HistoricalLicense`) for field-level change history
+- `LicenseHistoryEvent` and `GradePromotionHistory` are append-only business timelines
 
 ## Verify Install
 
@@ -256,6 +321,8 @@ curl http://localhost:3000/
 - Club admin management (LTF assigns, limits per club)
 - License type management (LTF-managed)
 - Finance module: orders, invoices, Stripe checkout, audit logs (finance-only access)
+- License history timeline (immutable events + django-simple-history)
+- Grade promotion history timeline with member current grade sync
 - CSV import for clubs and members with mapping + preview
 - GDPR endpoints: consent, data export, data delete
 - i18n scaffolding (English + Luxembourgish)
@@ -268,8 +335,9 @@ curl http://localhost:3000/
 
 - **Missing `.env`**: Create it from `.env.example` and ensure values are set.
 - **Port conflicts**: Stop services using ports 3000/8000/5432/6379 or change ports in `docker-compose.yml`.
-- **CORS errors**: Use the same host for frontend/backed (`localhost` or `127.0.0.1`) and align `FRONTEND_BASE_URL` + `NEXT_PUBLIC_API_URL`.
+- **CORS errors**: Use the same host for frontend/backend (`localhost` or `127.0.0.1`) and align `FRONTEND_BASE_URL` + `NEXT_PUBLIC_API_URL`.
 - **Debug log mount**: Docker mounts `.cursor/` into backend/worker for runtime debug logs. Keep it unless you remove debug logging.
 - **Database not ready**: Wait for `docker compose ps` to show healthy, or restart with `docker compose restart db`.
 - **Stuck migrations**: `docker compose down -v` to reset volumes (data loss), then `docker compose up --build`.
+- **Celery Beat schedule file**: `backend/celerybeat-schedule` is generated locally; keep it out of git.
 - **makemigrations permission denied in Docker**: run `python backend/manage.py makemigrations` locally or add the migration file in the repo, then run `docker compose exec backend python manage.py migrate`.
