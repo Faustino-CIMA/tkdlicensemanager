@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -60,6 +60,7 @@ export default function ClubAdminLicensesPage() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isBatchDeleteOpen, setIsBatchDeleteOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const lastSelectedLicenseIdRef = useRef<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("25");
@@ -86,7 +87,7 @@ export default function ClubAdminLicensesPage() {
     },
   });
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
@@ -111,11 +112,11 @@ export default function ClubAdminLicensesPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [selectedClubId, setSelectedClubId, setValue, watch]);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   const filteredMembers = useMemo(() => {
     if (!selectedClubId) {
@@ -180,13 +181,51 @@ export default function ClubAdminLicensesPage() {
   const toggleSelectAll = () => {
     if (allSelected) {
       setSelectedIds([]);
+      lastSelectedLicenseIdRef.current = null;
     } else {
       setSelectedIds(allFilteredIds);
+      lastSelectedLicenseIdRef.current = allFilteredIds.at(-1) ?? null;
     }
   };
 
-  const toggleSelectRow = (id: number) => {
-    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+  const toggleSelectRow = (
+    id: number,
+    modifierState?: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }
+  ) => {
+    const hasRangeModifier = Boolean(modifierState?.shiftKey);
+    setSelectedIds((prev) => {
+      const isSelected = prev.includes(id);
+      const next = new Set(prev);
+      const nextCheckedState = !isSelected;
+      let appliedRangeSelection = false;
+
+      if (hasRangeModifier && lastSelectedLicenseIdRef.current !== null) {
+        const orderedIds = searchedLicenses.map((license) => license.id);
+        const anchorIndex = orderedIds.indexOf(lastSelectedLicenseIdRef.current);
+        const targetIndex = orderedIds.indexOf(id);
+        if (anchorIndex !== -1 && targetIndex !== -1) {
+          const [from, to] =
+            anchorIndex <= targetIndex ? [anchorIndex, targetIndex] : [targetIndex, anchorIndex];
+          const rangeIds = orderedIds.slice(from, to + 1);
+          if (nextCheckedState) {
+            rangeIds.forEach((rowId) => next.add(rowId));
+          } else {
+            rangeIds.forEach((rowId) => next.delete(rowId));
+          }
+          appliedRangeSelection = true;
+        }
+      }
+
+      if (!appliedRangeSelection) {
+        if (isSelected) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+      }
+      return Array.from(next);
+    });
+    lastSelectedLicenseIdRef.current = id;
   };
 
   const onSubmit = async (values: LicenseFormValues) => {
@@ -339,6 +378,7 @@ export default function ClubAdminLicensesPage() {
             </Select>
             <Button onClick={startCreate}>{t("createLicense")}</Button>
           </div>
+          <p className="text-xs text-zinc-500">{t("selectionTip")}</p>
           <div className="flex items-center gap-2 text-sm text-zinc-500">
             {t("pageLabel", { current: currentPage, total: totalPages })}
             <Button
@@ -382,7 +422,14 @@ export default function ClubAdminLicensesPage() {
                     type="checkbox"
                     aria-label={common("selectRowLabel")}
                     checked={selectedIds.includes(license.id)}
-                    onChange={() => toggleSelectRow(license.id)}
+                    readOnly
+                    onClick={(event) =>
+                      toggleSelectRow(license.id, {
+                        shiftKey: event.shiftKey,
+                        ctrlKey: event.ctrlKey,
+                        metaKey: event.metaKey,
+                      })
+                    }
                   />
                 ),
               },

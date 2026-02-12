@@ -8,6 +8,8 @@ from .models import GradePromotionHistory
 
 class MemberSerializer(serializers.ModelSerializer):
     sex = serializers.ChoiceField(choices=Member.Sex.choices, default=Member.Sex.MALE)
+    profile_picture_url = serializers.SerializerMethodField()
+    profile_picture_thumbnail_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Member
@@ -23,11 +25,24 @@ class MemberSerializer(serializers.ModelSerializer):
             "ltf_licenseid",
             "date_of_birth",
             "belt_rank",
+            "profile_picture_url",
+            "profile_picture_thumbnail_url",
+            "photo_edit_metadata",
+            "photo_consent_attested_at",
+            "photo_consent_attested_by",
             "is_active",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["created_at", "updated_at"]
+        read_only_fields = [
+            "created_at",
+            "updated_at",
+            "profile_picture_url",
+            "profile_picture_thumbnail_url",
+            "photo_edit_metadata",
+            "photo_consent_attested_at",
+            "photo_consent_attested_by",
+        ]
 
     def update(self, instance, validated_data):
         previous_belt_rank = str(instance.belt_rank or "").strip()
@@ -48,6 +63,20 @@ class MemberSerializer(serializers.ModelSerializer):
                 sync_member=False,
             )
         return updated_member
+
+    def get_profile_picture_url(self, obj: Member):
+        request = self.context.get("request")
+        if not obj.profile_picture_processed:
+            return None
+        url = obj.profile_picture_processed.url
+        return request.build_absolute_uri(url) if request else url
+
+    def get_profile_picture_thumbnail_url(self, obj: Member):
+        request = self.context.get("request")
+        if not obj.profile_picture_thumbnail:
+            return None
+        url = obj.profile_picture_thumbnail.url
+        return request.build_absolute_uri(url) if request else url
 
 
 class GradePromotionHistorySerializer(serializers.ModelSerializer):
@@ -106,4 +135,66 @@ class LicenseHistoryEventSerializer(serializers.ModelSerializer):
             "club_name_snapshot",
             "created_at",
         ]
+
+
+class MemberProfilePictureUploadSerializer(serializers.Serializer):
+    original_image = serializers.FileField(required=False, allow_null=True)
+    processed_image = serializers.FileField(required=True)
+    photo_edit_metadata = serializers.JSONField(required=False)
+    photo_consent_confirmed = serializers.BooleanField(required=True)
+
+    def validate_photo_edit_metadata(self, value):
+        if value in (None, ""):
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("photo_edit_metadata must be an object.")
+        return value
+
+    def validate(self, attrs):
+        if not attrs.get("photo_consent_confirmed"):
+            raise serializers.ValidationError(
+                {"photo_consent_confirmed": "Photo consent confirmation is required."}
+            )
+        return attrs
+
+
+class MemberProfilePictureSerializer(serializers.ModelSerializer):
+    has_profile_picture = serializers.SerializerMethodField()
+    profile_picture_original_url = serializers.SerializerMethodField()
+    profile_picture_processed_url = serializers.SerializerMethodField()
+    profile_picture_thumbnail_url = serializers.SerializerMethodField()
+    photo_consent_attested_by = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = Member
+        fields = [
+            "id",
+            "has_profile_picture",
+            "profile_picture_original_url",
+            "profile_picture_processed_url",
+            "profile_picture_thumbnail_url",
+            "photo_edit_metadata",
+            "photo_consent_attested_at",
+            "photo_consent_attested_by",
+            "updated_at",
+        ]
+
+    def _build_url(self, file_field):
+        if not file_field:
+            return None
+        request = self.context.get("request")
+        file_url = file_field.url
+        return request.build_absolute_uri(file_url) if request else file_url
+
+    def get_has_profile_picture(self, obj: Member):
+        return bool(obj.profile_picture_processed or obj.profile_picture_original)
+
+    def get_profile_picture_original_url(self, obj: Member):
+        return self._build_url(obj.profile_picture_original)
+
+    def get_profile_picture_processed_url(self, obj: Member):
+        return self._build_url(obj.profile_picture_processed)
+
+    def get_profile_picture_thumbnail_url(self, obj: Member):
+        return self._build_url(obj.profile_picture_thumbnail)
 

@@ -5,9 +5,22 @@ from .models import GradePromotionHistory, Member
 
 @admin.register(Member)
 class MemberAdmin(admin.ModelAdmin):
-    list_display = ("first_name", "last_name", "sex", "is_active", "club")
+    list_display = (
+        "first_name",
+        "last_name",
+        "sex",
+        "is_active",
+        "club",
+        "has_profile_picture",
+        "photo_consent_attested_at",
+    )
     list_filter = ("sex", "is_active", "club")
     search_fields = ("first_name", "last_name")
+    readonly_fields = ("photo_consent_attested_at", "photo_consent_attested_by")
+
+    @admin.display(boolean=True, description="Photo")
+    def has_profile_picture(self, obj: Member) -> bool:
+        return bool(obj.profile_picture_processed or obj.profile_picture_original)
 
 
 @admin.register(GradePromotionHistory)

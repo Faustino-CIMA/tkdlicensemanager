@@ -28,6 +28,30 @@ class Member(models.Model):
     ltf_licenseid = models.CharField(max_length=20, blank=True)
     date_of_birth = models.DateField(null=True, blank=True)
     belt_rank = models.CharField(max_length=100, blank=True)
+    profile_picture_original = models.ImageField(
+        upload_to="members/profile_pictures/original/",
+        null=True,
+        blank=True,
+    )
+    profile_picture_processed = models.ImageField(
+        upload_to="members/profile_pictures/processed/",
+        null=True,
+        blank=True,
+    )
+    profile_picture_thumbnail = models.ImageField(
+        upload_to="members/profile_pictures/thumbnails/",
+        null=True,
+        blank=True,
+    )
+    photo_edit_metadata = models.JSONField(default=dict, blank=True)
+    photo_consent_attested_at = models.DateTimeField(null=True, blank=True)
+    photo_consent_attested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="photo_consent_attestations",
+    )
     is_active = models.BooleanField(default=True)  # type: ignore[call-arg]
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

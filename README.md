@@ -94,7 +94,8 @@ What the services are:
 Important volumes:
 - `postgres_data`: keeps your database data between restarts.
 - `redis_data`: keeps Redis data between restarts (AOF enabled).
-- `backend/staticfiles`: stores collected static files from Django.
+- `staticfiles_data`: stores collected static files from Django.
+- `mediafiles_data`: stores uploaded member media files (profile pictures).
 - `.cursor` bind‑mount: used for runtime debug logs (keep it if debugging is enabled).
 
 Compose user mapping (Linux):
@@ -135,6 +136,12 @@ Note: `.env.example` is tracked in git, `.env` is ignored.
 Key value for email verification links:
 - `FRONTEND_BASE_URL` (default `http://localhost:3000`)
 - `FRONTEND_DEFAULT_LOCALE` (default `en`)
+
+Media uploads (profile pictures):
+- `MEDIA_URL` (default `/media/`)
+- `MEDIA_ROOT` (default `/app/media` in Docker)
+- `DATA_UPLOAD_MAX_MEMORY_SIZE` (default `10485760` bytes / 10 MB)
+- `FILE_UPLOAD_MAX_MEMORY_SIZE` (default `10485760` bytes / 10 MB)
 
 Stripe + payments:
 - `STRIPE_SECRET_KEY`
@@ -272,6 +279,13 @@ cd frontend
 npm test -- --runInBand
 ```
 
+Profile picture focused frontend tests:
+
+```
+cd frontend
+npm test -- --runInBand src/components/profile-photo/profile-photo-manager.test.tsx src/lib/club-admin-api.test.ts
+```
+
 or in Docker:
 
 ```
@@ -293,12 +307,43 @@ Role access:
 - LTF Finance: financially relevant license history only (order/payment-linked), grade history denied
 
 GDPR notes:
-- `GET /api/auth/data-export/` now includes `license_history` and `grade_history`
-- `DELETE /api/auth/data-delete/` anonymizes grade history free text/proof fields before user deletion
+- `GET /api/auth/data-export/` now includes `license_history`, `grade_history`, and `profile_photo`
+- `DELETE /api/auth/data-delete/` anonymizes grade history free text/proof fields and clears stored profile picture files before user deletion
 
 Audit + immutability:
 - `License` uses `django-simple-history` (`HistoricalLicense`) for field-level change history
 - `LicenseHistoryEvent` and `GradePromotionHistory` are append-only business timelines
+
+## Profile Picture Upload + Editing
+
+Backend endpoints:
+- `GET /api/members/{id}/profile-picture/` (current image metadata + URLs)
+- `POST /api/members/{id}/profile-picture/` (multipart upload)
+- `DELETE /api/members/{id}/profile-picture/`
+- `GET /api/members/{id}/profile-picture/download/`
+
+Role access:
+- Member: own profile picture
+- Club Admin: own-club members
+- LTF Admin: all members
+- LTF Finance: read-only (no upload/delete)
+
+Validation + processing:
+- Accepted upload inputs: JPEG, PNG, HEIC/HEIF (input), max 10 MB by default
+- Processed output is sanitized and stored as JPEG with thumbnail generation
+- Minimum processed resolution: `945x1181` (8x10 print-ready target)
+- Explicit photo consent checkbox is required on upload
+- If a member account exists, user-level consent must be granted before photo storage
+
+Frontend UX:
+- Drag-and-drop upload, file picker, and camera capture (`accept=\"image/*\" capture`)
+- Fixed 8:10 crop with zoom/drag and live preview
+- Optional client-side background removal + solid color replacement
+- Library note: npm alias is used so imports stay `@imgly/background-removal-js` while resolving to IMGLY's published package
+
+GDPR:
+- `GET /api/auth/data-export/` now includes `profile_photo` metadata and download reference
+- `DELETE /api/auth/data-delete/` clears stored profile picture files and metadata before user deletion
 
 ## Verify Install
 
@@ -323,6 +368,7 @@ curl http://localhost:3000/
 - Finance module: orders, invoices, Stripe checkout, audit logs (finance-only access)
 - License history timeline (immutable events + django-simple-history)
 - Grade promotion history timeline with member current grade sync
+- Profile picture upload/edit flow (drag-drop, camera, 8:10 crop, optional client-side background removal)
 - CSV import for clubs and members with mapping + preview
 - GDPR endpoints: consent, data export, data delete
 - i18n scaffolding (English + Luxembourgish)
@@ -335,7 +381,7 @@ curl http://localhost:3000/
 
 - **Missing `.env`**: Create it from `.env.example` and ensure values are set.
 - **Port conflicts**: Stop services using ports 3000/8000/5432/6379 or change ports in `docker-compose.yml`.
-- **CORS errors**: Use the same host for frontend/backend (`localhost` or `127.0.0.1`) and align `FRONTEND_BASE_URL` + `NEXT_PUBLIC_API_URL`.
+- **LAN/mobile login issues (`DisallowedHost` / CORS)**: for local dev, keep `DJANGO_ALLOW_ALL_HOSTS_IN_DEBUG=True` and restart backend. Frontend API requests now remap loopback API URLs (`localhost`/`127.0.0.1`) to the browser hostname, so phone access via `http://<your-lan-ip>:3000` can call `http://<your-lan-ip>:8000` without hardcoding IPs. If using `CORS_ALLOWED_ORIGIN_REGEXES`, separate multiple patterns with semicolons (`;`) or use a JSON array.
 - **Debug log mount**: Docker mounts `.cursor/` into backend/worker for runtime debug logs. Keep it unless you remove debug logging.
 - **Database not ready**: Wait for `docker compose ps` to show healthy, or restart with `docker compose restart db`.
 - **Stuck migrations**: `docker compose down -v` to reset volumes (data loss), then `docker compose up --build`.

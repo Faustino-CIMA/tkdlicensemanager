@@ -60,9 +60,21 @@ class MemberExportSerializer(serializers.Serializer):
     club_id = serializers.IntegerField(allow_null=True, required=False)
 
 
+class ProfilePhotoExportSerializer(serializers.Serializer):
+    has_profile_picture = serializers.BooleanField()
+    original_url = serializers.CharField(allow_blank=True, required=False)
+    processed_url = serializers.CharField(allow_blank=True, required=False)
+    thumbnail_url = serializers.CharField(allow_blank=True, required=False)
+    download_url = serializers.CharField(allow_blank=True, required=False)
+    photo_edit_metadata = serializers.DictField(required=False)
+    photo_consent_attested_at = serializers.DateTimeField(allow_null=True, required=False)
+    photo_consent_attested_by = serializers.IntegerField(allow_null=True, required=False)
+
+
 class DataExportSerializer(serializers.Serializer):
     user = UserSerializer()
     member = MemberExportSerializer(allow_null=True)
+    profile_photo = ProfilePhotoExportSerializer(allow_null=True, required=False)
     licenses = LicenseExportSerializer(many=True)
     license_history = serializers.ListSerializer(
         child=serializers.DictField(), required=False

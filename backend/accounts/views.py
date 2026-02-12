@@ -9,6 +9,7 @@ from rest_framework import permissions, response, status, views
 from rest_framework.authtoken.models import Token
 
 from members.models import GradePromotionHistory, Member
+from members.services import clear_member_profile_picture
 from licenses.models import License, LicenseHistoryEvent
 
 from .email_utils import send_password_reset_email
@@ -157,9 +158,41 @@ class DataExportView(views.APIView):
             "notes",
             "created_at",
         )
+        profile_photo = None
+        if member:
+            has_photo = bool(member.profile_picture_processed or member.profile_picture_original)
+            profile_photo = {
+                "has_profile_picture": has_photo,
+                "original_url": (
+                    request.build_absolute_uri(member.profile_picture_original.url)
+                    if member.profile_picture_original
+                    else ""
+                ),
+                "processed_url": (
+                    request.build_absolute_uri(member.profile_picture_processed.url)
+                    if member.profile_picture_processed
+                    else ""
+                ),
+                "thumbnail_url": (
+                    request.build_absolute_uri(member.profile_picture_thumbnail.url)
+                    if member.profile_picture_thumbnail
+                    else ""
+                ),
+                "download_url": (
+                    request.build_absolute_uri(
+                        f"/api/members/{member.id}/profile-picture/download/"
+                    )
+                    if has_photo
+                    else ""
+                ),
+                "photo_edit_metadata": member.photo_edit_metadata or {},
+                "photo_consent_attested_at": member.photo_consent_attested_at,
+                "photo_consent_attested_by": member.photo_consent_attested_by_id,
+            }
         export = {
             "user": UserSerializer(request.user).data,
             "member": None,
+            "profile_photo": profile_photo,
             "licenses": list(licenses),
             "license_history": list(license_history),
             "grade_history": list(grade_history),
@@ -187,6 +220,7 @@ class DataDeleteView(views.APIView):
         member = Member.objects.filter(user=request.user).first()
         with transaction.atomic():
             if member:
+                clear_member_profile_picture(member, clear_consent_attestation=True)
                 GradePromotionHistory.objects.filter(member=member).update(
                     notes="",
                     proof_ref="",

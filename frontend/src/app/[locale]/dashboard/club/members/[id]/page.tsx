@@ -2,14 +2,17 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { MemberHistoryTimeline } from "@/components/history/member-history-timeline";
+import { ProfilePhotoManager } from "@/components/profile-photo/profile-photo-manager";
 import { Button } from "@/components/ui/button";
 import {
+  deleteMemberProfilePicture,
+  downloadMemberProfilePicture,
   Member,
   MemberHistoryResponse,
   getMember,
@@ -22,6 +25,7 @@ type TabKey = "overview" | "history";
 export default function ClubMemberDetailPage() {
   const t = useTranslations("ClubAdmin");
   const params = useParams();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const rawLocale = params?.locale;
   const rawId = params?.id;
@@ -65,6 +69,21 @@ export default function ClubMemberDetailPage() {
     }
   }, [memberId, t]);
 
+  const handlePhotoDownload = useCallback(async () => {
+    if (!member) {
+      return;
+    }
+    const photoBlob = await downloadMemberProfilePicture(member.id);
+    const objectUrl = URL.createObjectURL(photoBlob);
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = `${member.first_name}-${member.last_name}-profile-picture.jpg`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(objectUrl);
+  }, [member]);
+
   useEffect(() => {
     loadMember();
   }, [loadMember]);
@@ -103,6 +122,42 @@ export default function ClubMemberDetailPage() {
         ) : activeTab === "overview" ? (
           <section className="rounded-3xl bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-zinc-900">{t("memberOverviewTab")}</h2>
+            <div className="mt-4">
+              <ProfilePhotoManager
+                imageUrl={member.profile_picture_url}
+                thumbnailUrl={member.profile_picture_thumbnail_url}
+                labels={{
+                  sectionTitle: t("photoSectionTitle"),
+                  sectionSubtitle: t("photoSectionSubtitle"),
+                  changeButton: t("photoChangeButton"),
+                  removeButton: t("photoRemoveButton"),
+                  downloadButton: t("photoDownloadButton"),
+                  modalTitle: t("photoModalTitle"),
+                  modalDescription: t("photoModalDescription"),
+                  dragDropLabel: t("photoDragDropLabel"),
+                  selectFileButton: t("photoSelectFileButton"),
+                  cameraButton: t("photoCameraButton"),
+                  zoomLabel: t("photoZoomLabel"),
+                  backgroundColorLabel: t("photoBackgroundColorLabel"),
+                  removeBackgroundButton: t("photoRemoveBackgroundButton"),
+                  removeBackgroundBusy: t("photoRemoveBackgroundBusy"),
+                  consentLabel: t("photoConsentLabel"),
+                  saveButton: t("photoSaveButton"),
+                  saveBusy: t("photoSaveBusy"),
+                  cancelButton: t("photoCancelButton"),
+                  previewTitle: t("photoPreviewTitle"),
+                  currentPhotoAlt: t("photoCurrentAlt"),
+                  emptyPhotoLabel: t("photoEmptyLabel"),
+                  removeBackgroundUnsupported: t("photoUnsupportedError"),
+                }}
+                onDelete={async () => {
+                  await deleteMemberProfilePicture(member.id);
+                  await loadMember();
+                }}
+                onDownload={handlePhotoDownload}
+                onEdit={() => router.push(`/${locale}/dashboard/club/members/${member.id}/photo`)}
+              />
+            </div>
             <div className="mt-4 grid gap-3 text-sm text-zinc-700 md:grid-cols-2">
               <div className="flex flex-col gap-1">
                 <span className="text-xs text-zinc-500">{t("firstNameLabel")}</span>

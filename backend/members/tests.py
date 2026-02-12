@@ -1,11 +1,15 @@
 from io import BytesIO
 import json
+import shutil
+import tempfile
 from datetime import date
 
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
+from PIL import Image
 
 from accounts.models import User
 from clubs.models import Club
@@ -17,6 +21,9 @@ from .services import add_grade_promotion
 
 class MemberApiTests(TestCase):
     def setUp(self):
+        self.media_root = tempfile.mkdtemp()
+        self.media_override = override_settings(MEDIA_ROOT=self.media_root)
+        self.media_override.enable()
         self.client = APIClient()
         self.ltf_admin = User.objects.create_user(
             username="ltfadmin",
@@ -53,6 +60,26 @@ class MemberApiTests(TestCase):
             first_name="Mia",
             last_name="Lee",
         )
+
+    def tearDown(self):
+        self.media_override.disable()
+        shutil.rmtree(self.media_root, ignore_errors=True)
+        super().tearDown()
+
+    def _make_test_image(
+        self,
+        name: str,
+        *,
+        width: int = 1400,
+        height: int = 1800,
+        image_format: str = "JPEG",
+    ) -> SimpleUploadedFile:
+        image = Image.new("RGB", (width, height), color=(200, 200, 200))
+        payload = BytesIO()
+        image.save(payload, format=image_format)
+        payload.seek(0)
+        content_type = "image/png" if image_format.upper() == "PNG" else "image/jpeg"
+        return SimpleUploadedFile(name, payload.getvalue(), content_type=content_type)
 
     def test_member_sees_own_profile(self):
         self.client.force_authenticate(user=self.member_user)
@@ -152,6 +179,117 @@ class MemberApiTests(TestCase):
         self.client.force_authenticate(user=self.finance_user)
         response = self.client.get(f"/api/members/{self.member.id}/grade-history/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_member_upload_profile_picture_success(self):
+        self.member_user.give_consent()
+        self.client.force_authenticate(user=self.member_user)
+        response = self.client.post(
+            f"/api/members/{self.member.id}/profile-picture/",
+            {
+                "processed_image": self._make_test_image("processed.jpg"),
+                "original_image": self._make_test_image("original.jpg"),
+                "photo_edit_metadata": json.dumps({"source": "tests"}),
+                "photo_consent_confirmed": "true",
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(response.data["has_profile_picture"])
+
+        get_response = self.client.get(f"/api/members/{self.member.id}/profile-picture/")
+        self.assertEqual(get_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(get_response.data["has_profile_picture"])
+
+    def test_profile_picture_upload_requires_checkbox_consent(self):
+        self.member_user.give_consent()
+        self.client.force_authenticate(user=self.member_user)
+        response = self.client.post(
+            f"/api/members/{self.member.id}/profile-picture/",
+            {
+                "processed_image": self._make_test_image("processed.jpg"),
+                "photo_consent_confirmed": "false",
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_profile_picture_upload_requires_member_consent(self):
+        self.client.force_authenticate(user=self.member_user)
+        response = self.client.post(
+            f"/api/members/{self.member.id}/profile-picture/",
+            {
+                "processed_image": self._make_test_image("processed.jpg"),
+                "photo_consent_confirmed": "true",
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_profile_picture_upload_rejects_too_small_resolution(self):
+        self.member_user.give_consent()
+        self.client.force_authenticate(user=self.member_user)
+        response = self.client.post(
+            f"/api/members/{self.member.id}/profile-picture/",
+            {
+                "processed_image": self._make_test_image(
+                    "tiny.jpg", width=200, height=300
+                ),
+                "photo_consent_confirmed": "true",
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_finance_cannot_upload_profile_picture(self):
+        self.member_user.give_consent()
+        self.client.force_authenticate(user=self.finance_user)
+        response = self.client.post(
+            f"/api/members/{self.member.id}/profile-picture/",
+            {
+                "processed_image": self._make_test_image("processed.jpg"),
+                "photo_consent_confirmed": "true",
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_club_admin_can_delete_member_profile_picture(self):
+        self.member_user.give_consent()
+        self.client.force_authenticate(user=self.club_admin)
+        upload_response = self.client.post(
+            f"/api/members/{self.member.id}/profile-picture/",
+            {
+                "processed_image": self._make_test_image("processed.jpg"),
+                "photo_consent_confirmed": "true",
+            },
+            format="multipart",
+        )
+        self.assertEqual(upload_response.status_code, status.HTTP_201_CREATED)
+
+        delete_response = self.client.delete(f"/api/members/{self.member.id}/profile-picture/")
+        self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
+        self.member.refresh_from_db()
+        self.assertFalse(self.member.profile_picture_processed)
+        self.assertFalse(self.member.profile_picture_thumbnail)
+
+    def test_profile_picture_download_returns_file(self):
+        self.member_user.give_consent()
+        self.client.force_authenticate(user=self.member_user)
+        upload_response = self.client.post(
+            f"/api/members/{self.member.id}/profile-picture/",
+            {
+                "processed_image": self._make_test_image("processed.jpg"),
+                "photo_consent_confirmed": "true",
+            },
+            format="multipart",
+        )
+        self.assertEqual(upload_response.status_code, status.HTTP_201_CREATED)
+
+        download_response = self.client.get(
+            f"/api/members/{self.member.id}/profile-picture/download/"
+        )
+        self.assertEqual(download_response.status_code, status.HTTP_200_OK)
+        self.assertIn("attachment", download_response.get("Content-Disposition", ""))
 
 
 class GradePromotionModelTests(TestCase):

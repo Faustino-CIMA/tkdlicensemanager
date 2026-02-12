@@ -1,12 +1,20 @@
+from io import BytesIO
+import shutil
+import tempfile
+
 from allauth.account.models import EmailAddress, EmailConfirmationHMAC
 from django.test import TestCase
+from django.test import override_settings
 from django.utils import timezone
+from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIRequestFactory
 from rest_framework.test import APIClient
+from PIL import Image
 
 from clubs.models import Club
 from licenses.models import License, LicenseHistoryEvent
 from members.models import GradePromotionHistory, Member
+from members.services import process_member_profile_picture
 from .models import User
 from .permissions import IsLtfFinance, IsLtfFinanceOrLtfAdmin
 
@@ -33,6 +41,9 @@ class UserModelTests(TestCase):
 
 class AuthApiTests(TestCase):
     def setUp(self):
+        self.media_root = tempfile.mkdtemp()
+        self.media_override = override_settings(MEDIA_ROOT=self.media_root)
+        self.media_override.enable()
         self.client = APIClient()
         self.user = User.objects.create_user(
             username="verifyme",
@@ -52,6 +63,26 @@ class AuthApiTests(TestCase):
             last_name="Stone",
             belt_rank="4th Kup",
         )
+
+    def tearDown(self):
+        self.media_override.disable()
+        shutil.rmtree(self.media_root, ignore_errors=True)
+        super().tearDown()
+
+    def _make_test_image(
+        self,
+        name: str,
+        *,
+        width: int = 1400,
+        height: int = 1800,
+        image_format: str = "JPEG",
+    ) -> SimpleUploadedFile:
+        image = Image.new("RGB", (width, height), color=(210, 210, 210))
+        payload = BytesIO()
+        image.save(payload, format=image_format)
+        payload.seek(0)
+        content_type = "image/png" if image_format.upper() == "PNG" else "image/jpeg"
+        return SimpleUploadedFile(name, payload.getvalue(), content_type=content_type)
 
     def test_login_requires_verified_email(self):
         response = self.client.post(
@@ -116,15 +147,31 @@ class AuthApiTests(TestCase):
             from_grade="4th Kup",
             to_grade="3rd Kup",
         )
+        self.user.give_consent()
+        process_member_profile_picture(
+            self.member,
+            processed_image=self._make_test_image("processed.jpg"),
+            actor=self.user,
+            photo_edit_metadata={"source": "accounts.tests"},
+        )
         self.client.force_authenticate(user=self.user)
         response = self.client.get("/api/auth/data-export/")
         self.assertEqual(response.status_code, 200)
         self.assertIn("license_history", response.data)
         self.assertIn("grade_history", response.data)
+        self.assertIn("profile_photo", response.data)
+        self.assertTrue(response.data["profile_photo"]["has_profile_picture"])
         self.assertEqual(len(response.data["license_history"]), 1)
         self.assertEqual(len(response.data["grade_history"]), 1)
 
     def test_data_delete_anonymizes_grade_history_notes(self):
+        self.user.give_consent()
+        process_member_profile_picture(
+            self.member,
+            processed_image=self._make_test_image("processed.jpg"),
+            actor=self.user,
+            photo_edit_metadata={"source": "accounts.tests.delete"},
+        )
         GradePromotionHistory.objects.create(
             member=self.member,
             club=self.club,
@@ -142,6 +189,10 @@ class AuthApiTests(TestCase):
         assert grade_record is not None
         self.assertEqual(grade_record.notes, "")
         self.assertEqual(grade_record.proof_ref, "")
+        self.member.refresh_from_db()
+        self.assertFalse(self.member.profile_picture_original)
+        self.assertFalse(self.member.profile_picture_processed)
+        self.assertFalse(self.member.profile_picture_thumbnail)
 
 
 class FinancePermissionTests(TestCase):

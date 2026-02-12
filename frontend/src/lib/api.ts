@@ -4,22 +4,52 @@ type RequestOptions = Omit<RequestInit, "headers"> & {
   headers?: Record<string, string>;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const DEFAULT_API_URL = "http://localhost:8000";
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0"]);
+
+function resolveApiUrl(configuredUrl?: string): string {
+  const fallback = configuredUrl?.trim() || DEFAULT_API_URL;
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+  try {
+    const parsed = new URL(fallback);
+    if (!LOOPBACK_HOSTS.has(parsed.hostname)) {
+      return fallback;
+    }
+    const protocol = parsed.protocol || window.location.protocol;
+    const runtimeHost = window.location.hostname;
+    const port = parsed.port || "8000";
+    return `${protocol}//${runtimeHost}:${port}`;
+  } catch {
+    return fallback;
+  }
+}
+
+const API_URL = resolveApiUrl(process.env.NEXT_PUBLIC_API_URL);
+export { API_URL };
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const token = getToken();
   const requestUrl = `${API_URL}${path}`;
+  const isFormDataRequest =
+    typeof FormData !== "undefined" && options.body instanceof FormData;
   const skipAuthHeader =
     path.startsWith("/api/auth/login/") ||
     path.startsWith("/api/auth/register/") ||
     path.startsWith("/api/auth/verify-email/") ||
     path.startsWith("/api/auth/resend-verification/") ||
     path.startsWith("/api/auth/password-reset/");
+  const defaultHeaders: Record<string, string> = {
+    ...(token && !skipAuthHeader ? { Authorization: `Token ${token}` } : {}),
+  };
+  if (!isFormDataRequest) {
+    defaultHeaders["Content-Type"] = "application/json";
+  }
   const response = await fetch(requestUrl, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
-      ...(token && !skipAuthHeader ? { Authorization: `Token ${token}` } : {}),
+      ...defaultHeaders,
       ...options.headers,
     },
   });

@@ -42,7 +42,6 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
-    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     env_file:
       - .env
     environment:
@@ -68,8 +67,9 @@ services:
     volumes:
       - ./backend:/app
       # Keep for debug-mode logging (shared host log path)
-      - /home/faustino/Developments/Applications/tkdlicensemanager/.cursor:/home/faustino/Developments/Applications/tkdlicensemanager/.cursor
-      - ./backend/staticfiles:/app/staticfiles
+      - ./.cursor:/app/.cursor
+      - staticfiles_data:/app/staticfiles
+      - mediafiles_data:/app/media
     ports:
       - "8000:8000"
     healthcheck:
@@ -88,7 +88,6 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
-    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     env_file:
       - .env
     environment:
@@ -107,7 +106,8 @@ services:
     volumes:
       - ./backend:/app
       # Keep for debug-mode logging (shared host log path)
-      - /home/faustino/Developments/Applications/tkdlicensemanager/.cursor:/home/faustino/Developments/Applications/tkdlicensemanager/.cursor
+      - ./.cursor:/app/.cursor
+      - mediafiles_data:/app/media
     networks:
       - app-net
 
@@ -115,7 +115,6 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
-    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     env_file:
       - .env
     environment:
@@ -134,7 +133,8 @@ services:
     volumes:
       - ./backend:/app
       # Keep for debug-mode logging (shared host log path)
-      - /home/faustino/Developments/Applications/tkdlicensemanager/.cursor:/home/faustino/Developments/Applications/tkdlicensemanager/.cursor
+      - ./.cursor:/app/.cursor
+      - mediafiles_data:/app/media
     networks:
       - app-net
 
@@ -167,6 +167,8 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  staticfiles_data:
+  mediafiles_data:
   
 networks:
   app-net:

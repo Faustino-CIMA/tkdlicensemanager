@@ -1,4 +1,5 @@
-import { apiRequest } from "./api";
+import { getToken } from "./auth";
+import { API_URL, apiRequest } from "./api";
 
 export type Club = {
   id: number;
@@ -24,9 +25,33 @@ export type Member = {
   ltf_licenseid: string;
   date_of_birth: string | null;
   belt_rank: string;
+  profile_picture_url?: string | null;
+  profile_picture_thumbnail_url?: string | null;
+  photo_edit_metadata?: Record<string, unknown>;
+  photo_consent_attested_at?: string | null;
+  photo_consent_attested_by?: number | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+};
+
+export type MemberProfilePicture = {
+  id: number;
+  has_profile_picture: boolean;
+  profile_picture_original_url: string | null;
+  profile_picture_processed_url: string | null;
+  profile_picture_thumbnail_url: string | null;
+  photo_edit_metadata: Record<string, unknown>;
+  photo_consent_attested_at: string | null;
+  photo_consent_attested_by: number | null;
+  updated_at: string;
+};
+
+export type MemberProfilePictureUploadInput = {
+  processedImage: File;
+  originalImage?: File;
+  photoEditMetadata?: Record<string, unknown>;
+  photoConsentConfirmed: boolean;
 };
 
 export type License = {
@@ -238,6 +263,50 @@ export function getMemberGradeHistory(memberId: number) {
 
 export function getMemberHistory(memberId: number) {
   return apiRequest<MemberHistoryResponse>(`/api/members/${memberId}/history/`);
+}
+
+export function getMemberProfilePicture(memberId: number) {
+  return apiRequest<MemberProfilePicture>(`/api/members/${memberId}/profile-picture/`);
+}
+
+export function uploadMemberProfilePicture(
+  memberId: number,
+  input: MemberProfilePictureUploadInput
+) {
+  const formData = new FormData();
+  formData.append("processed_image", input.processedImage);
+  if (input.originalImage) {
+    formData.append("original_image", input.originalImage);
+  }
+  formData.append("photo_consent_confirmed", String(Boolean(input.photoConsentConfirmed)));
+  if (input.photoEditMetadata) {
+    formData.append("photo_edit_metadata", JSON.stringify(input.photoEditMetadata));
+  }
+  return apiRequest<MemberProfilePicture>(`/api/members/${memberId}/profile-picture/`, {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export function deleteMemberProfilePicture(memberId: number) {
+  return apiRequest<void>(`/api/members/${memberId}/profile-picture/`, {
+    method: "DELETE",
+  });
+}
+
+export async function downloadMemberProfilePicture(memberId: number): Promise<Blob> {
+  const token = getToken();
+  const response = await fetch(`${API_URL}/api/members/${memberId}/profile-picture/download/`, {
+    method: "GET",
+    headers: {
+      ...(token ? { Authorization: `Token ${token}` } : {}),
+    },
+  });
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || "Failed to download profile picture.");
+  }
+  return response.blob();
 }
 
 export type GradePromotionInput = {

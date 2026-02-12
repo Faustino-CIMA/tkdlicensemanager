@@ -1,7 +1,13 @@
+from pathlib import Path
+
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
 from django.db.models.deletion import ProtectedError
+from django.http import FileResponse
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from .models import GradePromotionHistory, Member
@@ -9,9 +15,11 @@ from .serializers import (
     GradePromotionCreateSerializer,
     GradePromotionHistorySerializer,
     LicenseHistoryEventSerializer,
+    MemberProfilePictureSerializer,
+    MemberProfilePictureUploadSerializer,
     MemberSerializer,
 )
-from .services import add_grade_promotion
+from .services import add_grade_promotion, clear_member_profile_picture, process_member_profile_picture
 from licenses.models import LicenseHistoryEvent
 
 
@@ -33,10 +41,14 @@ class MemberViewSet(viewsets.ModelViewSet):
         if not user or not user.is_authenticated:
             return Member.objects.none()
         if user.role in ["ltf_admin", "ltf_finance"]:
-            return Member.objects.select_related("club", "user").all()
+            return Member.objects.select_related("club", "user", "photo_consent_attested_by").all()
         if user.role in ["club_admin", "coach"]:
-            return Member.objects.select_related("club", "user").filter(club__admins=user)
-        return Member.objects.select_related("club", "user").filter(user=user)
+            return Member.objects.select_related("club", "user", "photo_consent_attested_by").filter(
+                club__admins=user
+            )
+        return Member.objects.select_related("club", "user", "photo_consent_attested_by").filter(
+            user=user
+        )
 
     def destroy(self, request, *args, **kwargs):
         try:
@@ -52,6 +64,13 @@ class MemberViewSet(viewsets.ModelViewSet):
             "ltf_admin",
             "club_admin",
             "coach",
+        ]
+
+    def _is_photo_manager(self, user) -> bool:
+        return user and user.is_authenticated and user.role in [
+            "ltf_admin",
+            "club_admin",
+            "member",
         ]
 
     @action(detail=True, methods=["get"], url_path="license-history")
@@ -165,4 +184,77 @@ class MemberViewSet(viewsets.ModelViewSet):
             GradePromotionHistorySerializer(history_entry).data,
             status=status.HTTP_201_CREATED,
         )
+
+    @action(
+        detail=True,
+        methods=["get", "post", "delete"],
+        url_path="profile-picture",
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def profile_picture(self, request, *args, **kwargs):
+        member = self.get_object()
+
+        if request.method == "GET":
+            serializer = MemberProfilePictureSerializer(member, context={"request": request})
+            return Response(serializer.data)
+
+        if not self._is_photo_manager(request.user):
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        if request.method == "DELETE":
+            clear_member_profile_picture(member, clear_consent_attestation=True)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        serializer = MemberProfilePictureUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        if member.user and not member.user.consent_given:
+            return Response(
+                {"detail": "Member consent is required before storing profile photos."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            updated_member = process_member_profile_picture(
+                member,
+                processed_image=serializer.validated_data["processed_image"],
+                original_image=serializer.validated_data.get("original_image"),
+                photo_edit_metadata=serializer.validated_data.get("photo_edit_metadata", {}),
+                actor=request.user if request.user.is_authenticated else None,
+            )
+        except DjangoValidationError as exc:
+            detail = (
+                exc.message_dict
+                if hasattr(exc, "message_dict")
+                else exc.messages
+                if hasattr(exc, "messages")
+                else str(exc)
+            )
+            raise DRFValidationError(detail) from exc
+
+        response_serializer = MemberProfilePictureSerializer(
+            updated_member, context={"request": request}
+        )
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"], url_path="profile-picture/download")
+    def download_profile_picture(self, request, *args, **kwargs):
+        member = self.get_object()
+        profile_image = member.profile_picture_processed or member.profile_picture_original
+        if not profile_image:
+            return Response(
+                {"detail": "Profile picture not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            profile_image.open("rb")
+        except FileNotFoundError:
+            return Response(
+                {"detail": "Profile picture file is missing."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        download_name = Path(profile_image.name).name or f"member-{member.id}-profile.jpg"
+        return FileResponse(profile_image, as_attachment=True, filename=download_name)
 

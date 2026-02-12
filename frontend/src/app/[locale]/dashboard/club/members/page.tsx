@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -57,6 +56,7 @@ export default function ClubAdminMembersPage() {
   const importT = useTranslations("Import");
   const common = useTranslations("Common");
   const pathname = usePathname();
+  const router = useRouter();
   const locale = pathname?.split("/")[1] || "en";
   const { selectedClubId, setSelectedClubId } = useClubSelection();
   const [clubs, setClubs] = useState<Club[]>([]);
@@ -68,6 +68,7 @@ export default function ClubAdminMembersPage() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isBatchDeleteOpen, setIsBatchDeleteOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const lastSelectedMemberIdRef = useRef<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("25");
@@ -112,7 +113,7 @@ export default function ClubAdminMembersPage() {
     },
   });
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
@@ -136,11 +137,11 @@ export default function ClubAdminMembersPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [selectedClubId, setSelectedClubId, setValue]);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   const filteredMembers = useMemo(() => {
     if (!selectedClubId) {
@@ -188,13 +189,51 @@ export default function ClubAdminMembersPage() {
   const toggleSelectAll = () => {
     if (allSelected) {
       setSelectedIds([]);
+      lastSelectedMemberIdRef.current = null;
     } else {
       setSelectedIds(allFilteredIds);
+      lastSelectedMemberIdRef.current = allFilteredIds.at(-1) ?? null;
     }
   };
 
-  const toggleSelectRow = (id: number) => {
-    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+  const toggleSelectRow = (
+    id: number,
+    modifierState?: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }
+  ) => {
+    const hasRangeModifier = Boolean(modifierState?.shiftKey);
+    setSelectedIds((prev) => {
+      const isSelected = prev.includes(id);
+      const next = new Set(prev);
+      const nextCheckedState = !isSelected;
+      let appliedRangeSelection = false;
+
+      if (hasRangeModifier && lastSelectedMemberIdRef.current !== null) {
+        const orderedIds = searchedMembers.map((member) => member.id);
+        const anchorIndex = orderedIds.indexOf(lastSelectedMemberIdRef.current);
+        const targetIndex = orderedIds.indexOf(id);
+        if (anchorIndex !== -1 && targetIndex !== -1) {
+          const [from, to] =
+            anchorIndex <= targetIndex ? [anchorIndex, targetIndex] : [targetIndex, anchorIndex];
+          const rangeIds = orderedIds.slice(from, to + 1);
+          if (nextCheckedState) {
+            rangeIds.forEach((rowId) => next.add(rowId));
+          } else {
+            rangeIds.forEach((rowId) => next.delete(rowId));
+          }
+          appliedRangeSelection = true;
+        }
+      }
+
+      if (!appliedRangeSelection) {
+        if (isSelected) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+      }
+      return Array.from(next);
+    });
+    lastSelectedMemberIdRef.current = id;
   };
 
   const onSubmit = async (values: MemberFormValues) => {
@@ -326,7 +365,7 @@ export default function ClubAdminMembersPage() {
     const currentYear = new Date().getFullYear();
     const selectedCount = selectedIds.length;
     try {
-      const response = await createClubOrdersBatch({
+      await createClubOrdersBatch({
         club: selectedClubId,
         member_ids: selectedIds,
         year: currentYear,
@@ -400,6 +439,7 @@ export default function ClubAdminMembersPage() {
                 : t("orderLicenseButton", { year: new Date().getFullYear() })}
             </Button>
           </div>
+          <p className="text-xs text-zinc-500">{t("selectionTip")}</p>
           <div className="flex items-center gap-2 text-sm text-zinc-500">
             {t("pageLabel", { current: currentPage, total: totalPages })}
             <Button
@@ -443,7 +483,14 @@ export default function ClubAdminMembersPage() {
                     type="checkbox"
                     aria-label={common("selectRowLabel")}
                     checked={selectedIds.includes(member.id)}
-                    onChange={() => toggleSelectRow(member.id)}
+                    readOnly
+                    onClick={(event) =>
+                      toggleSelectRow(member.id, {
+                        shiftKey: event.shiftKey,
+                        ctrlKey: event.ctrlKey,
+                        metaKey: event.metaKey,
+                      })
+                    }
                   />
                 ),
               },
@@ -475,9 +522,6 @@ export default function ClubAdminMembersPage() {
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href={`/${locale}/dashboard/club/members/${member.id}`}>{t("viewMemberAction")}</Link>
-                    </Button>
                     <Button
                       variant="destructive"
                       size="icon-sm"
@@ -491,6 +535,7 @@ export default function ClubAdminMembersPage() {
               },
             ]}
             rows={pagedMembers}
+            onRowClick={(member) => router.push(`/${locale}/dashboard/club/members/${member.id}`)}
           />
         )}
       </div>
@@ -652,14 +697,4 @@ export default function ClubAdminMembersPage() {
       />
     </ClubAdminLayout>
   );
-}
-
-function getDefaultValues(): MemberFormValues {
-  return {
-    club: "",
-    first_name: "",
-    last_name: "",
-    date_of_birth: "",
-    belt_rank: "",
-  };
 }
