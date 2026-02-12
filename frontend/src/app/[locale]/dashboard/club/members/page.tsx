@@ -21,7 +21,6 @@ import {
   getClubs,
   getLicenses,
   getMembers,
-  updateMember,
 } from "@/lib/club-admin-api";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -62,7 +61,6 @@ export default function ClubAdminMembersPage() {
   const [clubs, setClubs] = useState<Club[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [licenses, setLicenses] = useState<License[]>([]);
-  const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState<Member | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -249,12 +247,7 @@ export default function ClubAdminMembersPage() {
       is_active: values.is_active,
     };
     try {
-      if (editingMember) {
-        await updateMember(editingMember.id, payload);
-      } else {
-        await createMember(payload);
-      }
-      setEditingMember(null);
+      await createMember(payload);
       setIsFormOpen(false);
       reset();
       await loadData();
@@ -263,23 +256,7 @@ export default function ClubAdminMembersPage() {
     }
   };
 
-  const startEdit = (member: Member) => {
-    setEditingMember(member);
-    setIsFormOpen(true);
-    reset({
-      club: String(member.club),
-      first_name: member.first_name,
-      last_name: member.last_name,
-      sex: member.sex,
-      ltf_licenseid: member.ltf_licenseid ?? "",
-      date_of_birth: member.date_of_birth ?? "",
-      belt_rank: member.belt_rank ?? "",
-      is_active: member.is_active,
-    });
-  };
-
   const startCreate = () => {
-    setEditingMember(null);
     setIsFormOpen(true);
     reset({
       club: selectedClubId ? String(selectedClubId) : "",
@@ -518,7 +495,11 @@ export default function ClubAdminMembersPage() {
                       variant="outline"
                       size="icon-sm"
                       aria-label={t("editAction")}
-                      onClick={() => startEdit(member)}
+                      onClick={() =>
+                        router.push(
+                          `/${locale}/dashboard/club/members/${member.id}?tab=overview&edit=1`
+                        )
+                      }
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
@@ -541,7 +522,7 @@ export default function ClubAdminMembersPage() {
       </div>
 
       <Modal
-        title={editingMember ? t("updateMember") : t("createMember")}
+        title={t("createMember")}
         description={t("memberFormSubtitle")}
         isOpen={isFormOpen}
         onClose={() => setIsFormOpen(false)}
@@ -631,13 +612,12 @@ export default function ClubAdminMembersPage() {
 
           <div className="flex items-center gap-3">
             <Button type="submit" disabled={isSubmitting}>
-              {editingMember ? t("updateMember") : t("createMember")}
+              {t("createMember")}
             </Button>
             <Button
               type="button"
               variant="outline"
               onClick={() => {
-                setEditingMember(null);
                 setIsFormOpen(false);
                 reset();
               }}
