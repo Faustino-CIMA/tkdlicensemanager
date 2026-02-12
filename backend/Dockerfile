@@ -20,8 +20,8 @@ RUN apt-get update \
   fonts-dejavu \
   && groupadd --system app \
   && useradd --system --gid app --create-home app \
-  && mkdir -p /var/www/staticfiles \
-  && chown -R app:app /var/www/staticfiles \
+  && mkdir -p /var/www/staticfiles /var/lib/celerybeat \
+  && chown -R app:app /var/www/staticfiles /var/lib/celerybeat \
   && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/requirements.txt
