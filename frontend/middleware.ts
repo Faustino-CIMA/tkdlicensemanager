@@ -1,4 +1,5 @@
 import createMiddleware from "next-intl/middleware";
+import { NextResponse } from "next/server";
 
 const intlMiddleware = createMiddleware({
   locales: ["en", "lb"],
@@ -34,6 +35,29 @@ export default function middleware(request: Request) {
     }).catch(() => {});
     console.log(JSON.stringify(entryPayload));
     // #endregion
+
+    const bypassResponse = NextResponse.next();
+    const bypassPayload = {
+      runId: "admin-redirect-v2",
+      hypothesisId: "FIX_H1",
+      location: "frontend/middleware.ts:bypass",
+      message: "Bypassing i18n middleware for admin path",
+      data: {
+        pathname: requestUrl.pathname,
+        status: bypassResponse.status,
+        redirectLocation: bypassResponse.headers.get("location") ?? "",
+      },
+      timestamp: Date.now(),
+    };
+    // #region agent log
+    fetch("http://127.0.0.1:7242/ingest/8fff0ab0-a0ae-4efd-a694-181dff4f138a", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(bypassPayload),
+    }).catch(() => {});
+    console.log(JSON.stringify(bypassPayload));
+    // #endregion
+    return bypassResponse;
   }
 
   const response = intlMiddleware(request);
