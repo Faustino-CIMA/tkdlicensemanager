@@ -42,8 +42,19 @@ function resolveApiUrl(configuredUrl?: string): string {
     if (!LOOPBACK_HOSTS.has(parsed.hostname)) {
       return fallback;
     }
-    const protocol = parsed.protocol || window.location.protocol;
     const runtimeHost = window.location.hostname;
+
+    // In deployed environments, a loopback-configured API URL is usually a misconfiguration.
+    // Prefer api.<domain> when frontend runs on app.<domain>.
+    if (!LOOPBACK_HOSTS.has(runtimeHost)) {
+      const runtimeProtocol = window.location.protocol || "https:";
+      if (runtimeHost.startsWith("app.")) {
+        return `${runtimeProtocol}//${runtimeHost.replace(/^app\./, "api.")}`;
+      }
+      return `${runtimeProtocol}//${runtimeHost}`;
+    }
+
+    const protocol = parsed.protocol || window.location.protocol;
     const port = parsed.port || "8000";
     return `${protocol}//${runtimeHost}:${port}`;
   } catch {
