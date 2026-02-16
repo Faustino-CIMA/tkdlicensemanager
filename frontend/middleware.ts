@@ -8,6 +8,7 @@ const intlMiddleware = createMiddleware({
 
 export default function middleware(request: NextRequest) {
   const requestUrl = new URL(request.url);
+  const frontendBase = (process.env.FRONTEND_BASE_URL || "").trim();
   const forwardedHost = request.headers.get("x-forwarded-host") ?? "";
   const hostHeader = request.headers.get("host") ?? "";
   const forwardedProto = request.headers.get("x-forwarded-proto") ?? "";
@@ -135,7 +136,14 @@ export default function middleware(request: NextRequest) {
           parsed.hostname === "127.0.0.1" ||
           parsed.hostname === "0.0.0.0"
         ) {
-          normalizedLocation = `${publicProto}://${publicHost}${parsed.pathname}${parsed.search}${parsed.hash}`;
+          if (frontendBase) {
+            normalizedLocation = new URL(
+              `${parsed.pathname}${parsed.search}${parsed.hash}`,
+              frontendBase
+            ).toString();
+          } else {
+            normalizedLocation = `${publicProto}://${publicHost}${parsed.pathname}${parsed.search}${parsed.hash}`;
+          }
         }
       } catch {
         normalizedLocation = location;
@@ -149,6 +157,7 @@ export default function middleware(request: NextRequest) {
           message: "Normalized root redirect location away from loopback host",
           data: {
             pathname: requestUrl.pathname,
+            frontendBase,
             forwardedHost,
             hostHeader,
             forwardedProto,
