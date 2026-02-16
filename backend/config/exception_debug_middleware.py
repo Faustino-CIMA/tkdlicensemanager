@@ -36,23 +36,42 @@ class ExceptionDebugMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        return self.get_response(request)
+        try:
+            response = self.get_response(request)
+        except Exception as exception:
+            self._log_admin_exception(request, exception, "call")
+            raise
+
+        if request.path.startswith("/admin") and hasattr(response, "render"):
+            render = getattr(response, "render", None)
+            if callable(render):
+                try:
+                    response.render()
+                except Exception as exception:
+                    self._log_admin_exception(request, exception, "render")
+                    raise
+        return response
 
     def process_exception(self, request, exception):
-        if request.path.startswith("/admin"):
-            tb = traceback.extract_tb(exception.__traceback__)
-            last_frame = tb[-1] if tb else None
-            _agent_debug_log(
-                "H3_H4_H5",
-                "Admin exception captured",
-                {
-                    "path": request.path,
-                    "method": request.method,
-                    "exception_type": exception.__class__.__name__,
-                    "exception_message": str(exception),
-                    "last_frame_file": (last_frame.filename if last_frame else ""),
-                    "last_frame_line": (last_frame.lineno if last_frame else 0),
-                    "last_frame_name": (last_frame.name if last_frame else ""),
-                },
-            )
+        self._log_admin_exception(request, exception, "process_exception")
         return None
+
+    def _log_admin_exception(self, request, exception, phase: str) -> None:
+        if not request.path.startswith("/admin"):
+            return
+        tb = traceback.extract_tb(exception.__traceback__)
+        last_frame = tb[-1] if tb else None
+        _agent_debug_log(
+            "H3_H4_H5",
+            "Admin exception captured",
+            {
+                "phase": phase,
+                "path": request.path,
+                "method": request.method,
+                "exception_type": exception.__class__.__name__,
+                "exception_message": str(exception),
+                "last_frame_file": (last_frame.filename if last_frame else ""),
+                "last_frame_line": (last_frame.lineno if last_frame else 0),
+                "last_frame_name": (last_frame.name if last_frame else ""),
+            },
+        )
