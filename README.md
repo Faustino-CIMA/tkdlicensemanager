@@ -83,6 +83,13 @@ Common Docker commands you will use:
 - View logs: `docker compose logs -f backend` (or `frontend`, `db`, `redis`, `worker`, `beat`)
 - Run a command inside a container: `docker compose exec backend python manage.py migrate`
 
+Traefik routing (optional):
+- Base `docker-compose.yml` is Traefik-agnostic (safe for Dockploy without external network coupling).
+- Use Traefik labels via override file when needed:
+```
+docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d --build
+```
+
 What the services are:
 - `frontend`: Next.js UI (accessible at `http://localhost:3000/`)
 - `backend`: Django API (accessible at `http://localhost:8000/`)
@@ -387,3 +394,4 @@ curl http://localhost:3000/
 - **Stuck migrations**: `docker compose down -v` to reset volumes (data loss), then `docker compose up --build`.
 - **Celery Beat schedule file**: `backend/celerybeat-schedule` is generated locally; keep it out of git.
 - **makemigrations permission denied in Docker**: run `python backend/manage.py makemigrations` locally or add the migration file in the repo, then run `docker compose exec backend python manage.py migrate`.
+- **`traefik-public` network not found**: either create it manually (`docker network create traefik-public`) or deploy with base compose only (without `docker-compose.traefik.yml`) and use Dockploy domain routing UI.
