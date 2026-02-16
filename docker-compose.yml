@@ -154,6 +154,14 @@ services:
     command: ["npm", "run", "start", "--", "-p", "3000"]
     ports:
       - "3000:3000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ltf-frontend.rule=Host(`app.ltkdf.org`)"
+      - "traefik.http.routers.ltf-frontend.entrypoints=websecure"
+      - "traefik.http.routers.ltf-frontend.tls=true"
+      - "traefik.http.routers.ltf-frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.ltf-frontend.loadbalancer.server.port=3000"
+      - "traefik.docker.network=traefik-public"
     healthcheck:
       test:
         [
@@ -165,6 +173,7 @@ services:
       retries: 5
     networks:
       - app-net
+      - traefik-public
 
 volumes:
   postgres_data:
@@ -176,3 +185,5 @@ volumes:
 networks:
   app-net:
     driver: bridge
+  traefik-public:
+    external: true

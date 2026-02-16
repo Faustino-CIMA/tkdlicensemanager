@@ -10,7 +10,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from .fields import EncryptedCharField
-from simple_history.models import HistoricalRecords
+from simple_history.models import HistoricalRecords  # pyright: ignore[reportMissingImports]
 from django.utils.text import slugify
 
 from clubs.models import Club
@@ -36,16 +36,16 @@ class LicenseTypePolicy(models.Model):
     license_type = models.OneToOneField(
         LicenseType, on_delete=models.CASCADE, related_name="policy"
     )
-    allow_current_year_order = models.BooleanField(default=True)
-    current_start_month = models.PositiveSmallIntegerField(default=1)
-    current_start_day = models.PositiveSmallIntegerField(default=1)
-    current_end_month = models.PositiveSmallIntegerField(default=12)
-    current_end_day = models.PositiveSmallIntegerField(default=31)
-    allow_next_year_preorder = models.BooleanField(default=False)
-    next_start_month = models.PositiveSmallIntegerField(default=12)
-    next_start_day = models.PositiveSmallIntegerField(default=1)
-    next_end_month = models.PositiveSmallIntegerField(default=12)
-    next_end_day = models.PositiveSmallIntegerField(default=31)
+    allow_current_year_order = models.BooleanField(default=True)  # pyright: ignore[reportArgumentType]
+    current_start_month = models.PositiveSmallIntegerField(default=1)  # pyright: ignore[reportArgumentType]
+    current_start_day = models.PositiveSmallIntegerField(default=1)  # pyright: ignore[reportArgumentType]
+    current_end_month = models.PositiveSmallIntegerField(default=12)  # pyright: ignore[reportArgumentType]
+    current_end_day = models.PositiveSmallIntegerField(default=31)  # pyright: ignore[reportArgumentType]
+    allow_next_year_preorder = models.BooleanField(default=False)  # pyright: ignore[reportArgumentType]
+    next_start_month = models.PositiveSmallIntegerField(default=12)  # pyright: ignore[reportArgumentType]
+    next_start_day = models.PositiveSmallIntegerField(default=1)  # pyright: ignore[reportArgumentType]
+    next_end_month = models.PositiveSmallIntegerField(default=12)  # pyright: ignore[reportArgumentType]
+    next_end_day = models.PositiveSmallIntegerField(default=31)  # pyright: ignore[reportArgumentType]
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -54,11 +54,11 @@ class LicenseTypePolicy(models.Model):
 
 
 def get_default_license_type():
-    license_type, _ = LicenseType.objects.get_or_create(  # type: ignore[attr-defined]
+    license_type, _ = LicenseType._default_manager.get_or_create(
         code="paid",
         defaults={"name": "Paid"},
     )
-    return license_type.pk
+    return cast(LicenseType, license_type).pk
 
 
 class LicensePrice(models.Model):
@@ -91,7 +91,10 @@ class LicensePrice(models.Model):
     def get_active_price(cls, *, license_type: LicenseType | None = None, as_of=None):
         date_value = as_of or timezone.localdate()
         if license_type is None:
-            license_type = LicenseType.objects.get(pk=get_default_license_type())
+            license_type = cast(
+                LicenseType,
+                LicenseType._default_manager.get(pk=get_default_license_type()),
+            )
         return (
             cls.objects.filter(license_type=license_type, effective_from__lte=date_value)
             .order_by("-effective_from", "-created_at")
