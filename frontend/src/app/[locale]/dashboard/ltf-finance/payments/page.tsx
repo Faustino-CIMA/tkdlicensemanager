@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
 import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
-import { EntityTable } from "@/components/club-admin/entity-table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
@@ -28,6 +28,19 @@ import {
   getFinanceOrders,
 } from "@/lib/ltf-finance-api";
 import { openInvoicePdf } from "@/lib/invoice-pdf";
+
+function getGroupYear(value: string | null, fallback: string | null, createdAt: string) {
+  const candidate = value ?? fallback ?? createdAt;
+  const parsed = new Date(candidate);
+  if (Number.isNaN(parsed.getTime())) {
+    return 0;
+  }
+  return parsed.getFullYear();
+}
+
+function getYearKey(clubId: number, year: number) {
+  return `${clubId}:${year}`;
+}
 
 export default function LtfFinancePaymentsPage() {
   const t = useTranslations("LtfFinance");
@@ -52,8 +65,13 @@ export default function LtfFinancePaymentsPage() {
   const [paymentReference, setPaymentReference] = useState("");
   const [paymentNotes, setPaymentNotes] = useState("");
   const [paymentDate, setPaymentDate] = useState("");
+  const [expandedClubIds, setExpandedClubIds] = useState<number[]>([]);
+  const [expandedYearKeys, setExpandedYearKeys] = useState<string[]>([]);
+  const [expandedStateHydrated, setExpandedStateHydrated] = useState(false);
 
   const pageSizeOptions = ["25", "50", "100", "150", "200", "all"];
+  const expandedClubStorageKey = "ltf_finance_payments_expanded_clubs";
+  const expandedYearStorageKey = "ltf_finance_payments_expanded_years";
   const statusOptions = ["all", "draft", "issued", "paid", "void"];
   const paymentMethodOptions = [
     { value: "card", label: t("paymentMethodCard") },
@@ -70,7 +88,7 @@ export default function LtfFinancePaymentsPage() {
     { value: "other", label: t("paymentProviderOther") },
   ];
 
-  const loadInvoices = async () => {
+  const loadInvoices = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
@@ -87,11 +105,11 @@ export default function LtfFinancePaymentsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [t]);
 
   useEffect(() => {
     loadInvoices();
-  }, []);
+  }, [loadInvoices]);
 
   const filteredInvoices = useMemo(() => {
     if (statusFilter === "all") {
@@ -114,12 +132,12 @@ export default function LtfFinancePaymentsPage() {
     }, {});
   }, [orders]);
 
-  const getInvoiceQuantity = (invoice: FinanceInvoice) => {
+  const getInvoiceQuantity = useCallback((invoice: FinanceInvoice) => {
     if (!invoice.order) {
       return "-";
     }
     return orderQuantityById[invoice.order] ?? 0;
-  };
+  }, [orderQuantityById]);
 
   const searchedInvoices = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -140,15 +158,7 @@ export default function LtfFinancePaymentsPage() {
         totalText.includes(normalizedQuery)
       );
     });
-  }, [filteredInvoices, searchQuery, clubNameById, orderQuantityById]);
-
-  const resolvedPageSize =
-    pageSize === "all" ? Math.max(searchedInvoices.length, 1) : Number(pageSize);
-  const totalPages = Math.max(1, Math.ceil(searchedInvoices.length / resolvedPageSize));
-  const pagedInvoices = useMemo(() => {
-    const startIndex = (currentPage - 1) * resolvedPageSize;
-    return searchedInvoices.slice(startIndex, startIndex + resolvedPageSize);
-  }, [currentPage, searchedInvoices, resolvedPageSize]);
+  }, [filteredInvoices, searchQuery, clubNameById, getInvoiceQuantity]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -209,79 +219,177 @@ export default function LtfFinancePaymentsPage() {
     }
   };
 
-  const columns = [
-    { key: "invoice_number", header: t("invoiceNumberLabel") },
-    {
-      key: "status",
-      header: t("statusLabel"),
-      render: (row: FinanceInvoice) => {
-        const meta = getInvoiceStatusMeta(row.status);
-        return <StatusBadge label={meta.label} tone={meta.tone} />;
-      },
-    },
-    {
-      key: "club",
-      header: t("clubLabel"),
-      render: (row: FinanceInvoice) => clubNameById[row.club] ?? String(row.club),
-    },
-    {
-      key: "quantity",
-      header: common("qtyLabel"),
-      render: (row: FinanceInvoice) => getInvoiceQuantity(row),
-    },
-    {
-      key: "total",
-      header: t("totalLabel"),
-      render: (row: FinanceInvoice) => `${row.total} ${row.currency}`,
-    },
-    {
-      key: "paid_at",
-      header: t("paidAtLabel"),
-      render: (row: FinanceInvoice) =>
-        row.paid_at ? new Date(row.paid_at).toLocaleString() : "-",
-    },
-    {
-      key: "pdf",
-      header: common("invoicePdfLabel"),
-      render: (row: FinanceInvoice) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={async () => {
-            setActionError(null);
-            try {
-              await openInvoicePdf(row.id);
-            } catch (error) {
-              setActionError(
-                error instanceof Error ? error.message : common("pdfDownloadFailed")
-              );
-            }
-          }}
-        >
-          {common("invoicePdfLabel")}
-        </Button>
-      ),
-    },
-    {
-      key: "actions",
-      header: common("paymentActionsLabel"),
-      render: (row: FinanceInvoice) => {
-        const canRecord = row.status !== "paid" && row.status !== "void";
-        return canRecord ? (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => openRecordModal(row)}
-            disabled={activeInvoiceId === row.id}
-          >
-            {activeInvoiceId === row.id
-              ? common("paymentProcessing")
-              : t("recordPaymentButton")}
-          </Button>
-        ) : null;
-      },
-    },
-  ];
+  const groupedClubRows = useMemo(() => {
+    const grouped = new Map<
+      number,
+      {
+        clubName: string;
+        yearsMap: Map<number, FinanceInvoice[]>;
+      }
+    >();
+
+    for (const invoice of searchedInvoices) {
+      const year = getGroupYear(invoice.paid_at, invoice.issued_at, invoice.created_at);
+      const clubName = clubNameById[invoice.club] ?? String(invoice.club);
+      const clubEntry = grouped.get(invoice.club);
+      if (!clubEntry) {
+        grouped.set(invoice.club, {
+          clubName,
+          yearsMap: new Map([[year, [invoice]]]),
+        });
+        continue;
+      }
+      const yearEntry = clubEntry.yearsMap.get(year);
+      if (yearEntry) {
+        yearEntry.push(invoice);
+      } else {
+        clubEntry.yearsMap.set(year, [invoice]);
+      }
+    }
+
+    return Array.from(grouped.entries())
+      .map(([clubId, clubEntry]) => {
+        const years = Array.from(clubEntry.yearsMap.entries())
+          .map(([year, yearInvoices]) => {
+            const invoicesForYear = [...yearInvoices].sort((left, right) => {
+              const leftTimestamp = left.paid_at ?? left.issued_at ?? left.created_at;
+              const rightTimestamp = right.paid_at ?? right.issued_at ?? right.created_at;
+              return rightTimestamp.localeCompare(leftTimestamp);
+            });
+            const counts = invoicesForYear.reduce(
+              (acc, invoice) => {
+                if (invoice.status === "draft") {
+                  acc.draftCount += 1;
+                } else if (invoice.status === "issued") {
+                  acc.issuedCount += 1;
+                } else if (invoice.status === "paid") {
+                  acc.paidCount += 1;
+                } else if (invoice.status === "void") {
+                  acc.voidCount += 1;
+                }
+                return acc;
+              },
+              { draftCount: 0, issuedCount: 0, paidCount: 0, voidCount: 0 }
+            );
+            return {
+              year,
+              invoices: invoicesForYear,
+              total: invoicesForYear.length,
+              ...counts,
+            };
+          })
+          .sort((left, right) => right.year - left.year);
+
+        const total = years.reduce((sum, year) => sum + year.total, 0);
+        const draftCount = years.reduce((sum, year) => sum + year.draftCount, 0);
+        const issuedCount = years.reduce((sum, year) => sum + year.issuedCount, 0);
+        const paidCount = years.reduce((sum, year) => sum + year.paidCount, 0);
+        const voidCount = years.reduce((sum, year) => sum + year.voidCount, 0);
+
+        return {
+          clubId,
+          clubName: clubEntry.clubName,
+          years,
+          total,
+          draftCount,
+          issuedCount,
+          paidCount,
+          voidCount,
+        };
+      })
+      .sort((left, right) => left.clubName.localeCompare(right.clubName));
+  }, [clubNameById, searchedInvoices]);
+
+  const resolvedPageSize =
+    pageSize === "all" ? Math.max(groupedClubRows.length, 1) : Number(pageSize);
+  const totalPages = Math.max(1, Math.ceil(groupedClubRows.length / resolvedPageSize));
+  const pagedClubRows = useMemo(() => {
+    const startIndex = (currentPage - 1) * resolvedPageSize;
+    return groupedClubRows.slice(startIndex, startIndex + resolvedPageSize);
+  }, [currentPage, groupedClubRows, resolvedPageSize]);
+
+  useEffect(() => {
+    const validClubIds = new Set(groupedClubRows.map((clubGroup) => clubGroup.clubId));
+    setExpandedClubIds((previous) => previous.filter((clubId) => validClubIds.has(clubId)));
+    const validYearKeys = new Set(
+      groupedClubRows.flatMap((clubGroup) =>
+        clubGroup.years.map((yearGroup) => getYearKey(clubGroup.clubId, yearGroup.year))
+      )
+    );
+    setExpandedYearKeys((previous) => previous.filter((yearKey) => validYearKeys.has(yearKey)));
+  }, [groupedClubRows]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      setExpandedStateHydrated(true);
+      return;
+    }
+    try {
+      const storedClubIds = window.localStorage.getItem(expandedClubStorageKey);
+      const storedYearKeys = window.localStorage.getItem(expandedYearStorageKey);
+      if (storedClubIds) {
+        const parsed = JSON.parse(storedClubIds);
+        if (Array.isArray(parsed)) {
+          setExpandedClubIds(
+            parsed
+              .map((value) => Number(value))
+              .filter((value) => Number.isInteger(value) && value > 0)
+          );
+        }
+      }
+      if (storedYearKeys) {
+        const parsed = JSON.parse(storedYearKeys);
+        if (Array.isArray(parsed)) {
+          setExpandedYearKeys(parsed.filter((value) => typeof value === "string"));
+        }
+      }
+    } catch {
+      setExpandedClubIds([]);
+      setExpandedYearKeys([]);
+    } finally {
+      setExpandedStateHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!expandedStateHydrated || typeof window === "undefined") {
+      return;
+    }
+    if (expandedClubIds.length > 0) {
+      window.localStorage.setItem(expandedClubStorageKey, JSON.stringify(expandedClubIds));
+    } else {
+      window.localStorage.removeItem(expandedClubStorageKey);
+    }
+    if (expandedYearKeys.length > 0) {
+      window.localStorage.setItem(expandedYearStorageKey, JSON.stringify(expandedYearKeys));
+    } else {
+      window.localStorage.removeItem(expandedYearStorageKey);
+    }
+  }, [
+    expandedClubIds,
+    expandedYearKeys,
+    expandedStateHydrated,
+    expandedClubStorageKey,
+    expandedYearStorageKey,
+  ]);
+
+  const expandedClubSet = useMemo(() => new Set(expandedClubIds), [expandedClubIds]);
+  const expandedYearSet = useMemo(() => new Set(expandedYearKeys), [expandedYearKeys]);
+
+  const toggleClubExpanded = (clubId: number) => {
+    setExpandedClubIds((previous) =>
+      previous.includes(clubId)
+        ? previous.filter((id) => id !== clubId)
+        : [...previous, clubId]
+    );
+  };
+
+  const toggleYearExpanded = (clubId: number, year: number) => {
+    const key = getYearKey(clubId, year);
+    setExpandedYearKeys((previous) =>
+      previous.includes(key) ? previous.filter((id) => id !== key) : [...previous, key]
+    );
+  };
 
   return (
     <LtfFinanceLayout title={t("paymentsTitle")} subtitle={t("paymentsSubtitle")}>
@@ -323,15 +431,216 @@ export default function LtfFinancePaymentsPage() {
 
       {isLoading ? (
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
-      ) : searchedInvoices.length === 0 ? (
+      ) : groupedClubRows.length === 0 ? (
         <EmptyState title={t("noPaymentsTitle")} description={t("noPaymentsSubtitle")} />
       ) : (
-        <>
-          <EntityTable
-            columns={columns}
-            rows={pagedInvoices}
-            onRowClick={(row) => router.push(`/${locale}/dashboard/ltf-finance/payments/${row.id}`)}
-          />
+        <div className="space-y-3">
+          <div className="overflow-x-auto rounded-2xl border border-zinc-100 bg-white shadow-sm">
+            <table className="min-w-full text-left text-sm">
+              <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+                <tr>
+                  <th className="w-10 px-4 py-3 font-medium" />
+                  <th className="px-4 py-3 font-medium">{t("clubLabel")}</th>
+                  <th className="px-4 py-3 font-medium">{t("totalLabel")}</th>
+                  <th className="px-4 py-3 font-medium">{t("invoicesDraftCountLabel")}</th>
+                  <th className="px-4 py-3 font-medium">{t("invoicesIssuedCountLabel")}</th>
+                  <th className="px-4 py-3 font-medium">{t("invoicesPaidCountLabel")}</th>
+                  <th className="px-4 py-3 font-medium">{t("invoicesVoidCountLabel")}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {pagedClubRows.map((clubGroup) => {
+                  const clubExpanded = expandedClubSet.has(clubGroup.clubId);
+                  return (
+                    <Fragment key={clubGroup.clubId}>
+                      <tr
+                        className="cursor-pointer text-zinc-700 hover:bg-zinc-50"
+                        onClick={() => toggleClubExpanded(clubGroup.clubId)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            toggleClubExpanded(clubGroup.clubId);
+                          }
+                        }}
+                        tabIndex={0}
+                        role="button"
+                        aria-expanded={clubExpanded}
+                      >
+                        <td className="px-4 py-3 text-zinc-500">
+                          {clubExpanded ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </td>
+                        <td className="px-4 py-3 font-medium">{clubGroup.clubName}</td>
+                        <td className="px-4 py-3">{clubGroup.total}</td>
+                        <td className="px-4 py-3">{clubGroup.draftCount}</td>
+                        <td className="px-4 py-3">{clubGroup.issuedCount}</td>
+                        <td className="px-4 py-3">{clubGroup.paidCount}</td>
+                        <td className="px-4 py-3">{clubGroup.voidCount}</td>
+                      </tr>
+                      {clubExpanded ? (
+                        <tr className="bg-zinc-50/60">
+                          <td colSpan={7} className="px-6 py-3">
+                            <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+                              <table className="min-w-full text-left text-sm">
+                                <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+                                  <tr>
+                                    <th className="w-10 px-4 py-2 font-medium" />
+                                    <th className="px-4 py-2 font-medium">{t("yearLabel")}</th>
+                                    <th className="px-4 py-2 font-medium">{t("totalLabel")}</th>
+                                    <th className="px-4 py-2 font-medium">{t("invoicesDraftCountLabel")}</th>
+                                    <th className="px-4 py-2 font-medium">{t("invoicesIssuedCountLabel")}</th>
+                                    <th className="px-4 py-2 font-medium">{t("invoicesPaidCountLabel")}</th>
+                                    <th className="px-4 py-2 font-medium">{t("invoicesVoidCountLabel")}</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-zinc-100">
+                                  {clubGroup.years.map((yearGroup) => {
+                                    const yearKey = getYearKey(clubGroup.clubId, yearGroup.year);
+                                    const yearExpanded = expandedYearSet.has(yearKey);
+                                    return (
+                                      <Fragment key={yearKey}>
+                                        <tr
+                                          className="cursor-pointer text-zinc-700 hover:bg-zinc-50"
+                                          onClick={() => toggleYearExpanded(clubGroup.clubId, yearGroup.year)}
+                                          onKeyDown={(event) => {
+                                            if (event.key === "Enter" || event.key === " ") {
+                                              event.preventDefault();
+                                              toggleYearExpanded(clubGroup.clubId, yearGroup.year);
+                                            }
+                                          }}
+                                          tabIndex={0}
+                                          role="button"
+                                          aria-expanded={yearExpanded}
+                                        >
+                                          <td className="px-4 py-2 text-zinc-500">
+                                            {yearExpanded ? (
+                                              <ChevronDown className="h-4 w-4" />
+                                            ) : (
+                                              <ChevronRight className="h-4 w-4" />
+                                            )}
+                                          </td>
+                                          <td className="px-4 py-2 font-medium">
+                                            {yearGroup.year > 0 ? yearGroup.year : "—"}
+                                          </td>
+                                          <td className="px-4 py-2">{yearGroup.total}</td>
+                                          <td className="px-4 py-2">{yearGroup.draftCount}</td>
+                                          <td className="px-4 py-2">{yearGroup.issuedCount}</td>
+                                          <td className="px-4 py-2">{yearGroup.paidCount}</td>
+                                          <td className="px-4 py-2">{yearGroup.voidCount}</td>
+                                        </tr>
+                                        {yearExpanded ? (
+                                          <tr className="bg-zinc-50/50">
+                                            <td colSpan={7} className="px-6 py-3">
+                                              <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
+                                                <table className="min-w-full text-left text-sm">
+                                                  <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+                                                    <tr>
+                                                      <th className="px-4 py-2 font-medium">{t("invoiceNumberLabel")}</th>
+                                                      <th className="px-4 py-2 font-medium">{t("statusLabel")}</th>
+                                                      <th className="px-4 py-2 font-medium">{common("qtyLabel")}</th>
+                                                      <th className="px-4 py-2 font-medium">{t("totalLabel")}</th>
+                                                      <th className="px-4 py-2 font-medium">{t("paidAtLabel")}</th>
+                                                      <th className="px-4 py-2 font-medium">{common("invoicePdfLabel")}</th>
+                                                      <th className="px-4 py-2 font-medium">{common("paymentActionsLabel")}</th>
+                                                    </tr>
+                                                  </thead>
+                                                  <tbody className="divide-y divide-zinc-100">
+                                                    {yearGroup.invoices.map((invoice) => {
+                                                      const meta = getInvoiceStatusMeta(invoice.status);
+                                                      const canRecord =
+                                                        invoice.status !== "paid" && invoice.status !== "void";
+                                                      return (
+                                                        <tr
+                                                          key={invoice.id}
+                                                          className="cursor-pointer text-zinc-700 hover:bg-zinc-50"
+                                                          onClick={() => {
+                                                            router.push(
+                                                              `/${locale}/dashboard/ltf-finance/payments/${invoice.id}`
+                                                            );
+                                                          }}
+                                                        >
+                                                          <td className="px-4 py-2 font-medium">
+                                                            {invoice.invoice_number}
+                                                          </td>
+                                                          <td className="px-4 py-2">
+                                                            <StatusBadge label={meta.label} tone={meta.tone} />
+                                                          </td>
+                                                          <td className="px-4 py-2">
+                                                            {getInvoiceQuantity(invoice)}
+                                                          </td>
+                                                          <td className="px-4 py-2">
+                                                            {`${invoice.total} ${invoice.currency}`}
+                                                          </td>
+                                                          <td className="px-4 py-2">
+                                                            {invoice.paid_at
+                                                              ? new Date(invoice.paid_at).toLocaleString()
+                                                              : "-"}
+                                                          </td>
+                                                          <td className="px-4 py-2">
+                                                            <Button
+                                                              variant="ghost"
+                                                              size="sm"
+                                                              onClick={async (event) => {
+                                                                event.stopPropagation();
+                                                                setActionError(null);
+                                                                try {
+                                                                  await openInvoicePdf(invoice.id);
+                                                                } catch (error) {
+                                                                  setActionError(
+                                                                    error instanceof Error
+                                                                      ? error.message
+                                                                      : common("pdfDownloadFailed")
+                                                                  );
+                                                                }
+                                                              }}
+                                                            >
+                                                              {common("invoicePdfLabel")}
+                                                            </Button>
+                                                          </td>
+                                                          <td className="px-4 py-2">
+                                                            {canRecord ? (
+                                                              <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={(event) => {
+                                                                  event.stopPropagation();
+                                                                  openRecordModal(invoice);
+                                                                }}
+                                                                disabled={activeInvoiceId === invoice.id}
+                                                              >
+                                                                {activeInvoiceId === invoice.id
+                                                                  ? common("paymentProcessing")
+                                                                  : t("recordPaymentButton")}
+                                                              </Button>
+                                                            ) : null}
+                                                          </td>
+                                                        </tr>
+                                                      );
+                                                    })}
+                                                  </tbody>
+                                                </table>
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        ) : null}
+                                      </Fragment>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-600">
             <span>{t("pageLabel", { current: currentPage, total: totalPages })}</span>
             <div className="flex gap-2">
@@ -351,7 +660,7 @@ export default function LtfFinancePaymentsPage() {
               </button>
             </div>
           </div>
-        </>
+        </div>
       )}
 
       {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}

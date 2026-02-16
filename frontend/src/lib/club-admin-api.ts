@@ -6,6 +6,10 @@ export type Club = {
   name: string;
   city: string;
   address: string;
+  address_line1: string;
+  address_line2: string;
+  postal_code: string;
+  locality: string;
   created_by: number;
   admins: number[];
   created_at: string;
@@ -24,6 +28,8 @@ export type Member = {
   ltf_licenseid: string;
   date_of_birth: string | null;
   belt_rank: string;
+  primary_license_role: LicenseRoleValue | "";
+  secondary_license_role: LicenseRoleValue | "";
   profile_picture_url?: string | null;
   profile_picture_thumbnail_url?: string | null;
   photo_edit_metadata?: Record<string, unknown>;
@@ -114,15 +120,17 @@ export type MemberHistoryResponse = {
 };
 
 export type MemberInput = {
-  club: number;
-  first_name: string;
-  last_name: string;
-  sex: "M" | "F";
+  club?: number;
+  first_name?: string;
+  last_name?: string;
+  sex?: "M" | "F";
   email?: string;
   wt_licenseid?: string;
   ltf_licenseid?: string;
   date_of_birth?: string | null;
   belt_rank?: string;
+  primary_license_role?: LicenseRoleValue | "";
+  secondary_license_role?: LicenseRoleValue | "";
   is_active?: boolean;
 };
 
@@ -146,7 +154,19 @@ export type ClubInput = {
   name: string;
   city?: string;
   address?: string;
+  address_line1?: string;
+  address_line2?: string;
+  postal_code?: string;
+  locality?: string;
 };
+
+export type LicenseRoleValue =
+  | "athlete"
+  | "coach"
+  | "referee"
+  | "official"
+  | "doctor"
+  | "physiotherapist";
 
 export function getClubs() {
   return apiRequest<Club[]>("/api/clubs/");

@@ -1,12 +1,13 @@
 from rest_framework import permissions, status, viewsets
+from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import action
 
-from .models import Club
-from .serializers import ClubSerializer
+from .models import Club, FederationProfile
+from .serializers import ClubSerializer, FederationProfileSerializer
 import re
 
-from accounts.permissions import IsLtfAdmin
+from accounts.permissions import IsLtfAdmin, IsLtfFinanceOrLtfAdmin
 from django.conf import settings
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.utils.crypto import get_random_string
@@ -216,3 +217,29 @@ class ClubViewSet(viewsets.ModelViewSet):
         club.max_admins = max_admins
         club.save(update_fields=["max_admins"])
         return Response({"detail": "Max admins updated.", "max_admins": club.max_admins})
+
+
+class FederationProfileView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsLtfFinanceOrLtfAdmin]
+
+    def _get_profile(self) -> FederationProfile:
+        profile, _ = FederationProfile.objects.get_or_create(
+            pk=1,
+            defaults={
+                "name": "Luxembourg Taekwondo Federation",
+            },
+        )
+        return profile
+
+    def get(self, request):
+        serializer = FederationProfileSerializer(self._get_profile())
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def patch(self, request):
+        if request.user.role != "ltf_admin":
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        profile = self._get_profile()
+        serializer = FederationProfileSerializer(profile, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)

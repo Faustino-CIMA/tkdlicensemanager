@@ -45,17 +45,15 @@ export default function LtfFinanceOrderDetailPage() {
     }
     return Number(rawId);
   }, [params]);
+  const hasValidOrderId = Number.isFinite(orderId) && orderId > 0;
 
   useEffect(() => {
-    if (!orderId || Number.isNaN(orderId)) {
-      setErrorMessage(t("ordersLoadError"));
-      setIsLoading(false);
+    if (!hasValidOrderId) {
       return;
     }
-    setIsLoading(true);
-    setErrorMessage(null);
     Promise.all([getFinanceOrder(orderId), getFinanceClubs(), getFinanceMembers()])
       .then(([orderResponse, clubsResponse, membersResponse]) => {
+        setErrorMessage(null);
         setOrder(orderResponse);
         setClubs(clubsResponse);
         setMembers(membersResponse);
@@ -66,7 +64,7 @@ export default function LtfFinanceOrderDetailPage() {
       .finally(() => {
         setIsLoading(false);
       });
-  }, [orderId, t]);
+  }, [hasValidOrderId, orderId, t]);
 
   const clubNameById = useMemo(() => {
     return clubs.reduce<Record<number, string>>((acc, club) => {
@@ -141,10 +139,13 @@ export default function LtfFinanceOrderDetailPage() {
     );
   }
 
-  if (errorMessage || !order) {
+  if (!hasValidOrderId || errorMessage || !order) {
     return (
       <LtfFinanceLayout title={t("ordersTitle")} subtitle={t("ordersSubtitle")}>
-        <EmptyState title={t("ordersLoadError")} description={errorMessage ?? ""} />
+        <EmptyState
+          title={t("ordersLoadError")}
+          description={!hasValidOrderId ? t("ordersLoadError") : errorMessage ?? ""}
+        />
       </LtfFinanceLayout>
     );
   }

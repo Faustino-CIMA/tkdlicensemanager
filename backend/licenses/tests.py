@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 import hashlib
 import hmac
 import json
@@ -7,6 +7,7 @@ from unittest.mock import patch
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework import status
@@ -21,12 +22,16 @@ from .models import (
     Invoice,
     License,
     LicenseHistoryEvent,
+    LicensePrice,
     LicenseType,
+    LicenseTypePolicy,
     Order,
     OrderItem,
+    Payment,
 )
 from .pdf_utils import build_invoice_context
-from .tasks import reconcile_expired_licenses
+from .services import apply_payment_and_activate
+from .tasks import activate_eligible_paid_licenses, reconcile_expired_licenses
 
 
 class LicenseModelTests(TestCase):
@@ -143,19 +148,71 @@ class LicenseTypeApiTests(TestCase):
             password="pass12345",
             role=User.Roles.LTF_ADMIN,
         )
+        self.ltf_finance = User.objects.create_user(
+            username="ltffinance-license-type",
+            password="pass12345",
+            role=User.Roles.LTF_FINANCE,
+        )
         self.club_admin = User.objects.create_user(
             username="clubadmin",
             password="pass12345",
             role=User.Roles.CLUB_ADMIN,
         )
 
-    def test_ltf_admin_can_create_license_type(self):
-        self.client.force_authenticate(user=self.ltf_admin)
+    def test_ltf_finance_can_create_license_type(self):
+        self.client.force_authenticate(user=self.ltf_finance)
         response = self.client.post(
             "/api/license-types/", {"name": "Premium"}, format="json"
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["name"], "Premium")
+
+    def test_ltf_finance_can_set_initial_price_on_create(self):
+        self.client.force_authenticate(user=self.ltf_finance)
+        response = self.client.post(
+            "/api/license-types/",
+            {
+                "name": "WithPrice",
+                "initial_price_amount": "45.00",
+                "initial_price_currency": "EUR",
+                "initial_price_effective_from": "2026-01-01",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        license_type_id = response.data["id"]
+        self.assertTrue(
+            LicensePrice.objects.filter(
+                license_type_id=license_type_id,
+                amount=Decimal("45.00"),
+                currency="EUR",
+                effective_from=date(2026, 1, 1),
+            ).exists()
+        )
+
+    def test_ltf_finance_can_set_free_initial_price(self):
+        self.client.force_authenticate(user=self.ltf_finance)
+        response = self.client.post(
+            "/api/license-types/",
+            {
+                "name": "FreeTier",
+                "initial_price_amount": "0.00",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        license_type_id = response.data["id"]
+        self.assertTrue(
+            LicensePrice.objects.filter(
+                license_type_id=license_type_id,
+                amount=Decimal("0.00"),
+            ).exists()
+        )
+
+    def test_ltf_admin_cannot_create_license_type(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post("/api/license-types/", {"name": "AdminType"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_non_ltf_cannot_create_license_type(self):
         self.client.force_authenticate(user=self.club_admin)
@@ -171,7 +228,7 @@ class LicenseTypeApiTests(TestCase):
         self.assertIn("Standard", names)
 
     def test_delete_blocked_when_in_use(self):
-        self.client.force_authenticate(user=self.ltf_admin)
+        self.client.force_authenticate(user=self.ltf_finance)
         license_type, _ = LicenseType.objects.get_or_create(
             name="Paid", defaults={"code": "paid"}
         )
@@ -181,6 +238,118 @@ class LicenseTypeApiTests(TestCase):
 
         response = self.client.delete(f"/api/license-types/{license_type.id}/")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_ltf_finance_can_update_policy(self):
+        license_type = LicenseType.objects.create(name="Windowed", code="windowed")
+        self.client.force_authenticate(user=self.ltf_finance)
+        response = self.client.patch(
+            f"/api/license-types/{license_type.id}/policy/",
+            {
+                "allow_current_year_order": False,
+                "allow_next_year_preorder": True,
+                "next_start_month": 9,
+                "next_start_day": 1,
+                "next_end_month": 12,
+                "next_end_day": 31,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        policy = LicenseTypePolicy.objects.get(license_type=license_type)
+        self.assertFalse(policy.allow_current_year_order)
+        self.assertTrue(policy.allow_next_year_preorder)
+
+    def test_ltf_admin_cannot_update_policy(self):
+        license_type = LicenseType.objects.create(name="Locked", code="locked")
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.patch(
+            f"/api/license-types/{license_type.id}/policy/",
+            {"allow_current_year_order": False},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class LicenseApiPermissionTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.ltf_admin = User.objects.create_user(
+            username="license_ltf_admin",
+            password="pass12345",
+            role=User.Roles.LTF_ADMIN,
+        )
+        self.club_admin = User.objects.create_user(
+            username="license_club_admin",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+        )
+        self.club = Club.objects.create(name="License Club", created_by=self.ltf_admin)
+        self.club.admins.add(self.club_admin)
+        self.member = Member.objects.create(
+            club=self.club,
+            first_name="Lio",
+            last_name="Kraus",
+        )
+        self.license_type = LicenseType.objects.create(name="Annual", code="annual")
+        self.license_record = License.objects.create(
+            member=self.member,
+            club=self.club,
+            license_type=self.license_type,
+            year=2026,
+            status=License.Status.PENDING,
+        )
+
+    def _payload(self):
+        return {
+            "member": self.member.id,
+            "club": self.club.id,
+            "license_type": self.license_type.id,
+            "year": 2027,
+            "status": License.Status.PENDING,
+        }
+
+    def test_club_admin_can_list_licenses(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.get("/api/licenses/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        returned_ids = {item["id"] for item in response.data}
+        self.assertIn(self.license_record.id, returned_ids)
+
+    def test_club_admin_cannot_create_license(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post("/api/licenses/", self._payload(), format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_club_admin_cannot_update_license(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.patch(
+            f"/api/licenses/{self.license_record.id}/",
+            {"status": License.Status.ACTIVE},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_club_admin_cannot_delete_license(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.delete(f"/api/licenses/{self.license_record.id}/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_ltf_admin_can_create_update_and_delete_license(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        create_response = self.client.post("/api/licenses/", self._payload(), format="json")
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        created_license_id = create_response.data["id"]
+
+        update_response = self.client.patch(
+            f"/api/licenses/{created_license_id}/",
+            {"status": License.Status.ACTIVE},
+            format="json",
+        )
+        self.assertEqual(update_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(update_response.data["status"], License.Status.ACTIVE)
+
+        delete_response = self.client.delete(f"/api/licenses/{created_license_id}/")
+        self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
 
 
 class FinanceModelTests(TestCase):
@@ -509,6 +678,299 @@ class OrderApiTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
+class LicenseOrderingPolicyTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.ltf_admin = User.objects.create_user(
+            username="policy_ltf_admin",
+            password="pass12345",
+            role=User.Roles.LTF_ADMIN,
+        )
+        self.ltf_finance = User.objects.create_user(
+            username="policy_ltf_finance",
+            password="pass12345",
+            role=User.Roles.LTF_FINANCE,
+        )
+        self.club_admin = User.objects.create_user(
+            username="policy_club_admin",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+        )
+        self.club = Club.objects.create(name="Policy Club", created_by=self.ltf_admin)
+        self.club.admins.add(self.club_admin)
+        self.member = Member.objects.create(
+            club=self.club,
+            first_name="Iva",
+            last_name="Muller",
+        )
+        self.license_type = LicenseType.objects.create(name="Policy Annual", code="policy-annual")
+        self.policy = LicenseTypePolicy.objects.create(license_type=self.license_type)
+        LicensePrice.objects.create(
+            license_type=self.license_type,
+            amount=Decimal("30.00"),
+            currency="EUR",
+            effective_from=timezone.localdate(),
+            created_by=self.ltf_finance,
+        )
+
+    def _club_batch_payload(self, year: int):
+        return {
+            "club": self.club.id,
+            "license_type": self.license_type.id,
+            "member_ids": [self.member.id],
+            "year": year,
+            "quantity": 1,
+            "tax_total": "0.00",
+        }
+
+    def test_club_batch_rejects_when_current_year_window_disabled(self):
+        self.policy.allow_current_year_order = False
+        self.policy.save(update_fields=["allow_current_year_order", "updated_at"])
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            "/api/club-orders/batch/",
+            self._club_batch_payload(year=timezone.localdate().year),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_club_batch_allows_next_year_when_preorder_enabled(self):
+        self.policy.allow_current_year_order = False
+        self.policy.allow_next_year_preorder = True
+        self.policy.next_start_month = 1
+        self.policy.next_start_day = 1
+        self.policy.next_end_month = 12
+        self.policy.next_end_day = 31
+        self.policy.save(
+            update_fields=[
+                "allow_current_year_order",
+                "allow_next_year_preorder",
+                "next_start_month",
+                "next_start_day",
+                "next_end_month",
+                "next_end_day",
+                "updated_at",
+            ]
+        )
+        self.client.force_authenticate(user=self.club_admin)
+        next_year = timezone.localdate().year + 1
+        response = self.client.post(
+            "/api/club-orders/batch/",
+            self._club_batch_payload(year=next_year),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        created_license = License.objects.filter(
+            club=self.club, member=self.member, year=next_year
+        ).first()
+        self.assertIsNotNone(created_license)
+        self.assertEqual(created_license.license_type_id, self.license_type.id)
+
+    def test_finance_order_rejects_when_current_year_window_disabled(self):
+        self.policy.allow_current_year_order = False
+        self.policy.save(update_fields=["allow_current_year_order", "updated_at"])
+        self.client.force_authenticate(user=self.ltf_finance)
+        response = self.client.post(
+            "/api/orders/",
+            {
+                "club": self.club.id,
+                "member": self.member.id,
+                "currency": "EUR",
+                "tax_total": "0.00",
+                "items": [
+                    {
+                        "license_type": self.license_type.id,
+                        "year": timezone.localdate().year,
+                        "price_snapshot": "30.00",
+                        "quantity": 1,
+                    }
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_club_batch_allows_free_price_license_type(self):
+        LicensePrice.objects.create(
+            license_type=self.license_type,
+            amount=Decimal("0.00"),
+            currency="EUR",
+            effective_from=timezone.localdate(),
+            created_by=self.ltf_finance,
+        )
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            "/api/club-orders/batch/",
+            self._club_batch_payload(year=timezone.localdate().year),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        order = Order.objects.get(id=response.data["id"])
+        self.assertEqual(order.subtotal, Decimal("0.00"))
+        self.assertEqual(order.total, Decimal("0.00"))
+
+
+class LicenseActivationRulesTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.ltf_admin = User.objects.create_user(
+            username="activation_ltf_admin",
+            password="pass12345",
+            role=User.Roles.LTF_ADMIN,
+        )
+        self.ltf_finance = User.objects.create_user(
+            username="activation_ltf_finance",
+            password="pass12345",
+            role=User.Roles.LTF_FINANCE,
+        )
+        self.club = Club.objects.create(name="Activation Club", created_by=self.ltf_admin)
+        self.member = Member.objects.create(
+            club=self.club,
+            first_name="Nia",
+            last_name="Roy",
+        )
+        self.license_type = LicenseType.objects.create(name="Activation Annual", code="activation-annual")
+
+    def _create_paid_order_for_license(self, license_record: License):
+        order = Order.objects.create(
+            club=self.club,
+            member=self.member,
+            status=Order.Status.PAID,
+            subtotal=Decimal("25.00"),
+            tax_total=Decimal("5.00"),
+            total=Decimal("30.00"),
+        )
+        invoice = Invoice.objects.create(
+            order=order,
+            club=self.club,
+            member=self.member,
+            status=Invoice.Status.PAID,
+            subtotal=Decimal("25.00"),
+            tax_total=Decimal("5.00"),
+            total=Decimal("30.00"),
+            issued_at=timezone.now(),
+            paid_at=timezone.now(),
+        )
+        OrderItem.objects.create(
+            order=order,
+            license=license_record,
+            price_snapshot=Decimal("30.00"),
+            quantity=1,
+        )
+        return order, invoice
+
+    def test_active_license_constraint_blocks_second_active_license(self):
+        current_year = timezone.localdate().year
+        License.objects.create(
+            member=self.member,
+            club=self.club,
+            license_type=self.license_type,
+            year=current_year,
+            status=License.Status.ACTIVE,
+        )
+        with self.assertRaises(IntegrityError):
+            License.objects.create(
+                member=self.member,
+                club=self.club,
+                license_type=self.license_type,
+                year=current_year + 1,
+                status=License.Status.ACTIVE,
+            )
+
+    def test_payment_activation_defers_future_license(self):
+        future_year = timezone.localdate().year + 1
+        license_record = License.objects.create(
+            member=self.member,
+            club=self.club,
+            license_type=self.license_type,
+            year=future_year,
+            status=License.Status.PENDING,
+            start_date=date(future_year, 1, 1),
+            end_date=date(future_year, 12, 31),
+        )
+        order = Order.objects.create(
+            club=self.club,
+            member=self.member,
+            status=Order.Status.PENDING,
+            subtotal=Decimal("25.00"),
+            tax_total=Decimal("5.00"),
+            total=Decimal("30.00"),
+        )
+        Invoice.objects.create(
+            order=order,
+            club=self.club,
+            member=self.member,
+            status=Invoice.Status.DRAFT,
+            subtotal=Decimal("25.00"),
+            tax_total=Decimal("5.00"),
+            total=Decimal("30.00"),
+        )
+        OrderItem.objects.create(
+            order=order,
+            license=license_record,
+            price_snapshot=Decimal("30.00"),
+            quantity=1,
+        )
+
+        apply_payment_and_activate(
+            order,
+            actor=self.ltf_finance,
+            payment_details={
+                "payment_method": "bank_transfer",
+                "payment_provider": "manual",
+                "payment_reference": "BANK-REF-42",
+            },
+        )
+        order.refresh_from_db()
+        license_record.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.PAID)
+        self.assertEqual(order.invoice.status, Invoice.Status.PAID)
+        self.assertEqual(license_record.status, License.Status.PENDING)
+
+    def test_activate_eligible_paid_licenses_task_activates_pending(self):
+        today = timezone.localdate()
+        license_record = License.objects.create(
+            member=self.member,
+            club=self.club,
+            license_type=self.license_type,
+            year=today.year,
+            status=License.Status.PENDING,
+            start_date=today,
+            end_date=today + timedelta(days=30),
+        )
+        self._create_paid_order_for_license(license_record)
+        activated_count = activate_eligible_paid_licenses()
+        license_record.refresh_from_db()
+        self.assertEqual(activated_count, 1)
+        self.assertEqual(license_record.status, License.Status.ACTIVE)
+
+    def test_activate_eligible_paid_licenses_respects_existing_active_license(self):
+        today = timezone.localdate()
+        License.objects.create(
+            member=self.member,
+            club=self.club,
+            license_type=self.license_type,
+            year=today.year,
+            status=License.Status.ACTIVE,
+            start_date=today - timedelta(days=1),
+            end_date=today + timedelta(days=30),
+        )
+        pending_license = License.objects.create(
+            member=self.member,
+            club=self.club,
+            license_type=self.license_type,
+            year=today.year + 1,
+            status=License.Status.PENDING,
+            start_date=today,
+            end_date=today + timedelta(days=30),
+        )
+        self._create_paid_order_for_license(pending_license)
+        activated_count = activate_eligible_paid_licenses()
+        pending_license.refresh_from_db()
+        self.assertEqual(activated_count, 0)
+        self.assertEqual(pending_license.status, License.Status.PENDING)
+
+
 class ClubOrderCheckoutTests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -826,4 +1288,248 @@ class PayconiqPaymentTests(TestCase):
         context = build_invoice_context(self.invoice)
         self.assertTrue(context["payconiq_qr"])
         self.assertTrue(context["sepa_qr"])
+
+
+class OverviewApiTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.ltf_admin = User.objects.create_user(
+            username="overview-ltf-admin",
+            password="pass12345",
+            role=User.Roles.LTF_ADMIN,
+        )
+        self.ltf_finance = User.objects.create_user(
+            username="overview-ltf-finance",
+            password="pass12345",
+            role=User.Roles.LTF_FINANCE,
+        )
+
+        self.club_one = Club.objects.create(name="Overview Club A", created_by=self.ltf_admin)
+        self.club_two = Club.objects.create(name="Overview Club B", created_by=self.ltf_admin)
+        self.club_one.admins.add(self.ltf_admin)
+
+        self.member_active_with_id = Member.objects.create(
+            club=self.club_one,
+            first_name="Ari",
+            last_name="One",
+            ltf_licenseid="LTF-100",
+            is_active=True,
+        )
+        self.member_active_missing_id = Member.objects.create(
+            club=self.club_one,
+            first_name="Bea",
+            last_name="Two",
+            ltf_licenseid="",
+            is_active=True,
+        )
+        Member.objects.create(
+            club=self.club_two,
+            first_name="Cid",
+            last_name="Three",
+            ltf_licenseid="LTF-200",
+            is_active=False,
+        )
+
+        self.license_type_paid = LicenseType.objects.create(name="Overview Paid", code="overview-paid")
+        self.license_type_special = LicenseType.objects.create(
+            name="Overview Special",
+            code="overview-special",
+        )
+        LicensePrice.objects.create(
+            license_type=self.license_type_paid,
+            amount=Decimal("30.00"),
+            currency="EUR",
+            effective_from=timezone.localdate() - timedelta(days=1),
+            created_by=self.ltf_finance,
+        )
+        LicensePrice.objects.create(
+            license_type=self.license_type_special,
+            amount=Decimal("45.00"),
+            currency="EUR",
+            effective_from=timezone.localdate() + timedelta(days=30),
+            created_by=self.ltf_finance,
+        )
+
+        self.license_active = License.objects.create(
+            member=self.member_active_with_id,
+            club=self.club_one,
+            license_type=self.license_type_paid,
+            year=timezone.localdate().year,
+            status=License.Status.ACTIVE,
+            start_date=timezone.localdate() - timedelta(days=10),
+            end_date=timezone.localdate() + timedelta(days=10),
+        )
+        self.license_pending = License.objects.create(
+            member=self.member_active_with_id,
+            club=self.club_one,
+            license_type=self.license_type_paid,
+            year=timezone.localdate().year + 1,
+            status=License.Status.PENDING,
+        )
+        License.objects.create(
+            member=self.member_active_missing_id,
+            club=self.club_one,
+            license_type=self.license_type_paid,
+            year=timezone.localdate().year - 1,
+            status=License.Status.EXPIRED,
+        )
+        License.objects.create(
+            member=self.member_active_missing_id,
+            club=self.club_one,
+            license_type=self.license_type_paid,
+            year=timezone.localdate().year - 2,
+            status=License.Status.REVOKED,
+        )
+
+        self.order_draft = Order.objects.create(
+            club=self.club_one,
+            member=self.member_active_with_id,
+            status=Order.Status.DRAFT,
+            currency="EUR",
+            subtotal=Decimal("30.00"),
+            total=Decimal("30.00"),
+        )
+        self.order_pending = Order.objects.create(
+            club=self.club_one,
+            member=self.member_active_with_id,
+            status=Order.Status.PENDING,
+            currency="EUR",
+            subtotal=Decimal("30.00"),
+            total=Decimal("30.00"),
+        )
+        self.order_paid = Order.objects.create(
+            club=self.club_one,
+            member=self.member_active_with_id,
+            status=Order.Status.PAID,
+            currency="EUR",
+            subtotal=Decimal("30.00"),
+            total=Decimal("30.00"),
+        )
+        self.order_cancelled = Order.objects.create(
+            club=self.club_one,
+            member=self.member_active_with_id,
+            status=Order.Status.CANCELLED,
+            currency="EUR",
+            subtotal=Decimal("30.00"),
+            total=Decimal("30.00"),
+        )
+        self.order_refunded = Order.objects.create(
+            club=self.club_one,
+            member=self.member_active_with_id,
+            status=Order.Status.REFUNDED,
+            currency="EUR",
+            subtotal=Decimal("30.00"),
+            total=Decimal("30.00"),
+        )
+        OrderItem.objects.create(
+            order=self.order_paid,
+            license=self.license_pending,
+            price_snapshot=Decimal("30.00"),
+            quantity=1,
+        )
+
+        self.invoice_issued_old = Invoice.objects.create(
+            order=self.order_draft,
+            club=self.club_one,
+            member=self.member_active_with_id,
+            status=Invoice.Status.ISSUED,
+            currency="EUR",
+            subtotal=Decimal("30.00"),
+            total=Decimal("30.00"),
+            issued_at=timezone.now() - timedelta(days=8),
+        )
+        self.invoice_paid = Invoice.objects.create(
+            order=self.order_paid,
+            club=self.club_one,
+            member=self.member_active_with_id,
+            status=Invoice.Status.PAID,
+            currency="EUR",
+            subtotal=Decimal("30.00"),
+            total=Decimal("30.00"),
+            paid_at=timezone.now(),
+        )
+        Invoice.objects.create(
+            order=self.order_pending,
+            club=self.club_one,
+            member=self.member_active_with_id,
+            status=Invoice.Status.DRAFT,
+            currency="EUR",
+            subtotal=Decimal("30.00"),
+            total=Decimal("30.00"),
+        )
+        Invoice.objects.create(
+            order=self.order_cancelled,
+            club=self.club_one,
+            member=self.member_active_with_id,
+            status=Invoice.Status.VOID,
+            currency="EUR",
+            subtotal=Decimal("30.00"),
+            total=Decimal("30.00"),
+        )
+
+        Payment.objects.create(
+            invoice=self.invoice_paid,
+            order=self.order_paid,
+            amount=Decimal("30.00"),
+            currency="EUR",
+            status=Payment.Status.PAID,
+            paid_at=timezone.now(),
+            created_by=self.ltf_finance,
+        )
+        Payment.objects.create(
+            invoice=self.invoice_issued_old,
+            order=self.order_draft,
+            amount=Decimal("30.00"),
+            currency="EUR",
+            status=Payment.Status.FAILED,
+            created_by=self.ltf_finance,
+        )
+
+        FinanceAuditLog.objects.create(
+            action="invoice.created",
+            message="Overview test event",
+            actor=self.ltf_finance,
+            club=self.club_one,
+            order=self.order_draft,
+            invoice=self.invoice_issued_old,
+        )
+
+    def test_ltf_admin_overview_requires_ltf_admin_role(self):
+        self.client.force_authenticate(user=self.ltf_finance)
+        response = self.client.get("/api/dashboard/overview/ltf-admin/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_ltf_admin_overview_hides_finance_fields(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.get("/api/dashboard/overview/ltf-admin/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("cards", response.data)
+        self.assertNotIn("currency", response.data)
+        self.assertNotIn("recent_activity", response.data)
+        self.assertEqual(response.data["cards"]["total_clubs"], 2)
+        self.assertEqual(response.data["cards"]["active_members"], 2)
+        self.assertEqual(response.data["cards"]["active_licenses"], 1)
+
+    def test_ltf_finance_overview_requires_ltf_finance_role(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.get("/api/dashboard/overview/ltf-finance/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_ltf_finance_overview_contains_finance_metrics(self):
+        self.client.force_authenticate(user=self.ltf_finance)
+        response = self.client.get("/api/dashboard/overview/ltf-finance/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["cards"]["received_orders"], 2)
+        self.assertEqual(response.data["cards"]["delivered_orders"], 1)
+        self.assertEqual(response.data["cards"]["cancelled_orders"], 2)
+        self.assertGreaterEqual(
+            response.data["cards"]["pricing_coverage"]["missing_active_price"],
+            1,
+        )
+        self.assertTrue(
+            any(
+                item["key"] == "license_types_without_active_price"
+                for item in response.data["action_queue"]
+            )
+        )
 

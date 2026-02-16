@@ -4,13 +4,14 @@ import base64
 
 from celery import shared_task
 from django.conf import settings
+from django.db import IntegrityError
 from django.template.loader import render_to_string
 from django.utils import timezone
 
 from accounts.email_utils import send_resend_email
 
-from .history import expire_outdated_licenses
-from .models import FinanceAuditLog, Invoice, Order
+from .history import expire_outdated_licenses, log_license_status_change
+from .models import FinanceAuditLog, Invoice, License, Order
 from .pdf_utils import build_invoice_context, render_invoice_pdf
 from .services import apply_payment_and_activate
 
@@ -199,3 +200,61 @@ def reconcile_expired_licenses() -> int:
             metadata={"expired_count": expired_count},
         )
     return expired_count
+
+
+@shared_task
+def activate_eligible_paid_licenses() -> int:
+    today = timezone.localdate()
+    now = timezone.now()
+    eligible_licenses = (
+        License.objects.filter(
+            status=License.Status.PENDING,
+            start_date__lte=today,
+            end_date__gte=today,
+            order_items__order__status=Order.Status.PAID,
+        )
+        .select_related("member", "club")
+        .distinct()
+    )
+
+    activated_count = 0
+    activated_license_ids = []
+    conflict_license_ids = []
+    for license_record in eligible_licenses:
+        has_conflict = License.objects.filter(
+            member=license_record.member,
+            status=License.Status.ACTIVE,
+        ).exclude(id=license_record.id).exists()
+        if has_conflict:
+            conflict_license_ids.append(license_record.id)
+            continue
+        previous_status = license_record.status
+        license_record.status = License.Status.ACTIVE
+        license_record.issued_at = now
+        try:
+            license_record.save(update_fields=["status", "issued_at", "updated_at"])
+        except IntegrityError:
+            conflict_license_ids.append(license_record.id)
+            continue
+        log_license_status_change(
+            license_record,
+            status_before=previous_status,
+            actor=None,
+            reason="Automatic deferred activation reconciliation task.",
+            metadata={"source": "activate_eligible_paid_licenses"},
+        )
+        activated_count += 1
+        activated_license_ids.append(license_record.id)
+
+    if activated_count or conflict_license_ids:
+        FinanceAuditLog.objects.create(
+            action="licenses.activation_reconciled",
+            message=f"Automatically activated {activated_count} eligible licenses.",
+            metadata={
+                "activated_count": activated_count,
+                "activated_license_ids": activated_license_ids,
+                "conflict_license_ids": conflict_license_ids,
+            },
+        )
+
+    return activated_count

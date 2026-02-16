@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import date, datetime
 
 from django.db import transaction
@@ -77,6 +78,52 @@ def parse_boolean(value, errors, field_name):
     return None
 
 
+_LICENSE_ROLE_LOOKUP = {
+    "athlete": "athlete",
+    "coach": "coach",
+    "referee": "referee",
+    "official": "official",
+    "doctor": "doctor",
+    "physiotherapist": "physiotherapist",
+}
+
+
+def normalize_license_role(value, errors, field_name):
+    if value is None or value == "":
+        return ""
+    normalized = str(value).strip().lower().replace("_", " ").replace("-", " ")
+    canonical = _LICENSE_ROLE_LOOKUP.get(" ".join(normalized.split()))
+    if canonical:
+        return canonical
+    errors.append(
+        f"{field_name} must be one of: Athlete, Coach, Referee, Official, Doctor, Physiotherapist"
+    )
+    return ""
+
+
+def parse_club_address_fields(row_data, mapping, errors):
+    address_line1 = (
+        row_data.get(mapping.get("address_line1", ""), "").strip()
+        or row_data.get(mapping.get("address", ""), "").strip()
+    )
+    address_line2 = row_data.get(mapping.get("address_line2", ""), "").strip()
+    locality = (
+        row_data.get(mapping.get("locality", ""), "").strip()
+        or row_data.get(mapping.get("city", ""), "").strip()
+    )
+    postal_code = row_data.get(mapping.get("postal_code", ""), "").strip()
+
+    if postal_code and not re.fullmatch(r"\d{4}", postal_code):
+        errors.append("postal_code must be 4 digits for Luxembourg")
+
+    return {
+        "address_line1": address_line1,
+        "address_line2": address_line2,
+        "postal_code": postal_code,
+        "locality": locality,
+    }
+
+
 def get_member_club_id(request):
     club_id_raw = request.data.get("club_id")
     if not club_id_raw:
@@ -149,12 +196,21 @@ class ClubImportPreviewView(views.APIView):
             name = row_data.get(name_header, "").strip()
             if not name:
                 errors.append("name is required")
+            address_fields = parse_club_address_fields(row_data, mapping, errors)
             duplicate_id = existing_names.get(name.lower()) if name else None
             preview_rows.append(
                 {
                     "row_index": index,
-                    "data": {"name": name, "city": row_data.get(mapping.get("city", ""), "").strip(),
-                             "address": row_data.get(mapping.get("address", ""), "").strip()},
+                    "data": {
+                        "name": name,
+                        "address_line1": address_fields["address_line1"],
+                        "address_line2": address_fields["address_line2"],
+                        "postal_code": address_fields["postal_code"],
+                        "locality": address_fields["locality"],
+                        # Legacy aliases for backward-compatible previews.
+                        "city": address_fields["locality"],
+                        "address": address_fields["address_line1"],
+                    },
                     "errors": errors,
                     "duplicate": bool(duplicate_id),
                     "existing_id": duplicate_id,
@@ -212,11 +268,19 @@ class ClubImportConfirmView(views.APIView):
                 if errors:
                     row_errors.append({"row_index": index, "errors": errors})
                     continue
+                address_fields = parse_club_address_fields(row_data, mapping, errors)
+                if errors:
+                    row_errors.append({"row_index": index, "errors": errors})
+                    continue
 
                 Club.objects.create(
                     name=name,
-                    city=row_data.get(mapping.get("city", ""), "").strip(),
-                    address=row_data.get(mapping.get("address", ""), "").strip(),
+                    city=address_fields["locality"],
+                    address=address_fields["address_line1"],
+                    address_line1=address_fields["address_line1"],
+                    address_line2=address_fields["address_line2"],
+                    postal_code=address_fields["postal_code"],
+                    locality=address_fields["locality"],
                     created_by=request.user,
                 )
                 created += 1
@@ -297,6 +361,24 @@ class MemberImportPreviewView(views.APIView):
                 errors,
                 "is_active",
             )
+            primary_license_role = normalize_license_role(
+                row_data.get(mapping.get("primary_license_role", ""), "").strip(),
+                errors,
+                "primary_license_role",
+            )
+            secondary_license_role = normalize_license_role(
+                row_data.get(mapping.get("secondary_license_role", ""), "").strip(),
+                errors,
+                "secondary_license_role",
+            )
+            if secondary_license_role and not primary_license_role:
+                errors.append("secondary_license_role requires primary_license_role")
+            if (
+                primary_license_role
+                and secondary_license_role
+                and primary_license_role == secondary_license_role
+            ):
+                errors.append("secondary_license_role must differ from primary_license_role")
             duplicate_id = (
                 existing_members.get((first_name.lower(), last_name.lower()))
                 if first_name and last_name
@@ -316,6 +398,8 @@ class MemberImportPreviewView(views.APIView):
                         "ltf_licenseid": row_data.get(mapping.get("ltf_licenseid", ""), "").strip(),
                         "sex": sex_value,
                         "is_active": is_active_value,
+                        "primary_license_role": primary_license_role,
+                        "secondary_license_role": secondary_license_role,
                     },
                     "errors": errors,
                     "duplicate": bool(duplicate_id),
@@ -404,6 +488,24 @@ class MemberImportConfirmView(views.APIView):
                     errors,
                     "is_active",
                 )
+                primary_license_role = normalize_license_role(
+                    row_data.get(mapping.get("primary_license_role", ""), "").strip(),
+                    errors,
+                    "primary_license_role",
+                )
+                secondary_license_role = normalize_license_role(
+                    row_data.get(mapping.get("secondary_license_role", ""), "").strip(),
+                    errors,
+                    "secondary_license_role",
+                )
+                if secondary_license_role and not primary_license_role:
+                    errors.append("secondary_license_role requires primary_license_role")
+                if (
+                    primary_license_role
+                    and secondary_license_role
+                    and primary_license_role == secondary_license_role
+                ):
+                    errors.append("secondary_license_role must differ from primary_license_role")
 
                 if errors:
                     row_errors.append({"row_index": index, "errors": errors})
@@ -417,6 +519,8 @@ class MemberImportConfirmView(views.APIView):
                     "email": row_data.get(mapping.get("email", ""), "").strip(),
                     "wt_licenseid": row_data.get(mapping.get("wt_licenseid", ""), "").strip(),
                     "ltf_licenseid": row_data.get(mapping.get("ltf_licenseid", ""), "").strip(),
+                    "primary_license_role": primary_license_role,
+                    "secondary_license_role": secondary_license_role,
                 }
                 if sex_value:
                     member_payload["sex"] = sex_value

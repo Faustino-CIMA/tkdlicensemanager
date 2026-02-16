@@ -14,6 +14,7 @@ import { DeleteConfirmModal } from "@/components/ui/delete-confirm-modal";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { apiRequest } from "@/lib/api";
 import {
   LicenseType,
   createLicenseType,
@@ -27,6 +28,7 @@ const licenseTypeSchema = z.object({
 });
 
 type LicenseTypeFormValues = z.infer<typeof licenseTypeSchema>;
+type AuthMeResponse = { role: string };
 
 export default function LtfAdminLicenseTypesPage() {
   const t = useTranslations("LtfAdmin");
@@ -39,6 +41,7 @@ export default function LtfAdminLicenseTypesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [currentRole, setCurrentRole] = useState<string | null>(null);
 
   const {
     register,
@@ -68,6 +71,28 @@ export default function LtfAdminLicenseTypesPage() {
   useEffect(() => {
     loadLicenseTypes();
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadCurrentUserRole = async () => {
+      try {
+        const me = await apiRequest<AuthMeResponse>("/api/auth/me/");
+        if (isMounted) {
+          setCurrentRole(me.role);
+        }
+      } catch {
+        if (isMounted) {
+          setCurrentRole(null);
+        }
+      }
+    };
+    loadCurrentUserRole();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const canManageLicenseTypes = currentRole === "ltf_finance";
 
   const filteredTypes = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -142,8 +167,11 @@ export default function LtfAdminLicenseTypesPage() {
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
           />
-          <Button onClick={startCreate}>{t("createLicenseType")}</Button>
+          {canManageLicenseTypes ? <Button onClick={startCreate}>{t("createLicenseType")}</Button> : null}
         </div>
+        {!canManageLicenseTypes ? (
+          <p className="text-sm text-zinc-500">{t("licenseTypesReadOnlyHint")}</p>
+        ) : null}
 
         {isLoading ? (
           <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
@@ -154,30 +182,34 @@ export default function LtfAdminLicenseTypesPage() {
             columns={[
               { key: "name", header: t("licenseTypeNameLabel") },
               { key: "code", header: t("licenseTypeCodeLabel") },
-              {
-                key: "actions",
-                header: t("actionsLabel"),
-                render: (licenseType) => (
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      size="icon-sm"
-                      aria-label={t("editAction")}
-                      onClick={() => startEdit(licenseType)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="icon-sm"
-                      aria-label={t("deleteAction")}
-                      onClick={() => handleDelete(licenseType)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ),
-              },
+              ...(canManageLicenseTypes
+                ? [
+                    {
+                      key: "actions",
+                      header: t("actionsLabel"),
+                      render: (licenseType: LicenseType) => (
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            size="icon-sm"
+                            aria-label={t("editAction")}
+                            onClick={() => startEdit(licenseType)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="icon-sm"
+                            aria-label={t("deleteAction")}
+                            onClick={() => handleDelete(licenseType)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ),
+                    },
+                  ]
+                : []),
             ]}
             rows={filteredTypes}
           />
@@ -187,7 +219,7 @@ export default function LtfAdminLicenseTypesPage() {
       <Modal
         title={editingType ? t("updateLicenseType") : t("createLicenseType")}
         description={t("licenseTypeFormSubtitle")}
-        isOpen={isFormOpen}
+        isOpen={isFormOpen && canManageLicenseTypes}
         onClose={() => setIsFormOpen(false)}
       >
         <form className="grid gap-4" onSubmit={handleSubmit(onSubmit)}>
@@ -216,7 +248,7 @@ export default function LtfAdminLicenseTypesPage() {
       </Modal>
 
       <DeleteConfirmModal
-        isOpen={isDeleteOpen}
+        isOpen={isDeleteOpen && canManageLicenseTypes}
         title={common("deleteTitle", { item: t("licenseTypeLabel") })}
         description={common("deleteDescriptionWithName", {
           name: licenseTypeToDelete?.name ?? "",

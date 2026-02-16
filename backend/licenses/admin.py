@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import License, LicenseHistoryEvent, LicenseType
+from .models import License, LicenseHistoryEvent, LicenseType, LicenseTypePolicy
 
 
 @admin.register(License)
@@ -13,6 +13,17 @@ class LicenseAdmin(admin.ModelAdmin):
 class LicenseTypeAdmin(admin.ModelAdmin):
     list_display = ("name", "code")
     search_fields = ("name", "code")
+
+
+@admin.register(LicenseTypePolicy)
+class LicenseTypePolicyAdmin(admin.ModelAdmin):
+    list_display = (
+        "license_type",
+        "allow_current_year_order",
+        "allow_next_year_preorder",
+        "updated_at",
+    )
+    search_fields = ("license_type__name", "license_type__code")
 
 
 @admin.register(LicenseHistoryEvent)

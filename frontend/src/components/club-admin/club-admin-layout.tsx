@@ -16,12 +16,12 @@ export function ClubAdminLayout({ title, subtitle, children }: ClubAdminLayoutPr
   const locale = pathname?.split("/")[1] || "en";
 
   const navItems = [
-    { href: `/${locale}/dashboard/club`, label: t("navOverview") },
-    { href: `/${locale}/dashboard/club/members`, label: t("navMembers") },
-    { href: `/${locale}/dashboard/club/licenses`, label: t("navLicenses") },
-    { href: `/${locale}/dashboard/club/orders`, label: t("navOrders") },
-    { href: `/${locale}/dashboard/club/invoices`, label: t("navInvoices") },
-    { href: `/${locale}/dashboard/club/settings`, label: t("navSettings") },
+    { href: `/${locale}/dashboard/club`, label: t("navOverview"), matchChildren: false },
+    { href: `/${locale}/dashboard/club/members`, label: t("navMembers"), matchChildren: true },
+    { href: `/${locale}/dashboard/club/licenses`, label: t("navLicenses"), matchChildren: true },
+    { href: `/${locale}/dashboard/club/orders`, label: t("navOrders"), matchChildren: true },
+    { href: `/${locale}/dashboard/club/invoices`, label: t("navInvoices"), matchChildren: true },
+    { href: `/${locale}/dashboard/club/settings`, label: t("navSettings"), matchChildren: true },
   ];
 
   return (
@@ -32,7 +32,9 @@ export function ClubAdminLayout({ title, subtitle, children }: ClubAdminLayoutPr
           {subtitle ? <p className="mt-2 text-sm text-zinc-500">{subtitle}</p> : null}
           <nav className="mt-6 flex flex-wrap gap-2">
             {navItems.map((item) => {
-              const isActive = pathname === item.href;
+              const isActive = item.matchChildren
+                ? pathname === item.href || pathname.startsWith(`${item.href}/`)
+                : pathname === item.href;
               return (
                 <Link
                   key={item.href}

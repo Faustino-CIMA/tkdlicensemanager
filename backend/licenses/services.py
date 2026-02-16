@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from .history import create_license_history_event, log_license_status_change
@@ -20,6 +20,7 @@ def apply_payment_and_activate(
     stripe_data = stripe_data or {}
     payment_details = payment_details or {}
     now = timezone.now()
+    today = timezone.localdate()
     updated_order = False
     updated_invoice = False
     activated_any = False
@@ -28,6 +29,9 @@ def apply_payment_and_activate(
     invoice_status_before = invoice_snapshot.status if invoice_snapshot else None
     license_status_before = {}
     activated_licenses = []
+    deferred_license_ids = []
+    conflict_license_ids = []
+    outside_validity_license_ids = []
 
     with transaction.atomic():
         order_update_fields = []
@@ -80,9 +84,26 @@ def apply_payment_and_activate(
             license_record = item.license
             license_status_before[license_record.id] = license_record.status
             if license_record.status != License.Status.ACTIVE:
+                if license_record.start_date > today:
+                    deferred_license_ids.append(license_record.id)
+                    continue
+                if license_record.end_date < today:
+                    outside_validity_license_ids.append(license_record.id)
+                    continue
+                has_conflict = License.objects.filter(
+                    member=license_record.member,
+                    status=License.Status.ACTIVE,
+                ).exclude(id=license_record.id).exists()
+                if has_conflict:
+                    conflict_license_ids.append(license_record.id)
+                    continue
                 license_record.status = License.Status.ACTIVE
                 license_record.issued_at = now
-                license_record.save(update_fields=["status", "issued_at", "updated_at"])
+                try:
+                    license_record.save(update_fields=["status", "issued_at", "updated_at"])
+                except IntegrityError:
+                    conflict_license_ids.append(license_record.id)
+                    continue
                 activated_any = True
                 activated_license_ids.append(license_record.id)
                 activated_licenses.append((license_record, license_status_before[license_record.id]))
@@ -189,6 +210,9 @@ def apply_payment_and_activate(
                     "invoice_status_before": invoice_status_before,
                     "invoice_status_after": invoice.status if invoice else None,
                     "activated_license_ids": activated_license_ids,
+                    "deferred_license_ids": deferred_license_ids,
+                    "outside_validity_license_ids": outside_validity_license_ids,
+                    "conflict_license_ids": conflict_license_ids,
                     "license_status_before": license_status_before,
                 },
             )

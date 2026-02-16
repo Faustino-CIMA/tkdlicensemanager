@@ -1,17 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
 import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
-import { EntityTable } from "@/components/club-admin/entity-table";
 import { SummaryCard } from "@/components/club-admin/summary-card";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { Modal } from "@/components/ui/modal";
-import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -21,13 +19,26 @@ import {
 } from "@/components/ui/select";
 import {
   Club,
+  FinanceLicenseType,
   FinanceOrder,
   LicensePrice,
-  createLicensePrice,
   getFinanceClubs,
+  getFinanceLicenseTypes,
   getFinanceOrders,
   getLicensePrices,
 } from "@/lib/ltf-finance-api";
+
+function getGroupYear(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return 0;
+  }
+  return parsed.getFullYear();
+}
+
+function getYearKey(clubId: number, year: number) {
+  return `${clubId}:${year}`;
+}
 
 export default function LtfFinanceOrdersPage() {
   const t = useTranslations("LtfFinance");
@@ -36,43 +47,45 @@ export default function LtfFinanceOrdersPage() {
   const router = useRouter();
   const [orders, setOrders] = useState<FinanceOrder[]>([]);
   const [clubs, setClubs] = useState<Club[]>([]);
+  const [licenseTypes, setLicenseTypes] = useState<FinanceLicenseType[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("25");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [priceMessage, setPriceMessage] = useState<string | null>(null);
-  const [priceError, setPriceError] = useState<string | null>(null);
   const [prices, setPrices] = useState<LicensePrice[]>([]);
-  const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
-  const [priceAmount, setPriceAmount] = useState("");
-  const [priceEffectiveFrom, setPriceEffectiveFrom] = useState("");
-  const [isSavingPrice, setIsSavingPrice] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [expandedClubIds, setExpandedClubIds] = useState<number[]>([]);
+  const [expandedYearKeys, setExpandedYearKeys] = useState<string[]>([]);
+  const [expandedStateHydrated, setExpandedStateHydrated] = useState(false);
 
   const pageSizeOptions = ["25", "50", "100", "150", "200", "all"];
+  const expandedClubStorageKey = "ltf_finance_orders_expanded_clubs";
+  const expandedYearStorageKey = "ltf_finance_orders_expanded_years";
 
-  const loadOrders = async () => {
+  const loadOrders = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const [ordersResponse, pricesResponse, clubsResponse] = await Promise.all([
+      const [ordersResponse, pricesResponse, clubsResponse, licenseTypesResponse] = await Promise.all([
         getFinanceOrders(),
         getLicensePrices(),
         getFinanceClubs(),
+        getFinanceLicenseTypes(),
       ]);
       setOrders(ordersResponse);
       setPrices(pricesResponse);
       setClubs(clubsResponse);
+      setLicenseTypes(licenseTypesResponse);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : t("ordersLoadError"));
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [t]);
 
   useEffect(() => {
     loadOrders();
-  }, []);
+  }, [loadOrders]);
 
   const clubNameById = useMemo(() => {
     return clubs.reduce<Record<number, string>>((acc, club) => {
@@ -85,7 +98,7 @@ export default function LtfFinanceOrdersPage() {
     return order.items.reduce((sum, item) => sum + item.quantity, 0);
   };
 
-  const getOrderStatusMeta = (status: string) => {
+  const getOrderStatusMeta = useCallback((status: string) => {
     switch (status) {
       case "draft":
       case "pending":
@@ -98,7 +111,7 @@ export default function LtfFinanceOrdersPage() {
       default:
         return { label: t("orderStatusReceived"), tone: "neutral" as const, bucket: "received" };
     }
-  };
+  }, [t]);
 
   const searchedOrders = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -119,51 +132,11 @@ export default function LtfFinanceOrdersPage() {
         totalText.includes(normalizedQuery)
       );
     });
-  }, [orders, searchQuery, clubNameById]);
-
-  const resolvedPageSize =
-    pageSize === "all" ? Math.max(searchedOrders.length, 1) : Number(pageSize);
-  const totalPages = Math.max(1, Math.ceil(searchedOrders.length / resolvedPageSize));
-  const pagedOrders = useMemo(() => {
-    const startIndex = (currentPage - 1) * resolvedPageSize;
-    return searchedOrders.slice(startIndex, startIndex + resolvedPageSize);
-  }, [currentPage, searchedOrders, resolvedPageSize]);
+  }, [orders, searchQuery, clubNameById, getOrderStatusMeta]);
 
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, pageSize]);
-
-  const currentPrice = useMemo(() => {
-    if (prices.length === 0) {
-      return null;
-    }
-    const sorted = [...prices].sort((a, b) => b.effective_from.localeCompare(a.effective_from));
-    return sorted[0];
-  }, [prices]);
-
-  const handleSavePrice = async () => {
-    setPriceError(null);
-    setPriceMessage(null);
-    setIsSavingPrice(true);
-    try {
-      const effectiveFrom =
-        priceEffectiveFrom || new Date().toISOString().slice(0, 10);
-      await createLicensePrice({
-        amount: priceAmount,
-        currency: currentPrice?.currency ?? "EUR",
-        effective_from: effectiveFrom,
-      });
-      setPriceAmount("");
-      setPriceEffectiveFrom("");
-      setIsPriceModalOpen(false);
-      setPriceMessage(t("priceSaved"));
-      await loadOrders();
-    } catch (error) {
-      setPriceError(error instanceof Error ? error.message : t("priceSaveError"));
-    } finally {
-      setIsSavingPrice(false);
-    }
-  };
 
   const orderCounts = useMemo(() => {
     return orders.reduce<Record<string, number>>((acc, order) => {
@@ -171,43 +144,210 @@ export default function LtfFinanceOrdersPage() {
       acc[bucket] = (acc[bucket] || 0) + 1;
       return acc;
     }, {});
-  }, [orders]);
+  }, [orders, getOrderStatusMeta]);
 
-  const columns = [
-    { key: "order_number", header: t("orderNumberLabel") },
-    {
-      key: "status",
-      header: t("statusLabel"),
-      render: (row: FinanceOrder) => {
-        const meta = getOrderStatusMeta(row.status);
-        return <StatusBadge label={meta.label} tone={meta.tone} />;
-      },
-    },
-    {
-      key: "club",
-      header: t("clubLabel"),
-      render: (row: FinanceOrder) => clubNameById[row.club] ?? String(row.club),
-    },
-    {
-      key: "quantity",
-      header: common("qtyLabel"),
-      render: (row: FinanceOrder) => getOrderQuantity(row),
-    },
-    {
-      key: "total",
-      header: t("totalLabel"),
-      render: (row: FinanceOrder) => `${row.total} ${row.currency}`,
-    },
-    {
-      key: "created_at",
-      header: t("createdAtLabel"),
-      render: (row: FinanceOrder) => new Date(row.created_at).toLocaleString(),
-    },
-  ];
+  const latestPriceByLicenseType = useMemo(() => {
+    const sorted = [...prices].sort((left, right) => {
+      const byEffective = right.effective_from.localeCompare(left.effective_from);
+      if (byEffective !== 0) {
+        return byEffective;
+      }
+      return right.created_at.localeCompare(left.created_at);
+    });
+    return sorted.reduce<Record<number, LicensePrice>>((accumulator, price) => {
+      if (!accumulator[price.license_type]) {
+        accumulator[price.license_type] = price;
+      }
+      return accumulator;
+    }, {});
+  }, [prices]);
+
+  const priceCardRows = useMemo(() => {
+    return [...licenseTypes]
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .map((licenseType) => {
+        const latestPrice = latestPriceByLicenseType[licenseType.id];
+        return {
+          id: licenseType.id,
+          name: licenseType.name,
+          price: latestPrice ? `${latestPrice.amount} ${latestPrice.currency}` : t("noPriceLabel"),
+          effectiveFrom: latestPrice
+            ? t("priceEffectiveFrom", { date: latestPrice.effective_from })
+            : null,
+        };
+      });
+  }, [licenseTypes, latestPriceByLicenseType, t]);
+
+  const groupedClubRows = useMemo(() => {
+    const grouped = new Map<
+      number,
+      {
+        clubName: string;
+        yearsMap: Map<number, FinanceOrder[]>;
+      }
+    >();
+
+    for (const order of searchedOrders) {
+      const year = getGroupYear(order.created_at);
+      const clubName = clubNameById[order.club] ?? String(order.club);
+      const clubEntry = grouped.get(order.club);
+      if (!clubEntry) {
+        grouped.set(order.club, {
+          clubName,
+          yearsMap: new Map([[year, [order]]]),
+        });
+        continue;
+      }
+      const yearEntry = clubEntry.yearsMap.get(year);
+      if (yearEntry) {
+        yearEntry.push(order);
+      } else {
+        clubEntry.yearsMap.set(year, [order]);
+      }
+    }
+
+    return Array.from(grouped.entries())
+      .map(([clubId, clubEntry]) => {
+        const years = Array.from(clubEntry.yearsMap.entries())
+          .map(([year, yearOrders]) => {
+            const ordersForYear = [...yearOrders].sort((left, right) =>
+              right.created_at.localeCompare(left.created_at)
+            );
+            const counts = ordersForYear.reduce(
+              (acc, order) => {
+                const bucket = getOrderStatusMeta(order.status).bucket;
+                if (bucket === "received") {
+                  acc.receivedCount += 1;
+                } else if (bucket === "delivered") {
+                  acc.deliveredCount += 1;
+                } else {
+                  acc.cancelledCount += 1;
+                }
+                return acc;
+              },
+              { receivedCount: 0, deliveredCount: 0, cancelledCount: 0 }
+            );
+            return {
+              year,
+              orders: ordersForYear,
+              total: ordersForYear.length,
+              ...counts,
+            };
+          })
+          .sort((left, right) => right.year - left.year);
+
+        const total = years.reduce((sum, year) => sum + year.total, 0);
+        const receivedCount = years.reduce((sum, year) => sum + year.receivedCount, 0);
+        const deliveredCount = years.reduce((sum, year) => sum + year.deliveredCount, 0);
+        const cancelledCount = years.reduce((sum, year) => sum + year.cancelledCount, 0);
+
+        return {
+          clubId,
+          clubName: clubEntry.clubName,
+          years,
+          total,
+          receivedCount,
+          deliveredCount,
+          cancelledCount,
+        };
+      })
+      .sort((left, right) => left.clubName.localeCompare(right.clubName));
+  }, [clubNameById, searchedOrders, getOrderStatusMeta]);
+
+  const resolvedPageSize =
+    pageSize === "all" ? Math.max(groupedClubRows.length, 1) : Number(pageSize);
+  const totalPages = Math.max(1, Math.ceil(groupedClubRows.length / resolvedPageSize));
+  const pagedClubRows = useMemo(() => {
+    const startIndex = (currentPage - 1) * resolvedPageSize;
+    return groupedClubRows.slice(startIndex, startIndex + resolvedPageSize);
+  }, [currentPage, groupedClubRows, resolvedPageSize]);
+
+  useEffect(() => {
+    const validClubIds = new Set(groupedClubRows.map((clubGroup) => clubGroup.clubId));
+    setExpandedClubIds((previous) => previous.filter((clubId) => validClubIds.has(clubId)));
+    const validYearKeys = new Set(
+      groupedClubRows.flatMap((clubGroup) =>
+        clubGroup.years.map((yearGroup) => getYearKey(clubGroup.clubId, yearGroup.year))
+      )
+    );
+    setExpandedYearKeys((previous) => previous.filter((yearKey) => validYearKeys.has(yearKey)));
+  }, [groupedClubRows]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      setExpandedStateHydrated(true);
+      return;
+    }
+    try {
+      const storedClubIds = window.localStorage.getItem(expandedClubStorageKey);
+      const storedYearKeys = window.localStorage.getItem(expandedYearStorageKey);
+      if (storedClubIds) {
+        const parsed = JSON.parse(storedClubIds);
+        if (Array.isArray(parsed)) {
+          setExpandedClubIds(
+            parsed
+              .map((value) => Number(value))
+              .filter((value) => Number.isInteger(value) && value > 0)
+          );
+        }
+      }
+      if (storedYearKeys) {
+        const parsed = JSON.parse(storedYearKeys);
+        if (Array.isArray(parsed)) {
+          setExpandedYearKeys(parsed.filter((value) => typeof value === "string"));
+        }
+      }
+    } catch {
+      setExpandedClubIds([]);
+      setExpandedYearKeys([]);
+    } finally {
+      setExpandedStateHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!expandedStateHydrated || typeof window === "undefined") {
+      return;
+    }
+    if (expandedClubIds.length > 0) {
+      window.localStorage.setItem(expandedClubStorageKey, JSON.stringify(expandedClubIds));
+    } else {
+      window.localStorage.removeItem(expandedClubStorageKey);
+    }
+    if (expandedYearKeys.length > 0) {
+      window.localStorage.setItem(expandedYearStorageKey, JSON.stringify(expandedYearKeys));
+    } else {
+      window.localStorage.removeItem(expandedYearStorageKey);
+    }
+  }, [
+    expandedClubIds,
+    expandedYearKeys,
+    expandedStateHydrated,
+    expandedClubStorageKey,
+    expandedYearStorageKey,
+  ]);
+
+  const expandedClubSet = useMemo(() => new Set(expandedClubIds), [expandedClubIds]);
+  const expandedYearSet = useMemo(() => new Set(expandedYearKeys), [expandedYearKeys]);
+
+  const toggleClubExpanded = (clubId: number) => {
+    setExpandedClubIds((previous) =>
+      previous.includes(clubId)
+        ? previous.filter((id) => id !== clubId)
+        : [...previous, clubId]
+    );
+  };
+
+  const toggleYearExpanded = (clubId: number, year: number) => {
+    const key = getYearKey(clubId, year);
+    setExpandedYearKeys((previous) =>
+      previous.includes(key) ? previous.filter((id) => id !== key) : [...previous, key]
+    );
+  };
 
   return (
     <LtfFinanceLayout title={t("ordersTitle")} subtitle={t("ordersSubtitle")}>
-      <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
           title={t("ordersReceivedCountLabel")}
           value={String(orderCounts.received ?? 0)}
@@ -220,52 +360,29 @@ export default function LtfFinanceOrdersPage() {
           title={t("ordersCancelledCountLabel")}
           value={String(orderCounts.cancelled ?? 0)}
         />
-        <SummaryCard
-          title={t("licensePriceLabel")}
-          value={
-            currentPrice ? `${currentPrice.amount} ${currentPrice.currency}` : t("noPriceLabel")
-          }
-          helper={
-            currentPrice
-              ? t("priceEffectiveFrom", { date: currentPrice.effective_from })
-              : undefined
-          }
-        />
-      </section>
-
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-zinc-900">{t("priceHistoryTitle")}</h2>
-          <Button variant="outline" onClick={() => setIsPriceModalOpen(true)}>
-            {t("updatePriceButton")}
-          </Button>
+        <div className="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
+          <p className="text-sm text-zinc-500">{t("licensePriceLabel")}</p>
+          <div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1">
+            {priceCardRows.length === 0 ? (
+              <p className="text-sm text-zinc-600">{t("noLicenseTypesSubtitle")}</p>
+            ) : (
+              priceCardRows.map((row) => (
+                <div
+                  key={row.id}
+                  className="flex items-start justify-between gap-3 rounded-lg border border-zinc-100 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-zinc-900">{row.name}</p>
+                    {row.effectiveFrom ? (
+                      <p className="text-xs text-zinc-500">{row.effectiveFrom}</p>
+                    ) : null}
+                  </div>
+                  <p className="shrink-0 text-sm font-semibold text-zinc-900">{row.price}</p>
+                </div>
+              ))
+            )}
+          </div>
         </div>
-        {prices.length === 0 ? (
-          <EmptyState title={t("priceHistoryEmptyTitle")} description={t("priceHistoryEmptySubtitle")} />
-        ) : (
-          <EntityTable
-            columns={[
-              {
-                key: "effective_from",
-                header: t("priceEffectiveFromLabel"),
-                render: (row: LicensePrice) => new Date(row.effective_from).toLocaleDateString(),
-              },
-              { key: "amount", header: t("priceAmountLabel") },
-              { key: "currency", header: t("priceCurrencyLabel") },
-              {
-                key: "created_by",
-                header: t("priceCreatedByLabel"),
-                render: (row: LicensePrice) => row.created_by ?? "-",
-              },
-              {
-                key: "created_at",
-                header: t("priceCreatedAtLabel"),
-                render: (row: LicensePrice) => new Date(row.created_at).toLocaleDateString(),
-              },
-            ]}
-            rows={prices}
-          />
-        )}
       </section>
 
       <section className="flex flex-wrap items-center justify-between gap-3">
@@ -294,17 +411,166 @@ export default function LtfFinanceOrdersPage() {
 
       {isLoading ? (
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
-      ) : searchedOrders.length === 0 ? (
+      ) : groupedClubRows.length === 0 ? (
         <EmptyState title={t("noOrdersTitle")} description={t("noOrdersSubtitle")} />
       ) : (
-        <>
-          <EntityTable
-            columns={columns}
-            rows={pagedOrders}
-            onRowClick={(row) => {
-              router.push(`/${locale}/dashboard/ltf-finance/orders/${row.id}`);
-            }}
-          />
+        <div className="space-y-3">
+          <div className="overflow-x-auto rounded-2xl border border-zinc-100 bg-white shadow-sm">
+            <table className="min-w-full text-left text-sm">
+              <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+                <tr>
+                  <th className="w-10 px-4 py-3 font-medium" />
+                  <th className="px-4 py-3 font-medium">{t("clubLabel")}</th>
+                  <th className="px-4 py-3 font-medium">{t("totalLabel")}</th>
+                  <th className="px-4 py-3 font-medium">{t("ordersReceivedCountLabel")}</th>
+                  <th className="px-4 py-3 font-medium">{t("ordersDeliveredCountLabel")}</th>
+                  <th className="px-4 py-3 font-medium">{t("ordersCancelledCountLabel")}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {pagedClubRows.map((clubGroup) => {
+                  const clubExpanded = expandedClubSet.has(clubGroup.clubId);
+                  return (
+                    <Fragment key={clubGroup.clubId}>
+                      <tr
+                        className="cursor-pointer text-zinc-700 hover:bg-zinc-50"
+                        onClick={() => toggleClubExpanded(clubGroup.clubId)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            toggleClubExpanded(clubGroup.clubId);
+                          }
+                        }}
+                        tabIndex={0}
+                        role="button"
+                        aria-expanded={clubExpanded}
+                      >
+                        <td className="px-4 py-3 text-zinc-500">
+                          {clubExpanded ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </td>
+                        <td className="px-4 py-3 font-medium">{clubGroup.clubName}</td>
+                        <td className="px-4 py-3">{clubGroup.total}</td>
+                        <td className="px-4 py-3">{clubGroup.receivedCount}</td>
+                        <td className="px-4 py-3">{clubGroup.deliveredCount}</td>
+                        <td className="px-4 py-3">{clubGroup.cancelledCount}</td>
+                      </tr>
+                      {clubExpanded ? (
+                        <tr className="bg-zinc-50/60">
+                          <td colSpan={6} className="px-6 py-3">
+                            <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+                              <table className="min-w-full text-left text-sm">
+                                <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+                                  <tr>
+                                    <th className="w-10 px-4 py-2 font-medium" />
+                                    <th className="px-4 py-2 font-medium">{t("yearLabel")}</th>
+                                    <th className="px-4 py-2 font-medium">{t("totalLabel")}</th>
+                                    <th className="px-4 py-2 font-medium">{t("ordersReceivedCountLabel")}</th>
+                                    <th className="px-4 py-2 font-medium">{t("ordersDeliveredCountLabel")}</th>
+                                    <th className="px-4 py-2 font-medium">{t("ordersCancelledCountLabel")}</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-zinc-100">
+                                  {clubGroup.years.map((yearGroup) => {
+                                    const yearKey = getYearKey(clubGroup.clubId, yearGroup.year);
+                                    const yearExpanded = expandedYearSet.has(yearKey);
+                                    return (
+                                      <Fragment key={yearKey}>
+                                        <tr
+                                          className="cursor-pointer text-zinc-700 hover:bg-zinc-50"
+                                          onClick={() => toggleYearExpanded(clubGroup.clubId, yearGroup.year)}
+                                          onKeyDown={(event) => {
+                                            if (event.key === "Enter" || event.key === " ") {
+                                              event.preventDefault();
+                                              toggleYearExpanded(clubGroup.clubId, yearGroup.year);
+                                            }
+                                          }}
+                                          tabIndex={0}
+                                          role="button"
+                                          aria-expanded={yearExpanded}
+                                        >
+                                          <td className="px-4 py-2 text-zinc-500">
+                                            {yearExpanded ? (
+                                              <ChevronDown className="h-4 w-4" />
+                                            ) : (
+                                              <ChevronRight className="h-4 w-4" />
+                                            )}
+                                          </td>
+                                          <td className="px-4 py-2 font-medium">
+                                            {yearGroup.year > 0 ? yearGroup.year : "—"}
+                                          </td>
+                                          <td className="px-4 py-2">{yearGroup.total}</td>
+                                          <td className="px-4 py-2">{yearGroup.receivedCount}</td>
+                                          <td className="px-4 py-2">{yearGroup.deliveredCount}</td>
+                                          <td className="px-4 py-2">{yearGroup.cancelledCount}</td>
+                                        </tr>
+                                        {yearExpanded ? (
+                                          <tr className="bg-zinc-50/50">
+                                            <td colSpan={6} className="px-6 py-3">
+                                              <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
+                                                <table className="min-w-full text-left text-sm">
+                                                  <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+                                                    <tr>
+                                                      <th className="px-4 py-2 font-medium">{t("orderNumberLabel")}</th>
+                                                      <th className="px-4 py-2 font-medium">{t("statusLabel")}</th>
+                                                      <th className="px-4 py-2 font-medium">{common("qtyLabel")}</th>
+                                                      <th className="px-4 py-2 font-medium">{t("totalLabel")}</th>
+                                                      <th className="px-4 py-2 font-medium">{t("createdAtLabel")}</th>
+                                                    </tr>
+                                                  </thead>
+                                                  <tbody className="divide-y divide-zinc-100">
+                                                    {yearGroup.orders.map((order) => {
+                                                      const meta = getOrderStatusMeta(order.status);
+                                                      return (
+                                                        <tr
+                                                          key={order.id}
+                                                          className="cursor-pointer text-zinc-700 hover:bg-zinc-50"
+                                                          onClick={() => {
+                                                            router.push(
+                                                              `/${locale}/dashboard/ltf-finance/orders/${order.id}`
+                                                            );
+                                                          }}
+                                                        >
+                                                          <td className="px-4 py-2 font-medium">
+                                                            {order.order_number}
+                                                          </td>
+                                                          <td className="px-4 py-2">
+                                                            <StatusBadge label={meta.label} tone={meta.tone} />
+                                                          </td>
+                                                          <td className="px-4 py-2">{getOrderQuantity(order)}</td>
+                                                          <td className="px-4 py-2">
+                                                            {`${order.total} ${order.currency}`}
+                                                          </td>
+                                                          <td className="px-4 py-2">
+                                                            {new Date(order.created_at).toLocaleString()}
+                                                          </td>
+                                                        </tr>
+                                                      );
+                                                    })}
+                                                  </tbody>
+                                                </table>
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        ) : null}
+                                      </Fragment>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-600">
             <span>{t("pageLabel", { current: currentPage, total: totalPages })}</span>
             <div className="flex gap-2">
@@ -324,50 +590,10 @@ export default function LtfFinanceOrdersPage() {
               </button>
             </div>
           </div>
-        </>
+        </div>
       )}
 
       {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
-      {priceError ? <p className="text-sm text-red-600">{priceError}</p> : null}
-      {priceMessage ? <p className="text-sm text-emerald-600">{priceMessage}</p> : null}
-
-      <Modal
-        title={t("priceModalTitle")}
-        description={t("priceModalSubtitle")}
-        isOpen={isPriceModalOpen}
-        onClose={() => setIsPriceModalOpen(false)}
-      >
-        <div className="grid gap-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("priceAmountLabel")}</label>
-            <Input
-              type="number"
-              step="0.01"
-              value={priceAmount}
-              onChange={(event) => setPriceAmount(event.target.value)}
-              placeholder="30.00"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">
-              {t("priceEffectiveFromLabel")}
-            </label>
-            <Input
-              type="date"
-              value={priceEffectiveFrom}
-              onChange={(event) => setPriceEffectiveFrom(event.target.value)}
-            />
-          </div>
-          <div className="flex items-center gap-3">
-            <Button onClick={handleSavePrice} disabled={isSavingPrice || !priceAmount}>
-              {isSavingPrice ? t("priceSaving") : t("priceSaveButton")}
-            </Button>
-            <Button variant="outline" onClick={() => setIsPriceModalOpen(false)}>
-              {t("priceCancelButton")}
-            </Button>
-          </div>
-        </div>
-      </Modal>
     </LtfFinanceLayout>
   );
 }

@@ -61,6 +61,7 @@ export function getPayconiqPaymentStatus(paymentId: number) {
 
 type ClubOrderBatchInput = {
   club: number;
+  license_type?: number;
   member_ids: number[];
   year: number;
   quantity?: number;

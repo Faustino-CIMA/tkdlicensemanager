@@ -6,6 +6,7 @@ from uuid import uuid4
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
 from .fields import EncryptedCharField
@@ -31,8 +32,43 @@ class LicenseType(models.Model):
         return str(self.name)
 
 
+class LicenseTypePolicy(models.Model):
+    license_type = models.OneToOneField(
+        LicenseType, on_delete=models.CASCADE, related_name="policy"
+    )
+    allow_current_year_order = models.BooleanField(default=True)
+    current_start_month = models.PositiveSmallIntegerField(default=1)
+    current_start_day = models.PositiveSmallIntegerField(default=1)
+    current_end_month = models.PositiveSmallIntegerField(default=12)
+    current_end_day = models.PositiveSmallIntegerField(default=31)
+    allow_next_year_preorder = models.BooleanField(default=False)
+    next_start_month = models.PositiveSmallIntegerField(default=12)
+    next_start_day = models.PositiveSmallIntegerField(default=1)
+    next_end_month = models.PositiveSmallIntegerField(default=12)
+    next_end_day = models.PositiveSmallIntegerField(default=31)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"{self.license_type.name} policy"
+
+
+def get_default_license_type():
+    license_type, _ = LicenseType.objects.get_or_create(  # type: ignore[attr-defined]
+        code="paid",
+        defaults={"name": "Paid"},
+    )
+    return license_type.pk
+
+
 class LicensePrice(models.Model):
     objects = models.Manager()
+    license_type = models.ForeignKey(
+        LicenseType,
+        on_delete=models.PROTECT,
+        related_name="prices",
+        default=get_default_license_type,
+    )
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     currency = models.CharField(max_length=3, default="EUR")
     effective_from = models.DateField(default=timezone.localdate)
@@ -49,24 +85,18 @@ class LicensePrice(models.Model):
         ordering = ["-effective_from", "-created_at"]
 
     def __str__(self) -> str:
-        return f"{self.amount} {self.currency} ({self.effective_from})"
+        return f"{self.license_type.name}: {self.amount} {self.currency} ({self.effective_from})"
 
     @classmethod
-    def get_active_price(cls, as_of=None):
+    def get_active_price(cls, *, license_type: LicenseType | None = None, as_of=None):
         date_value = as_of or timezone.localdate()
+        if license_type is None:
+            license_type = LicenseType.objects.get(pk=get_default_license_type())
         return (
-            cls.objects.filter(effective_from__lte=date_value)
+            cls.objects.filter(license_type=license_type, effective_from__lte=date_value)
             .order_by("-effective_from", "-created_at")
             .first()
         )
-
-
-def get_default_license_type():
-    license_type, _ = LicenseType.objects.get_or_create(  # type: ignore[attr-defined]
-        code="paid",
-        defaults={"name": "Paid"},
-    )
-    return license_type.pk
 
 
 def generate_order_number() -> str:
@@ -100,6 +130,15 @@ class License(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     history = HistoricalRecords()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["member"],
+                condition=Q(status="active"),
+                name="unique_active_license_per_member",
+            )
+        ]
 
     def save(self, *args, **kwargs):
         if not self.start_date or not self.end_date:

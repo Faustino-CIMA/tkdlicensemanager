@@ -281,6 +281,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "licenses.tasks.reconcile_expired_licenses",
         "schedule": 60 * 60 * 24,
     },
+    "activate-eligible-paid-licenses-hourly": {
+        "task": "licenses.tasks.activate_eligible_paid_licenses",
+        "schedule": 60 * 60,
+    },
 }
 
 STRIPE_SECRET_KEY = config("STRIPE_SECRET_KEY", default="")

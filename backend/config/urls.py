@@ -27,7 +27,7 @@ from imports.views import (
     MemberImportConfirmView,
     MemberImportPreviewView,
 )
-from clubs.views import ClubViewSet
+from clubs.views import ClubViewSet, FederationProfileView
 from licenses.views import (
     ClubInvoiceViewSet,
     ClubOrderViewSet,
@@ -37,6 +37,8 @@ from licenses.views import (
     LicensePriceViewSet,
     LicenseTypeViewSet,
     LicenseViewSet,
+    LtfAdminOverviewView,
+    LtfFinanceOverviewView,
     OrderViewSet,
     PayconiqPaymentViewSet,
     PaymentViewSet,
@@ -96,7 +98,14 @@ urlpatterns = [
     path("api/imports/clubs/confirm/", ClubImportConfirmView.as_view(), name="import-clubs-confirm"),
     path("api/imports/members/preview/", MemberImportPreviewView.as_view(), name="import-members-preview"),
     path("api/imports/members/confirm/", MemberImportConfirmView.as_view(), name="import-members-confirm"),
+    path("api/federation-profile/", FederationProfileView.as_view(), name="federation-profile"),
     path("api/health/", health_check, name="health-check"),
+    path("api/dashboard/overview/ltf-admin/", LtfAdminOverviewView.as_view(), name="overview-ltf-admin"),
+    path(
+        "api/dashboard/overview/ltf-finance/",
+        LtfFinanceOverviewView.as_view(),
+        name="overview-ltf-finance",
+    ),
     path("api/stripe/webhook/", StripeWebhookView.as_view(), name="stripe-webhook"),
     path("api/invoices/<int:invoice_id>/pdf/", InvoicePdfView.as_view(), name="invoice-pdf"),
     path("api/", include(router.urls)),

@@ -27,12 +27,22 @@ import {
   promoteMemberGrade,
   updateMember,
 } from "@/lib/club-admin-api";
+import { apiRequest } from "@/lib/api";
 
 type TabKey = "overview" | "history";
 type MemberDetailQueryUpdates = {
   tab?: TabKey | null;
   edit?: "1" | null;
 };
+
+const LICENSE_ROLE_VALUES = [
+  "athlete",
+  "coach",
+  "referee",
+  "official",
+  "doctor",
+  "physiotherapist",
+] as const;
 
 const memberSchema = z.object({
   first_name: z.string().trim().min(1, "First name is required."),
@@ -43,10 +53,13 @@ const memberSchema = z.object({
   ltf_licenseid: z.string().max(20, "LTF license ID must be at most 20 characters."),
   date_of_birth: z.string(),
   belt_rank: z.string().max(50, "Belt rank must be at most 50 characters."),
+  primary_license_role: z.enum(LICENSE_ROLE_VALUES).or(z.literal("")).optional(),
+  secondary_license_role: z.enum(LICENSE_ROLE_VALUES).or(z.literal("")).optional(),
   is_active: z.boolean(),
 });
 
 type MemberFormValues = z.infer<typeof memberSchema>;
+type AuthMeResponse = { role: string };
 
 export default function ClubMemberDetailPage() {
   const t = useTranslations("ClubAdmin");
@@ -64,6 +77,7 @@ export default function ClubMemberDetailPage() {
   const [history, setHistory] = useState<MemberHistoryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [currentRole, setCurrentRole] = useState<string | null>(null);
 
   const {
     register,
@@ -83,9 +97,22 @@ export default function ClubMemberDetailPage() {
       ltf_licenseid: "",
       date_of_birth: "",
       belt_rank: "",
+      primary_license_role: "",
+      secondary_license_role: "",
       is_active: true,
     },
   });
+  const roleLabelByValue = useMemo(
+    () => ({
+      athlete: t("licenseRoleAthlete"),
+      coach: t("licenseRoleCoach"),
+      referee: t("licenseRoleReferee"),
+      official: t("licenseRoleOfficial"),
+      doctor: t("licenseRoleDoctor"),
+      physiotherapist: t("licenseRolePhysiotherapist"),
+    }),
+    [t]
+  );
 
   const tabItems = useMemo(
     () => [
@@ -171,6 +198,30 @@ export default function ClubMemberDetailPage() {
   }, [loadMember]);
 
   useEffect(() => {
+    let isMounted = true;
+    const loadCurrentUserRole = async () => {
+      try {
+        const me = await apiRequest<AuthMeResponse>("/api/auth/me/");
+        if (isMounted) {
+          setCurrentRole(me.role);
+        }
+      } catch {
+        if (isMounted) {
+          setCurrentRole(null);
+        }
+      }
+    };
+    loadCurrentUserRole();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const isCoach = currentRole === "coach";
+  const canManageMemberFull = currentRole === "club_admin";
+  const canEditMember = canManageMemberFull || isCoach;
+
+  useEffect(() => {
     if (!searchParams.get("tab")) {
       updateDetailQuery({ tab: "overview" });
     }
@@ -189,11 +240,16 @@ export default function ClubMemberDetailPage() {
       ltf_licenseid: member.ltf_licenseid ?? "",
       date_of_birth: member.date_of_birth ?? "",
       belt_rank: member.belt_rank ?? "",
+      primary_license_role: member.primary_license_role ?? "",
+      secondary_license_role: member.secondary_license_role ?? "",
       is_active: member.is_active,
     });
   }, [member, reset]);
 
   const onEdit = () => {
+    if (!canEditMember) {
+      return;
+    }
     updateDetailQuery({ tab: "overview", edit: "1" });
   };
 
@@ -209,6 +265,8 @@ export default function ClubMemberDetailPage() {
         ltf_licenseid: member.ltf_licenseid ?? "",
         date_of_birth: member.date_of_birth ?? "",
         belt_rank: member.belt_rank ?? "",
+        primary_license_role: member.primary_license_role ?? "",
+        secondary_license_role: member.secondary_license_role ?? "",
         is_active: member.is_active,
       });
     }
@@ -220,18 +278,26 @@ export default function ClubMemberDetailPage() {
     }
     setErrorMessage(null);
     try {
-      await updateMember(member.id, {
-        club: member.club,
-        first_name: values.first_name.trim(),
-        last_name: values.last_name.trim(),
-        sex: values.sex,
-        email: values.email.trim(),
-        wt_licenseid: values.wt_licenseid.trim(),
-        ltf_licenseid: values.ltf_licenseid.trim(),
-        date_of_birth: values.date_of_birth ? values.date_of_birth : null,
-        belt_rank: values.belt_rank.trim(),
-        is_active: values.is_active,
-      });
+      if (isCoach) {
+        await updateMember(member.id, {
+          belt_rank: values.belt_rank.trim(),
+        });
+      } else {
+        await updateMember(member.id, {
+          club: member.club,
+          first_name: values.first_name.trim(),
+          last_name: values.last_name.trim(),
+          sex: values.sex,
+          email: values.email.trim(),
+          wt_licenseid: values.wt_licenseid.trim(),
+          ltf_licenseid: values.ltf_licenseid.trim(),
+          date_of_birth: values.date_of_birth ? values.date_of_birth : null,
+          belt_rank: values.belt_rank.trim(),
+          primary_license_role: values.primary_license_role ?? "",
+          secondary_license_role: values.secondary_license_role ?? "",
+          is_active: values.is_active,
+        });
+      }
       updateDetailQuery({ tab: "overview", edit: null });
       await loadMember();
     } catch (error) {
@@ -284,11 +350,11 @@ export default function ClubMemberDetailPage() {
                 <Button variant="outline" size="sm" onClick={onCancelEdit}>
                   {t("cancelEdit")}
                 </Button>
-              ) : (
+              ) : canEditMember ? (
                 <Button variant="outline" size="sm" onClick={onEdit}>
                   {t("editAction")}
                 </Button>
-              )}
+              ) : null}
             </div>
             <div className="mt-4">
               <ProfilePhotoManager
@@ -318,12 +384,20 @@ export default function ClubMemberDetailPage() {
                   emptyPhotoLabel: t("photoEmptyLabel"),
                   removeBackgroundUnsupported: t("photoUnsupportedError"),
                 }}
-                onDelete={async () => {
-                  await deleteMemberProfilePicture(member.id);
-                  await loadMember();
-                }}
+                onDelete={
+                  canManageMemberFull
+                    ? async () => {
+                        await deleteMemberProfilePicture(member.id);
+                        await loadMember();
+                      }
+                    : undefined
+                }
                 onDownload={handlePhotoDownload}
-                onEdit={() => router.push(`/${locale}/dashboard/club/members/${member.id}/photo`)}
+                onEdit={
+                  canManageMemberFull
+                    ? () => router.push(`/${locale}/dashboard/club/members/${member.id}/photo`)
+                    : undefined
+                }
               />
             </div>
             {isEditing ? (
@@ -333,7 +407,12 @@ export default function ClubMemberDetailPage() {
               >
                 <div className="space-y-2">
                   <Label htmlFor="member-first-name">{t("firstNameLabel")}</Label>
-                  <Input id="member-first-name" placeholder="Jane" {...register("first_name")} />
+                  <Input
+                    id="member-first-name"
+                    placeholder="Jane"
+                    disabled={isCoach}
+                    {...register("first_name")}
+                  />
                   {errors.first_name ? (
                     <p className="text-sm text-red-600">{errors.first_name.message}</p>
                   ) : null}
@@ -341,7 +420,12 @@ export default function ClubMemberDetailPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="member-last-name">{t("lastNameLabel")}</Label>
-                  <Input id="member-last-name" placeholder="Doe" {...register("last_name")} />
+                  <Input
+                    id="member-last-name"
+                    placeholder="Doe"
+                    disabled={isCoach}
+                    {...register("last_name")}
+                  />
                   {errors.last_name ? (
                     <p className="text-sm text-red-600">{errors.last_name.message}</p>
                   ) : null}
@@ -350,6 +434,7 @@ export default function ClubMemberDetailPage() {
                 <div className="space-y-2">
                   <Label>{t("sexLabel")}</Label>
                   <Select
+                    disabled={isCoach}
                     value={watch("sex")}
                     onValueChange={(value) =>
                       setValue("sex", value as "M" | "F", {
@@ -370,13 +455,24 @@ export default function ClubMemberDetailPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="member-email">{t("emailLabel")}</Label>
-                  <Input id="member-email" type="email" placeholder="member@example.com" {...register("email")} />
+                  <Input
+                    id="member-email"
+                    type="email"
+                    placeholder="member@example.com"
+                    disabled={isCoach}
+                    {...register("email")}
+                  />
                   {errors.email ? <p className="text-sm text-red-600">{errors.email.message}</p> : null}
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="member-wt-license">{importT("wtLicenseLabel")}</Label>
-                  <Input id="member-wt-license" placeholder="WT-12345" {...register("wt_licenseid")} />
+                  <Input
+                    id="member-wt-license"
+                    placeholder="WT-12345"
+                    disabled={isCoach}
+                    {...register("wt_licenseid")}
+                  />
                   {errors.wt_licenseid ? (
                     <p className="text-sm text-red-600">{errors.wt_licenseid.message}</p>
                   ) : null}
@@ -384,7 +480,12 @@ export default function ClubMemberDetailPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="member-ltf-license">{t("ltfLicenseLabel")}</Label>
-                  <Input id="member-ltf-license" placeholder="LTF-12345" {...register("ltf_licenseid")} />
+                  <Input
+                    id="member-ltf-license"
+                    placeholder="LTF-12345"
+                    disabled={isCoach}
+                    {...register("ltf_licenseid")}
+                  />
                   {errors.ltf_licenseid ? (
                     <p className="text-sm text-red-600">{errors.ltf_licenseid.message}</p>
                   ) : null}
@@ -392,7 +493,7 @@ export default function ClubMemberDetailPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="member-dob">{t("dobLabel")}</Label>
-                  <Input id="member-dob" type="date" {...register("date_of_birth")} />
+                  <Input id="member-dob" type="date" disabled={isCoach} {...register("date_of_birth")} />
                 </div>
 
                 <div className="space-y-2">
@@ -403,10 +504,75 @@ export default function ClubMemberDetailPage() {
                   ) : null}
                 </div>
 
+                <div className="space-y-2">
+                  <Label>{t("primaryLicenseRoleLabel")}</Label>
+                  <Select
+                    disabled={isCoach}
+                    value={watch("primary_license_role") || "none"}
+                    onValueChange={(value) => {
+                      const nextPrimary = value === "none" ? "" : value;
+                      setValue(
+                        "primary_license_role",
+                        nextPrimary as MemberFormValues["primary_license_role"],
+                        { shouldValidate: true }
+                      );
+                      if (nextPrimary === watch("secondary_license_role")) {
+                        setValue("secondary_license_role", "", { shouldValidate: true });
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={t("primaryLicenseRoleLabel")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">{t("roleNoneOption")}</SelectItem>
+                      {LICENSE_ROLE_VALUES.map((role) => (
+                        <SelectItem key={role} value={role}>
+                          {roleLabelByValue[role]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>{t("secondaryLicenseRoleLabel")}</Label>
+                  <Select
+                    disabled={isCoach || !watch("primary_license_role")}
+                    value={watch("secondary_license_role") || "none"}
+                    onValueChange={(value) =>
+                      setValue(
+                        "secondary_license_role",
+                        (value === "none" ? "" : value) as MemberFormValues["secondary_license_role"],
+                        { shouldValidate: true }
+                      )
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={t("secondaryLicenseRoleLabel")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">{t("roleNoneOption")}</SelectItem>
+                      {LICENSE_ROLE_VALUES.filter((role) => role !== watch("primary_license_role")).map(
+                        (role) => (
+                          <SelectItem key={role} value={role}>
+                            {roleLabelByValue[role]}
+                          </SelectItem>
+                        )
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div className="flex items-center gap-2 md:col-span-2">
                   <Checkbox
                     checked={watch("is_active")}
-                    onCheckedChange={(value) => setValue("is_active", Boolean(value))}
+                    disabled={isCoach}
+                    onCheckedChange={(value) => {
+                      if (!isCoach) {
+                        setValue("is_active", Boolean(value));
+                      }
+                    }}
                     id="member-active"
                   />
                   <Label htmlFor="member-active">{t("isActiveLabel")}</Label>
@@ -456,6 +622,22 @@ export default function ClubMemberDetailPage() {
                 <div className="flex flex-col gap-1">
                   <span className="text-xs text-zinc-500">{t("beltRankLabel")}</span>
                   <span className="font-medium">{member.belt_rank || "-"}</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-zinc-500">{t("primaryLicenseRoleLabel")}</span>
+                  <span className="font-medium">
+                    {member.primary_license_role
+                      ? roleLabelByValue[member.primary_license_role]
+                      : "-"}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-zinc-500">{t("secondaryLicenseRoleLabel")}</span>
+                  <span className="font-medium">
+                    {member.secondary_license_role
+                      ? roleLabelByValue[member.secondary_license_role]
+                      : "-"}
+                  </span>
                 </div>
                 <div className="flex flex-col gap-1">
                   <span className="text-xs text-zinc-500">{t("isActiveLabel")}</span>

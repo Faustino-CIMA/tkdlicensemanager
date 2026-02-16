@@ -6,6 +6,10 @@ export type Club = {
   name: string;
   city: string;
   address: string;
+  address_line1: string;
+  address_line2: string;
+  postal_code: string;
+  locality: string;
   max_admins: number;
   created_by: number;
   admins: number[];
@@ -25,6 +29,8 @@ export type Member = {
   ltf_licenseid: string;
   date_of_birth: string | null;
   belt_rank: string;
+  primary_license_role: LicenseRoleValue | "";
+  secondary_license_role: LicenseRoleValue | "";
   profile_picture_url?: string | null;
   profile_picture_thumbnail_url?: string | null;
   photo_edit_metadata?: Record<string, unknown>;
@@ -118,6 +124,10 @@ export type ClubInput = {
   name: string;
   city?: string;
   address?: string;
+  address_line1?: string;
+  address_line2?: string;
+  postal_code?: string;
+  locality?: string;
 };
 
 export type MemberInput = {
@@ -130,7 +140,28 @@ export type MemberInput = {
   ltf_licenseid?: string;
   date_of_birth?: string | null;
   belt_rank?: string;
+  primary_license_role?: LicenseRoleValue | "";
+  secondary_license_role?: LicenseRoleValue | "";
   is_active?: boolean;
+};
+
+export type LicenseRoleValue =
+  | "athlete"
+  | "coach"
+  | "referee"
+  | "official"
+  | "doctor"
+  | "physiotherapist";
+
+export type FederationProfile = {
+  id: number;
+  name: string;
+  address_line1: string;
+  address_line2: string;
+  postal_code: string;
+  locality: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export type LicenseInput = {
@@ -149,12 +180,81 @@ export type LicenseType = {
   updated_at: string;
 };
 
+export type OverviewLink = {
+  label_key: string;
+  path: string;
+};
+
+export type LtfAdminOverviewResponse = {
+  meta: {
+    version: "1.0";
+    role: "ltf_admin";
+    generated_at: string;
+    period: {
+      today: string;
+      month_start: string;
+      month_end: string;
+      expiring_window_days: number;
+    };
+  };
+  cards: {
+    total_clubs: number;
+    active_members: number;
+    active_licenses: number;
+    pending_licenses: number;
+    expired_licenses: number;
+    revoked_licenses: number;
+    expiring_in_30_days: number;
+    active_members_without_valid_license: number;
+  };
+  action_queue: Array<{
+    key:
+      | "clubs_without_admin"
+      | "members_missing_ltf_licenseid"
+      | "members_without_active_or_pending_license";
+    count: number;
+    severity: "info" | "warning" | "critical";
+    link: OverviewLink;
+  }>;
+  distributions: {
+    licenses_by_status: {
+      active: number;
+      pending: number;
+      expired: number;
+      revoked: number;
+    };
+  };
+  top_clubs: Array<{
+    club_id: number;
+    club_name: string;
+    active_members: number;
+    active_licenses: number;
+    pending_licenses: number;
+  }>;
+  links: {
+    clubs: OverviewLink;
+    members: OverviewLink;
+    licenses: OverviewLink;
+  };
+};
+
 export function getClubs() {
   return apiRequest<Club[]>("/api/clubs/");
 }
 
 export function getClub(id: number) {
   return apiRequest<Club>(`/api/clubs/${id}/`);
+}
+
+export function getFederationProfile() {
+  return apiRequest<FederationProfile>("/api/federation-profile/");
+}
+
+export function updateFederationProfile(input: Partial<FederationProfile>) {
+  return apiRequest<FederationProfile>("/api/federation-profile/", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
 }
 
 export function createClub(input: ClubInput) {
@@ -331,6 +431,10 @@ export function getLicenses() {
 
 export function getLicenseTypes() {
   return apiRequest<LicenseType[]>("/api/license-types/");
+}
+
+export function getLtfAdminOverview() {
+  return apiRequest<LtfAdminOverviewResponse>("/api/dashboard/overview/ltf-admin/");
 }
 
 export function createLicenseType(input: { name: string }) {

@@ -45,6 +45,11 @@ class MemberApiTests(TestCase):
             password="pass12345",
             role=User.Roles.LTF_FINANCE,
         )
+        self.coach_user = User.objects.create_user(
+            username="coach",
+            password="pass12345",
+            role=User.Roles.COACH,
+        )
 
         self.club = Club.objects.create(
             name="Central Club",
@@ -52,13 +57,19 @@ class MemberApiTests(TestCase):
             address="10 Center Rd",
             created_by=self.ltf_admin,
         )
-        self.club.admins.add(self.club_admin)
+        self.club.admins.add(self.club_admin, self.coach_user)
 
         self.member = Member.objects.create(
             user=self.member_user,
             club=self.club,
             first_name="Mia",
             last_name="Lee",
+        )
+        self.inactive_member = Member.objects.create(
+            club=self.club,
+            first_name="Noah",
+            last_name="Gray",
+            is_active=False,
         )
 
     def tearDown(self):
@@ -91,7 +102,190 @@ class MemberApiTests(TestCase):
         self.client.force_authenticate(user=self.club_admin)
         response = self.client.get("/api/members/")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(response.data), 2)
+
+    def test_coach_sees_club_members(self):
+        self.client.force_authenticate(user=self.coach_user)
+        response = self.client.get("/api/members/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 2)
+
+    def test_ltf_admin_only_sees_active_members(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.get("/api/members/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = {row["id"] for row in response.data}
+        self.assertIn(self.member.id, ids)
+        self.assertNotIn(self.inactive_member.id, ids)
+
+    def test_ltf_finance_only_sees_active_members(self):
+        self.client.force_authenticate(user=self.finance_user)
+        response = self.client.get("/api/members/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = {row["id"] for row in response.data}
+        self.assertIn(self.member.id, ids)
+        self.assertNotIn(self.inactive_member.id, ids)
+
+    def test_ltf_admin_cannot_access_inactive_member_detail(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.get(f"/api/members/{self.inactive_member.id}/")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_ltf_finance_cannot_access_inactive_member_detail(self):
+        self.client.force_authenticate(user=self.finance_user)
+        response = self.client.get(f"/api/members/{self.inactive_member.id}/")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_ltf_admin_cannot_create_member(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            "/api/members/",
+            {
+                "club": self.club.id,
+                "first_name": "Ari",
+                "last_name": "Kim",
+                "sex": "M",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_ltf_admin_cannot_update_member(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.patch(
+            f"/api/members/{self.member.id}/",
+            {"belt_rank": "3rd Dan"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_ltf_admin_cannot_delete_member(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.delete(f"/api/members/{self.member.id}/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_ltf_admin_cannot_promote_grade(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            f"/api/members/{self.member.id}/promote-grade/",
+            {"to_grade": "2nd Dan"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_ltf_admin_cannot_upload_profile_picture(self):
+        self.member_user.give_consent()
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            f"/api/members/{self.member.id}/profile-picture/",
+            {
+                "processed_image": self._make_test_image("processed.jpg"),
+                "photo_consent_confirmed": "true",
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_coach_can_patch_belt_rank(self):
+        self.client.force_authenticate(user=self.coach_user)
+        response = self.client.patch(
+            f"/api/members/{self.member.id}/",
+            {"belt_rank": "2nd Dan"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.belt_rank, "2nd Dan")
+
+    def test_coach_cannot_patch_non_belt_fields(self):
+        self.client.force_authenticate(user=self.coach_user)
+        response = self.client.patch(
+            f"/api/members/{self.member.id}/",
+            {"first_name": "Updated"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.first_name, "Mia")
+
+    def test_coach_cannot_toggle_member_status(self):
+        self.client.force_authenticate(user=self.coach_user)
+        response = self.client.patch(
+            f"/api/members/{self.member.id}/",
+            {"is_active": False},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.member.refresh_from_db()
+        self.assertTrue(self.member.is_active)
+
+    def test_club_admin_can_patch_member_license_roles(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.patch(
+            f"/api/members/{self.member.id}/",
+            {
+                "primary_license_role": "athlete",
+                "secondary_license_role": "coach",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.primary_license_role, "athlete")
+        self.assertEqual(self.member.secondary_license_role, "coach")
+
+    def test_member_update_rejects_secondary_role_without_primary(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.patch(
+            f"/api/members/{self.member.id}/",
+            {"secondary_license_role": "coach"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("secondary_license_role", response.data)
+
+    def test_member_update_rejects_duplicate_primary_secondary_roles(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.patch(
+            f"/api/members/{self.member.id}/",
+            {
+                "primary_license_role": "coach",
+                "secondary_license_role": "coach",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("secondary_license_role", response.data)
+
+    def test_coach_cannot_patch_member_license_roles(self):
+        self.client.force_authenticate(user=self.coach_user)
+        response = self.client.patch(
+            f"/api/members/{self.member.id}/",
+            {"primary_license_role": "athlete"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.primary_license_role, "")
+
+    def test_coach_cannot_create_member(self):
+        self.client.force_authenticate(user=self.coach_user)
+        response = self.client.post(
+            "/api/members/",
+            {
+                "club": self.club.id,
+                "first_name": "Ari",
+                "last_name": "Kim",
+                "sex": "M",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_coach_cannot_delete_member(self):
+        self.client.force_authenticate(user=self.coach_user)
+        response = self.client.delete(f"/api/members/{self.member.id}/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_promote_grade_creates_history_and_syncs_member(self):
         self.member_user.give_consent()
@@ -396,3 +590,51 @@ class MemberImportTests(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(Member.objects.count(), 1)
+
+    def test_preview_reports_invalid_license_role(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        csv_data = "first_name,last_name,primary_role\nAna,Ng,InvalidRole\n"
+        file_obj = BytesIO(csv_data.encode("utf-8"))
+        file_obj.name = "members_invalid_roles.csv"
+        mapping = {
+            "first_name": "first_name",
+            "last_name": "last_name",
+            "primary_license_role": "primary_role",
+        }
+        response = self.client.post(
+            "/api/imports/members/preview/",
+            {
+                "file": file_obj,
+                "mapping": json.dumps(mapping),
+                "club_id": self.club.id,
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["rows"]), 1)
+        self.assertTrue(response.data["rows"][0]["errors"])
+
+    def test_confirm_creates_members_with_license_roles(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        csv_data = "first_name,last_name,primary_role,secondary_role\nAna,Ng,Athlete,Coach\n"
+        file_obj = BytesIO(csv_data.encode("utf-8"))
+        file_obj.name = "members_roles.csv"
+        mapping = {
+            "first_name": "first_name",
+            "last_name": "last_name",
+            "primary_license_role": "primary_role",
+            "secondary_license_role": "secondary_role",
+        }
+        response = self.client.post(
+            "/api/imports/members/confirm/",
+            {
+                "file": file_obj,
+                "mapping": json.dumps(mapping),
+                "club_id": self.club.id,
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        created = Member.objects.get(first_name="Ana", last_name="NG")
+        self.assertEqual(created.primary_license_role, "athlete")
+        self.assertEqual(created.secondary_license_role, "coach")

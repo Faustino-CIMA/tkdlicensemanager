@@ -1,6 +1,8 @@
 from decimal import Decimal
+from datetime import date
 
 from django.db import transaction
+from django.utils import timezone
 from django.utils.text import slugify
 from rest_framework import serializers
 
@@ -14,11 +16,13 @@ from .models import (
     License,
     LicensePrice,
     LicenseType,
+    LicenseTypePolicy,
     Order,
     OrderItem,
     Payment,
     get_default_license_type,
 )
+from .policy import get_or_create_license_type_policy, validate_member_license_order
 
 
 class LicenseSerializer(serializers.ModelSerializer):
@@ -130,6 +134,25 @@ class OrderCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {"member": "Member does not belong to the specified club."}
             )
+
+        default_license_type_id = get_default_license_type()
+        default_license_type = LicenseType.objects.get(pk=default_license_type_id)
+        item_errors = {}
+        for index, item in enumerate(items):
+            license_type = item.get("license_type") or default_license_type
+            try:
+                validate_member_license_order(
+                    member=member,
+                    license_type=license_type,
+                    target_year=item["year"],
+                )
+            except serializers.ValidationError as exc:
+                if isinstance(exc.detail, list):
+                    item_errors[str(index)] = [str(detail) for detail in exc.detail]
+                else:
+                    item_errors[str(index)] = [str(exc.detail)]
+        if item_errors:
+            raise serializers.ValidationError({"items": item_errors})
         return attrs
 
     def create(self, validated_data):
@@ -241,6 +264,9 @@ class OrderCreateSerializer(serializers.Serializer):
 
 class ClubOrderBatchSerializer(serializers.Serializer):
     club = serializers.PrimaryKeyRelatedField(queryset=Club.objects.all())
+    license_type = serializers.PrimaryKeyRelatedField(
+        queryset=LicenseType.objects.all(), required=False, allow_null=True
+    )
     member_ids = serializers.ListField(
         child=serializers.IntegerField(), min_length=1, allow_empty=False
     )
@@ -343,6 +369,7 @@ class LicensePriceSerializer(serializers.ModelSerializer):
         model = LicensePrice
         fields = [
             "id",
+            "license_type",
             "amount",
             "currency",
             "effective_from",
@@ -351,11 +378,35 @@ class LicensePriceSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["created_by", "created_at"]
 
+    def validate_amount(self, value):
+        if value < 0:
+            raise serializers.ValidationError("Amount cannot be negative.")
+        return value
+
 
 class LicenseTypeSerializer(serializers.ModelSerializer):
+    policy = serializers.SerializerMethodField()
+    initial_price_amount = serializers.DecimalField(
+        max_digits=10, decimal_places=2, required=False, write_only=True
+    )
+    initial_price_currency = serializers.CharField(
+        max_length=3, required=False, write_only=True, default="EUR"
+    )
+    initial_price_effective_from = serializers.DateField(required=False, write_only=True)
+
     class Meta:
         model = LicenseType
-        fields = ["id", "name", "code", "created_at", "updated_at"]
+        fields = [
+            "id",
+            "name",
+            "code",
+            "created_at",
+            "updated_at",
+            "policy",
+            "initial_price_amount",
+            "initial_price_currency",
+            "initial_price_effective_from",
+        ]
         read_only_fields = ["code", "created_at", "updated_at"]
 
     def validate_name(self, value):
@@ -365,11 +416,26 @@ class LicenseTypeSerializer(serializers.ModelSerializer):
         return normalized
 
     def create(self, validated_data):
+        initial_price_amount = validated_data.pop("initial_price_amount", None)
+        initial_price_currency = validated_data.pop("initial_price_currency", "EUR")
+        initial_price_effective_from = validated_data.pop("initial_price_effective_from", None)
         name = validated_data["name"]
         code = slugify(name)
         if LicenseType.objects.filter(code=code).exists():
             raise serializers.ValidationError({"name": "A license type with this name already exists."})
-        return LicenseType.objects.create(name=name, code=code)
+        license_type = LicenseType.objects.create(name=name, code=code)
+        get_or_create_license_type_policy(license_type)
+        if initial_price_amount is not None:
+            request = self.context.get("request")
+            actor = request.user if request and request.user.is_authenticated else None
+            LicensePrice.objects.create(
+                license_type=license_type,
+                amount=initial_price_amount,
+                currency=initial_price_currency,
+                effective_from=initial_price_effective_from or timezone.localdate(),
+                created_by=actor,
+            )
+        return license_type
 
     def update(self, instance, validated_data):
         name = validated_data.get("name", instance.name)
@@ -379,7 +445,83 @@ class LicenseTypeSerializer(serializers.ModelSerializer):
         instance.name = name
         instance.code = code
         instance.save()
+        get_or_create_license_type_policy(instance)
         return instance
+
+    def get_policy(self, obj):
+        policy = getattr(obj, "policy", None)
+        if policy is None:
+            policy = LicenseTypePolicy(license_type=obj)
+        return LicenseTypePolicySerializer(policy).data
+
+    def validate_initial_price_amount(self, value):
+        if value < 0:
+            raise serializers.ValidationError("Initial price cannot be negative.")
+        return value
+
+
+class LicenseTypePolicySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LicenseTypePolicy
+        fields = [
+            "id",
+            "license_type",
+            "allow_current_year_order",
+            "current_start_month",
+            "current_start_day",
+            "current_end_month",
+            "current_end_day",
+            "allow_next_year_preorder",
+            "next_start_month",
+            "next_start_day",
+            "next_end_month",
+            "next_end_day",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["created_at", "updated_at"]
+
+    def validate(self, attrs):
+        instance = getattr(self, "instance", None)
+
+        def resolved(field_name):
+            if field_name in attrs:
+                return attrs[field_name]
+            return getattr(instance, field_name)
+
+        current_start_month = resolved("current_start_month")
+        current_start_day = resolved("current_start_day")
+        current_end_month = resolved("current_end_month")
+        current_end_day = resolved("current_end_day")
+        next_start_month = resolved("next_start_month")
+        next_start_day = resolved("next_start_day")
+        next_end_month = resolved("next_end_month")
+        next_end_day = resolved("next_end_day")
+
+        for label, month_value, day_value in [
+            ("current_start", current_start_month, current_start_day),
+            ("current_end", current_end_month, current_end_day),
+            ("next_start", next_start_month, next_start_day),
+            ("next_end", next_end_month, next_end_day),
+        ]:
+            if month_value < 1 or month_value > 12:
+                raise serializers.ValidationError({label: "Month must be between 1 and 12."})
+            if day_value < 1 or day_value > 31:
+                raise serializers.ValidationError({label: "Day must be between 1 and 31."})
+            try:
+                date(2024, month_value, day_value)
+            except ValueError as exc:
+                raise serializers.ValidationError({label: f"Invalid month/day: {exc}"}) from exc
+
+        if (current_start_month, current_start_day) > (current_end_month, current_end_day):
+            raise serializers.ValidationError(
+                {"current_window": "Current-year window start must be before end."}
+            )
+        if (next_start_month, next_start_day) > (next_end_month, next_end_day):
+            raise serializers.ValidationError(
+                {"next_window": "Next-year preorder window start must be before end."}
+            )
+        return attrs
 
 
 class PaymentSerializer(serializers.ModelSerializer):

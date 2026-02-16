@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -23,7 +23,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ImportCsvModal } from "@/components/import/import-csv-modal";
 import {
   Club,
   EligibleMember,
@@ -40,8 +39,10 @@ import {
 
 const clubSchema = z.object({
   name: z.string().min(1, "Club name is required"),
-  city: z.string().optional(),
-  address: z.string().optional(),
+  address_line1: z.string().optional(),
+  address_line2: z.string().optional(),
+  postal_code: z.string().optional(),
+  locality: z.string().optional(),
 });
 
 type ClubFormValues = z.infer<typeof clubSchema>;
@@ -51,6 +52,7 @@ export default function LtfAdminClubsPage() {
   const importT = useTranslations("Import");
   const common = useTranslations("Common");
   const pathname = usePathname();
+  const router = useRouter();
   const locale = pathname?.split("/")[1] || "en";
   const [clubs, setClubs] = useState<Club[]>([]);
   const [editingClub, setEditingClub] = useState<Club | null>(null);
@@ -64,7 +66,6 @@ export default function LtfAdminClubsPage() {
   const [pageSize, setPageSize] = useState("25");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [importType, setImportType] = useState<"clubs" | "members" | null>(null);
   const [selectedClub, setSelectedClub] = useState<Club | null>(null);
   const [clubAdmins, setClubAdmins] = useState<Array<{ id: number; username: string; email: string }>>([]);
   const [eligibleMembers, setEligibleMembers] = useState<EligibleMember[]>([]);
@@ -76,23 +77,6 @@ export default function LtfAdminClubsPage() {
 
   const pageSizeOptions = ["25", "50", "100", "150", "200", "all"];
 
-  const importFields = {
-    clubs: [
-      { key: "name", label: t("clubNameLabel"), required: true },
-      { key: "city", label: t("cityLabel") },
-      { key: "address", label: t("addressLabel") },
-    ],
-    members: [
-      { key: "first_name", label: t("firstNameLabel"), required: true },
-      { key: "last_name", label: t("lastNameLabel"), required: true },
-      { key: "email", label: importT("emailLabel") },
-      { key: "date_of_birth", label: t("dobLabel") },
-      { key: "belt_rank", label: t("beltRankLabel") },
-      { key: "wt_licenseid", label: importT("wtLicenseLabel") },
-      { key: "ltf_licenseid", label: importT("ltfLicenseLabel") },
-    ],
-  };
-
   const {
     register,
     handleSubmit,
@@ -102,8 +86,10 @@ export default function LtfAdminClubsPage() {
     resolver: zodResolver(clubSchema),
     defaultValues: {
       name: "",
-      city: "",
-      address: "",
+      address_line1: "",
+      address_line2: "",
+      postal_code: "",
+      locality: "",
     },
   });
 
@@ -131,8 +117,15 @@ export default function LtfAdminClubsPage() {
     }
     return clubs.filter((club) => {
       const name = club.name.toLowerCase();
-      const city = club.city?.toLowerCase() ?? "";
-      return name.includes(normalizedQuery) || city.includes(normalizedQuery);
+      const locality = (club.locality || club.city || "").toLowerCase();
+      const postalCode = (club.postal_code || "").toLowerCase();
+      const address = (club.address_line1 || club.address || "").toLowerCase();
+      return (
+        name.includes(normalizedQuery) ||
+        locality.includes(normalizedQuery) ||
+        postalCode.includes(normalizedQuery) ||
+        address.includes(normalizedQuery)
+      );
     });
   }, [clubs, searchQuery]);
 
@@ -166,11 +159,16 @@ export default function LtfAdminClubsPage() {
 
   const onSubmit = async (values: ClubFormValues) => {
     setErrorMessage(null);
+    const payload = {
+      ...values,
+      address: values.address_line1 ?? "",
+      city: values.locality ?? "",
+    };
     try {
       if (editingClub) {
-        await updateClub(editingClub.id, values);
+        await updateClub(editingClub.id, payload);
       } else {
-        await createClub(values);
+        await createClub(payload);
       }
       setEditingClub(null);
       setIsFormOpen(false);
@@ -186,8 +184,10 @@ export default function LtfAdminClubsPage() {
     setIsFormOpen(true);
     reset({
       name: club.name,
-      city: club.city ?? "",
-      address: club.address ?? "",
+      address_line1: club.address_line1 ?? club.address ?? "",
+      address_line2: club.address_line2 ?? "",
+      postal_code: club.postal_code ?? "",
+      locality: club.locality ?? club.city ?? "",
     });
   };
 
@@ -196,8 +196,10 @@ export default function LtfAdminClubsPage() {
     setIsFormOpen(true);
     reset({
       name: "",
-      city: "",
-      address: "",
+      address_line1: "",
+      address_line2: "",
+      postal_code: "",
+      locality: "",
     });
   };
 
@@ -320,7 +322,7 @@ export default function LtfAdminClubsPage() {
   };
 
   const selectedClubItems = selectedClubs.map((club) =>
-    club.city ? `${club.name} · ${club.city}` : club.name
+    club.locality || club.city ? `${club.name} · ${club.locality || club.city}` : club.name
   );
 
   return (
@@ -366,18 +368,18 @@ export default function LtfAdminClubsPage() {
               </SelectContent>
             </Select>
             <Button onClick={startCreate}>{t("createClub")}</Button>
-            <Select
-              value={importType ?? ""}
-              onValueChange={(value) => setImportType(value as "clubs" | "members")}
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/${locale}/dashboard/ltf/import?type=clubs`)}
             >
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder={importT("importLabel")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="clubs">{importT("importClubs")}</SelectItem>
-                <SelectItem value="members">{importT("importMembers")}</SelectItem>
-              </SelectContent>
-            </Select>
+              {importT("importClubs")}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/${locale}/dashboard/ltf/import?type=members`)}
+            >
+              {importT("importMembers")}
+            </Button>
           </div>
           <div className="flex items-center gap-2 text-sm text-zinc-500">
             {t("pageLabel", { current: currentPage, total: totalPages })}
@@ -427,8 +429,17 @@ export default function LtfAdminClubsPage() {
                 ),
               },
               { key: "name", header: t("clubNameLabel") },
-              { key: "city", header: t("cityLabel") },
-              { key: "address", header: t("addressLabel") },
+              { key: "postal_code", header: t("postalCodeLabel") },
+              {
+                key: "locality",
+                header: t("localityLabel"),
+                render: (club) => club.locality || club.city,
+              },
+              {
+                key: "address_line1",
+                header: t("addressLine1Label"),
+                render: (club) => club.address_line1 || club.address,
+              },
               {
                 key: "actions",
                 header: t("actionsLabel"),
@@ -485,14 +496,24 @@ export default function LtfAdminClubsPage() {
             {errors.name ? <p className="text-sm text-red-600">{errors.name.message}</p> : null}
           </div>
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("cityLabel")}</label>
-            <Input placeholder="Luxembourg" {...register("city")} />
+          <div className="space-y-2 md:col-span-2">
+            <label className="text-sm font-medium text-zinc-700">{t("addressLine1Label")}</label>
+            <Input placeholder="12 Rue de la Gare" {...register("address_line1")} />
+          </div>
+
+          <div className="space-y-2 md:col-span-2">
+            <label className="text-sm font-medium text-zinc-700">{t("addressLine2Label")}</label>
+            <Input placeholder="Building, floor, unit (optional)" {...register("address_line2")} />
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("addressLabel")}</label>
-            <Input placeholder="1 Rue de la Fede" {...register("address")} />
+            <label className="text-sm font-medium text-zinc-700">{t("postalCodeLabel")}</label>
+            <Input placeholder="1234" {...register("postal_code")} />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-zinc-700">{t("localityLabel")}</label>
+            <Input placeholder="Luxembourg" {...register("locality")} />
           </div>
 
           <div className="flex items-center gap-3">
@@ -649,25 +670,6 @@ export default function LtfAdminClubsPage() {
         </div>
       </Modal>
 
-      <ImportCsvModal
-        isOpen={importType === "clubs"}
-        onClose={() => setImportType(null)}
-        type="clubs"
-        title={importT("importClubs")}
-        subtitle={importT("importClubsSubtitle")}
-        fields={importFields.clubs}
-        onComplete={loadClubs}
-      />
-      <ImportCsvModal
-        isOpen={importType === "members"}
-        onClose={() => setImportType(null)}
-        type="members"
-        title={importT("importMembers")}
-        subtitle={importT("importMembersSubtitle")}
-        fields={importFields.members}
-        clubOptions={clubs}
-        onComplete={loadClubs}
-      />
     </LtfAdminLayout>
   );
 }

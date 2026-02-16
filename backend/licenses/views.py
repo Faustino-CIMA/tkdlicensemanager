@@ -1,12 +1,14 @@
+from datetime import timedelta
 from decimal import Decimal
 
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
+from django.db.models import Count, Exists, OuterRef, Q, Sum
 from django.db.models.deletion import ProtectedError
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 import stripe
-from rest_framework import permissions, status, viewsets, mixins
+from rest_framework import permissions, serializers, status, viewsets, mixins
 from rest_framework.decorators import action
 from rest_framework.permissions import SAFE_METHODS
 from rest_framework.response import Response
@@ -21,6 +23,7 @@ from accounts.permissions import (
     IsLtfFinanceOrLtfAdmin,
 )
 
+from clubs.models import Club
 from members.models import Member
 
 from .models import (
@@ -29,6 +32,7 @@ from .models import (
     License,
     LicensePrice,
     LicenseType,
+    LicenseTypePolicy,
     Order,
     OrderItem,
     Payment,
@@ -44,6 +48,7 @@ from .serializers import (
     InvoiceSerializer,
     LicensePriceSerializer,
     LicenseSerializer,
+    LicenseTypePolicySerializer,
     LicenseTypeSerializer,
     ClubOrderBatchSerializer,
     OrderCreateSerializer,
@@ -53,13 +58,57 @@ from .serializers import (
     PayconiqPaymentSerializer,
 )
 from .pdf_utils import render_invoice_pdf
+from .policy import validate_member_license_order
 from .services import apply_payment_and_activate
 from .tasks import activate_order_from_stripe, process_stripe_webhook_event
 from .payconiq import create_payment, get_status
 
+
+def _to_iso_z(value):
+    return value.isoformat().replace("+00:00", "Z")
+
+
+def _month_bounds(today):
+    month_start = today.replace(day=1)
+    next_month_start = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+    month_end = next_month_start - timedelta(days=1)
+    return month_start, month_end
+
+
+def _decimal_string(value):
+    decimal_value = value if value is not None else Decimal("0.00")
+    return f"{decimal_value:.2f}"
+
+
+def _overview_meta(role):
+    now = timezone.now()
+    today = timezone.localdate()
+    month_start, month_end = _month_bounds(today)
+    return {
+        "version": "1.0",
+        "role": role,
+        "generated_at": _to_iso_z(now),
+        "period": {
+            "today": today.isoformat(),
+            "month_start": month_start.isoformat(),
+            "month_end": month_end.isoformat(),
+            "expiring_window_days": 30,
+        },
+    }
+
+
+def _overview_link(label_key, path):
+    return {"label_key": label_key, "path": path}
+
+
 class LicenseViewSet(viewsets.ModelViewSet):
     serializer_class = LicenseSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.request.method in SAFE_METHODS:
+            return [permissions.IsAuthenticated()]
+        return [IsLtfAdmin()]
 
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
@@ -100,12 +149,12 @@ class LicenseViewSet(viewsets.ModelViewSet):
 
 class LicenseTypeViewSet(viewsets.ModelViewSet):
     serializer_class = LicenseTypeSerializer
-    queryset = LicenseType.objects.all().order_by("name")
+    queryset = LicenseType.objects.select_related("policy").all().order_by("name")
 
     def get_permissions(self):
         if self.request.method in SAFE_METHODS:
             return [permissions.IsAuthenticated()]
-        return [IsLtfAdmin()]
+        return [IsLtfFinance()]
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -117,6 +166,24 @@ class LicenseTypeViewSet(viewsets.ModelViewSet):
                 status=HTTP_400_BAD_REQUEST,
             )
         return Response(status=204)
+
+    @action(detail=True, methods=["get", "patch"], url_path="policy")
+    def policy(self, request, *args, **kwargs):
+        license_type = self.get_object()
+        policy, _ = LicenseTypePolicy.objects.get_or_create(license_type=license_type)
+        if request.method.lower() == "get":
+            return Response(
+                LicenseTypePolicySerializer(policy, context=self.get_serializer_context()).data
+            )
+        serializer = LicenseTypePolicySerializer(
+            policy,
+            data=request.data,
+            partial=True,
+            context=self.get_serializer_context(),
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class OrderViewSet(viewsets.ModelViewSet):
@@ -380,16 +447,33 @@ class OrderViewSet(viewsets.ModelViewSet):
             )
 
         now = timezone.now()
+        today = timezone.localdate()
         with transaction.atomic():
             license_status_before = {}
             activated_license_ids = []
+            deferred_license_ids = []
+            conflict_license_ids = []
             for item in order.items.select_related("license").all():
                 license_record = item.license
                 license_status_before[license_record.id] = license_record.status
                 if license_record.status != License.Status.ACTIVE:
+                    if license_record.start_date > today or license_record.end_date < today:
+                        deferred_license_ids.append(license_record.id)
+                        continue
+                    has_conflict = License.objects.filter(
+                        member=license_record.member,
+                        status=License.Status.ACTIVE,
+                    ).exclude(id=license_record.id).exists()
+                    if has_conflict:
+                        conflict_license_ids.append(license_record.id)
+                        continue
                     license_record.status = License.Status.ACTIVE
                     license_record.issued_at = now
-                    license_record.save(update_fields=["status", "issued_at", "updated_at"])
+                    try:
+                        license_record.save(update_fields=["status", "issued_at", "updated_at"])
+                    except IntegrityError:
+                        conflict_license_ids.append(license_record.id)
+                        continue
                     activated_license_ids.append(license_record.id)
                     log_license_status_change(
                         license_record,
@@ -410,6 +494,8 @@ class OrderViewSet(viewsets.ModelViewSet):
                 invoice=getattr(order, "invoice", None),
                 metadata={
                     "activated_license_ids": activated_license_ids,
+                    "deferred_license_ids": deferred_license_ids,
+                    "conflict_license_ids": conflict_license_ids,
                     "license_status_before": license_status_before,
                 },
             )
@@ -490,6 +576,294 @@ class FinanceAuditLogViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_permissions(self):
         return [IsLtfFinance()]
+
+
+class LtfAdminOverviewView(APIView):
+    permission_classes = [IsLtfAdmin]
+
+    def get(self, request):
+        today = timezone.localdate()
+        active_members_queryset = Member.objects.filter(is_active=True)
+        licenses_queryset = License.objects.all()
+
+        status_counts = {
+            row["status"]: row["total"]
+            for row in licenses_queryset.values("status").annotate(total=Count("id"))
+        }
+        active_licenses = int(status_counts.get(License.Status.ACTIVE, 0))
+        pending_licenses = int(status_counts.get(License.Status.PENDING, 0))
+        expired_licenses = int(status_counts.get(License.Status.EXPIRED, 0))
+        revoked_licenses = int(status_counts.get(License.Status.REVOKED, 0))
+
+        has_valid_license_subquery = License.objects.filter(
+            member_id=OuterRef("pk"),
+            status__in=[License.Status.ACTIVE, License.Status.PENDING],
+        )
+        active_members_without_valid_license = (
+            active_members_queryset.annotate(has_valid_license=Exists(has_valid_license_subquery))
+            .filter(has_valid_license=False)
+            .count()
+        )
+        members_missing_ltf_licenseid = active_members_queryset.filter(
+            Q(ltf_licenseid__isnull=True) | Q(ltf_licenseid="")
+        ).count()
+        clubs_without_admin = (
+            Club.objects.annotate(admin_count=Count("admins")).filter(admin_count=0).count()
+        )
+        expiring_in_30_days = licenses_queryset.filter(
+            status=License.Status.ACTIVE,
+            end_date__gte=today,
+            end_date__lte=today + timedelta(days=30),
+        ).count()
+
+        active_members_by_club = {
+            row["club_id"]: row["total"]
+            for row in active_members_queryset.values("club_id").annotate(total=Count("id"))
+        }
+        active_licenses_by_club = {
+            row["club_id"]: row["total"]
+            for row in licenses_queryset.filter(status=License.Status.ACTIVE)
+            .values("club_id")
+            .annotate(total=Count("id"))
+        }
+        pending_licenses_by_club = {
+            row["club_id"]: row["total"]
+            for row in licenses_queryset.filter(status=License.Status.PENDING)
+            .values("club_id")
+            .annotate(total=Count("id"))
+        }
+        top_clubs = []
+        for club in Club.objects.all().values("id", "name"):
+            club_id = club["id"]
+            top_clubs.append(
+                {
+                    "club_id": club_id,
+                    "club_name": club["name"],
+                    "active_members": int(active_members_by_club.get(club_id, 0)),
+                    "active_licenses": int(active_licenses_by_club.get(club_id, 0)),
+                    "pending_licenses": int(pending_licenses_by_club.get(club_id, 0)),
+                }
+            )
+        top_clubs = sorted(
+            top_clubs,
+            key=lambda item: (-item["active_members"], item["club_name"]),
+        )[:5]
+
+        payload = {
+            "meta": _overview_meta("ltf_admin"),
+            "cards": {
+                "total_clubs": Club.objects.count(),
+                "active_members": active_members_queryset.count(),
+                "active_licenses": active_licenses,
+                "pending_licenses": pending_licenses,
+                "expired_licenses": expired_licenses,
+                "revoked_licenses": revoked_licenses,
+                "expiring_in_30_days": expiring_in_30_days,
+                "active_members_without_valid_license": active_members_without_valid_license,
+            },
+            "action_queue": [
+                {
+                    "key": "clubs_without_admin",
+                    "count": clubs_without_admin,
+                    "severity": "warning",
+                    "link": _overview_link("LtfAdmin.navClubs", "/dashboard/ltf/clubs"),
+                },
+                {
+                    "key": "members_missing_ltf_licenseid",
+                    "count": members_missing_ltf_licenseid,
+                    "severity": "info",
+                    "link": _overview_link("LtfAdmin.navMembers", "/dashboard/ltf/members"),
+                },
+                {
+                    "key": "members_without_active_or_pending_license",
+                    "count": active_members_without_valid_license,
+                    "severity": "critical",
+                    "link": _overview_link("LtfAdmin.navMembers", "/dashboard/ltf/members"),
+                },
+            ],
+            "distributions": {
+                "licenses_by_status": {
+                    "active": active_licenses,
+                    "pending": pending_licenses,
+                    "expired": expired_licenses,
+                    "revoked": revoked_licenses,
+                }
+            },
+            "top_clubs": top_clubs,
+            "links": {
+                "clubs": _overview_link("LtfAdmin.navClubs", "/dashboard/ltf/clubs"),
+                "members": _overview_link("LtfAdmin.navMembers", "/dashboard/ltf/members"),
+                "licenses": _overview_link("LtfAdmin.navLicenses", "/dashboard/ltf/licenses"),
+            },
+        }
+        return Response(payload, status=status.HTTP_200_OK)
+
+
+class LtfFinanceOverviewView(APIView):
+    permission_classes = [IsLtfFinance]
+
+    def get(self, request):
+        today = timezone.localdate()
+        month_start, month_end = _month_bounds(today)
+
+        order_counts = Order.objects.aggregate(
+            draft=Count("id", filter=Q(status=Order.Status.DRAFT)),
+            pending=Count("id", filter=Q(status=Order.Status.PENDING)),
+            paid=Count("id", filter=Q(status=Order.Status.PAID)),
+            cancelled=Count("id", filter=Q(status=Order.Status.CANCELLED)),
+            refunded=Count("id", filter=Q(status=Order.Status.REFUNDED)),
+        )
+        invoice_counts = Invoice.objects.aggregate(
+            draft=Count("id", filter=Q(status=Invoice.Status.DRAFT)),
+            issued=Count("id", filter=Q(status=Invoice.Status.ISSUED)),
+            paid=Count("id", filter=Q(status=Invoice.Status.PAID)),
+            void=Count("id", filter=Q(status=Invoice.Status.VOID)),
+        )
+
+        issued_invoices_overdue_7d = Invoice.objects.filter(status=Invoice.Status.ISSUED).filter(
+            Q(issued_at__date__lte=today - timedelta(days=7))
+            | Q(issued_at__isnull=True, created_at__date__lte=today - timedelta(days=7))
+        )
+        paid_orders_with_pending_licenses = (
+            Order.objects.filter(
+                status=Order.Status.PAID,
+                items__license__status=License.Status.PENDING,
+            )
+            .distinct()
+            .count()
+        )
+        failed_or_cancelled_payments_30d = Payment.objects.filter(
+            status__in=[Payment.Status.FAILED, Payment.Status.CANCELLED],
+            created_at__date__gte=today - timedelta(days=30),
+        ).count()
+
+        active_priced_type_ids = set(
+            LicensePrice.objects.filter(effective_from__lte=today)
+            .values_list("license_type_id", flat=True)
+            .distinct()
+        )
+        total_license_types = LicenseType.objects.count()
+        with_active_price = len(active_priced_type_ids)
+        missing_active_price = max(total_license_types - with_active_price, 0)
+
+        outstanding_amount = Invoice.objects.filter(status=Invoice.Status.ISSUED).aggregate(
+            total=Sum("total")
+        )["total"]
+        collected_this_month_amount = Payment.objects.filter(
+            status=Payment.Status.PAID,
+            paid_at__date__gte=month_start,
+            paid_at__date__lte=month_end,
+        ).aggregate(total=Sum("amount"))["total"]
+
+        currency = (
+            Invoice.objects.exclude(currency="")
+            .values_list("currency", flat=True)
+            .first()
+            or Order.objects.exclude(currency="")
+            .values_list("currency", flat=True)
+            .first()
+            or Payment.objects.exclude(currency="")
+            .values_list("currency", flat=True)
+            .first()
+            or "EUR"
+        )
+
+        recent_activity = []
+        for row in FinanceAuditLog.objects.order_by("-created_at").values(
+            "id",
+            "created_at",
+            "action",
+            "message",
+            "club_id",
+            "order_id",
+            "invoice_id",
+        )[:10]:
+            recent_activity.append(
+                {
+                    "id": row["id"],
+                    "created_at": _to_iso_z(row["created_at"]),
+                    "action": row["action"],
+                    "message": row["message"],
+                    "club_id": row["club_id"],
+                    "order_id": row["order_id"],
+                    "invoice_id": row["invoice_id"],
+                }
+            )
+
+        payload = {
+            "meta": _overview_meta("ltf_finance"),
+            "currency": currency,
+            "cards": {
+                "received_orders": int((order_counts.get("draft") or 0) + (order_counts.get("pending") or 0)),
+                "delivered_orders": int(order_counts.get("paid") or 0),
+                "cancelled_orders": int((order_counts.get("cancelled") or 0) + (order_counts.get("refunded") or 0)),
+                "issued_invoices_open": int(invoice_counts.get("issued") or 0),
+                "paid_invoices": int(invoice_counts.get("paid") or 0),
+                "outstanding_amount": _decimal_string(outstanding_amount),
+                "collected_this_month_amount": _decimal_string(collected_this_month_amount),
+                "pricing_coverage": {
+                    "total_license_types": total_license_types,
+                    "with_active_price": with_active_price,
+                    "missing_active_price": missing_active_price,
+                },
+            },
+            "action_queue": [
+                {
+                    "key": "issued_invoices_overdue_7d",
+                    "count": issued_invoices_overdue_7d.count(),
+                    "severity": "critical",
+                    "link": _overview_link("LtfFinance.navInvoices", "/dashboard/ltf-finance/invoices"),
+                },
+                {
+                    "key": "license_types_without_active_price",
+                    "count": missing_active_price,
+                    "severity": "warning",
+                    "link": _overview_link(
+                        "LtfFinance.navLicenseSettings",
+                        "/dashboard/ltf-finance/license-settings",
+                    ),
+                },
+                {
+                    "key": "paid_orders_with_pending_licenses",
+                    "count": paid_orders_with_pending_licenses,
+                    "severity": "warning",
+                    "link": _overview_link("LtfFinance.navOrders", "/dashboard/ltf-finance/orders"),
+                },
+                {
+                    "key": "failed_or_cancelled_payments_30d",
+                    "count": failed_or_cancelled_payments_30d,
+                    "severity": "info",
+                    "link": _overview_link("LtfFinance.navPayments", "/dashboard/ltf-finance/payments"),
+                },
+            ],
+            "distributions": {
+                "orders_by_status": {
+                    "draft": int(order_counts.get("draft") or 0),
+                    "pending": int(order_counts.get("pending") or 0),
+                    "paid": int(order_counts.get("paid") or 0),
+                    "cancelled": int(order_counts.get("cancelled") or 0),
+                    "refunded": int(order_counts.get("refunded") or 0),
+                },
+                "invoices_by_status": {
+                    "draft": int(invoice_counts.get("draft") or 0),
+                    "issued": int(invoice_counts.get("issued") or 0),
+                    "paid": int(invoice_counts.get("paid") or 0),
+                    "void": int(invoice_counts.get("void") or 0),
+                },
+            },
+            "recent_activity": recent_activity,
+            "links": {
+                "orders": _overview_link("LtfFinance.navOrders", "/dashboard/ltf-finance/orders"),
+                "invoices": _overview_link("LtfFinance.navInvoices", "/dashboard/ltf-finance/invoices"),
+                "payments": _overview_link("LtfFinance.navPayments", "/dashboard/ltf-finance/payments"),
+                "license_settings": _overview_link(
+                    "LtfFinance.navLicenseSettings",
+                    "/dashboard/ltf-finance/license-settings",
+                ),
+                "audit_log": _overview_link("LtfFinance.navAuditLog", "/dashboard/ltf-finance/audit-log"),
+            },
+        }
+        return Response(payload, status=status.HTTP_200_OK)
 
 
 class PayconiqPaymentViewSet(viewsets.GenericViewSet):
@@ -620,6 +994,7 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
         serializer.is_valid(raise_exception=True)
         club = serializer.validated_data["club"]
         member_ids = serializer.validated_data["member_ids"]
+        selected_license_type = serializer.validated_data.get("license_type")
         year = serializer.validated_data["year"]
         quantity = serializer.validated_data["quantity"]
         tax_total = serializer.validated_data["tax_total"]
@@ -634,10 +1009,43 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        price = LicensePrice.get_active_price()
+        default_license_type = LicenseType.objects.get(pk=get_default_license_type())
+        license_type = selected_license_type or default_license_type
+        policy_errors = []
+        for member in members:
+            try:
+                validate_member_license_order(
+                    member=member,
+                    license_type=license_type,
+                    target_year=year,
+                )
+            except serializers.ValidationError as exc:
+                if isinstance(exc.detail, list):
+                    detail = "; ".join([str(item) for item in exc.detail])
+                else:
+                    detail = str(exc.detail)
+                policy_errors.append(
+                    {
+                        "member_id": member.id,
+                        "member_name": f"{member.first_name} {member.last_name}".strip(),
+                        "detail": detail,
+                    }
+                )
+        if policy_errors:
+            return Response(
+                {
+                    "detail": "One or more selected members are not eligible for this order.",
+                    "errors": policy_errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        price = LicensePrice.get_active_price(license_type=license_type)
         if not price:
             return Response(
-                {"detail": "No active license price configured."},
+                {
+                    "detail": f"No active license price configured for license type '{license_type.name}'."
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -657,14 +1065,12 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
                 total=total,
             )
 
-            default_license_type_id = get_default_license_type()
-            default_license_type = LicenseType.objects.get(pk=default_license_type_id)
             created_license_ids = []
             for member in members:
                 license_record = License.objects.create(
                     member=member,
                     club=club,
-                    license_type=default_license_type,
+                    license_type=license_type,
                     year=year,
                     status=License.Status.PENDING,
                 )
@@ -699,6 +1105,8 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
                     "order_status": order.status,
                     "total": str(order.total),
                     "member_ids": member_ids,
+                    "license_type_id": license_type.id,
+                    "license_year": year,
                 },
             )
             FinanceAuditLog.objects.create(
@@ -713,6 +1121,8 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
                     "invoice_status": invoice.status,
                     "total": str(invoice.total),
                     "member_ids": member_ids,
+                    "license_type_id": license_type.id,
+                    "license_year": year,
                 },
             )
             FinanceAuditLog.objects.create(
@@ -727,6 +1137,8 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
                     "license_ids": created_license_ids,
                     "license_status": License.Status.PENDING,
                     "member_ids": member_ids,
+                    "license_type_id": license_type.id,
+                    "license_year": year,
                 },
             )
 
@@ -871,7 +1283,13 @@ class LicensePriceViewSet(
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
             return LicensePrice.objects.none()
-        return LicensePrice.objects.all().order_by("-effective_from", "-created_at")
+        queryset = LicensePrice.objects.select_related("license_type").all().order_by(
+            "-effective_from", "-created_at"
+        )
+        license_type_id = self.request.query_params.get("license_type")
+        if license_type_id:
+            queryset = queryset.filter(license_type_id=license_type_id)
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -14,8 +14,10 @@ import { Input } from "@/components/ui/input";
 
 const clubSchema = z.object({
   name: z.string().min(1, "Club name is required"),
-  city: z.string().optional(),
-  address: z.string().optional(),
+  address_line1: z.string().optional(),
+  address_line2: z.string().optional(),
+  postal_code: z.string().optional(),
+  locality: z.string().optional(),
 });
 
 type ClubFormValues = z.infer<typeof clubSchema>;
@@ -36,12 +38,14 @@ export default function ClubAdminSettingsPage() {
     resolver: zodResolver(clubSchema),
     defaultValues: {
       name: "",
-      city: "",
-      address: "",
+      address_line1: "",
+      address_line2: "",
+      postal_code: "",
+      locality: "",
     },
   });
 
-  const loadClubs = async () => {
+  const loadClubs = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
@@ -51,8 +55,10 @@ export default function ClubAdminSettingsPage() {
         setSelectedClubId(club.id);
         reset({
           name: club.name,
-          city: club.city ?? "",
-          address: club.address ?? "",
+          address_line1: club.address_line1 ?? club.address ?? "",
+          address_line2: club.address_line2 ?? "",
+          postal_code: club.postal_code ?? "",
+          locality: club.locality ?? club.city ?? "",
         });
       }
     } catch (error) {
@@ -60,11 +66,11 @@ export default function ClubAdminSettingsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [reset]);
 
   useEffect(() => {
-    loadClubs();
-  }, []);
+    void loadClubs();
+  }, [loadClubs]);
 
   const onSubmit = async (values: ClubFormValues) => {
     if (!selectedClubId) {
@@ -73,7 +79,11 @@ export default function ClubAdminSettingsPage() {
     setErrorMessage(null);
     setSuccessMessage(null);
     try {
-      await updateClub(selectedClubId, values);
+      await updateClub(selectedClubId, {
+        ...values,
+        address: values.address_line1 ?? "",
+        city: values.locality ?? "",
+      });
       setSuccessMessage(t("clubSaved"));
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to update club.");
@@ -96,14 +106,24 @@ export default function ClubAdminSettingsPage() {
               {errors.name ? <p className="text-sm text-red-600">{errors.name.message}</p> : null}
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-700">{t("cityLabel")}</label>
-              <Input placeholder="Luxembourg" {...register("city")} />
+            <div className="space-y-2 md:col-span-2">
+              <label className="text-sm font-medium text-zinc-700">{t("addressLine1Label")}</label>
+              <Input placeholder="12 Rue de la Gare" {...register("address_line1")} />
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <label className="text-sm font-medium text-zinc-700">{t("addressLine2Label")}</label>
+              <Input placeholder="Building, floor, unit (optional)" {...register("address_line2")} />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-700">{t("addressLabel")}</label>
-              <Input placeholder="1 Rue de la Fede" {...register("address")} />
+              <label className="text-sm font-medium text-zinc-700">{t("postalCodeLabel")}</label>
+              <Input placeholder="1234" {...register("postal_code")} />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-zinc-700">{t("localityLabel")}</label>
+              <Input placeholder="Luxembourg" {...register("locality")} />
             </div>
 
             <div className="flex items-center gap-3">

@@ -9,12 +9,14 @@ class MemberAdmin(admin.ModelAdmin):
         "first_name",
         "last_name",
         "sex",
+        "primary_license_role",
+        "secondary_license_role",
         "is_active",
         "club",
         "has_profile_picture",
         "photo_consent_attested_at",
     )
-    list_filter = ("sex", "is_active", "club")
+    list_filter = ("sex", "primary_license_role", "secondary_license_role", "is_active", "club")
     search_fields = ("first_name", "last_name")
     readonly_fields = ("photo_consent_attested_at", "photo_consent_attested_by")
 

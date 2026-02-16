@@ -16,11 +16,20 @@ export function LtfAdminLayout({ title, subtitle, children }: LtfAdminLayoutProp
   const locale = pathname?.split("/")[1] || "en";
 
   const navItems = [
-    { href: `/${locale}/dashboard/ltf`, label: t("navOverview") },
-    { href: `/${locale}/dashboard/ltf/clubs`, label: t("navClubs") },
-    { href: `/${locale}/dashboard/ltf/members`, label: t("navMembers") },
-    { href: `/${locale}/dashboard/ltf/licenses`, label: t("navLicenses") },
-    { href: `/${locale}/dashboard/ltf/license-types`, label: t("navLicenseTypes") },
+    { href: `/${locale}/dashboard/ltf`, label: t("navOverview"), matchChildren: false },
+    { href: `/${locale}/dashboard/ltf/clubs`, label: t("navClubs"), matchChildren: true },
+    { href: `/${locale}/dashboard/ltf/members`, label: t("navMembers"), matchChildren: true },
+    { href: `/${locale}/dashboard/ltf/licenses`, label: t("navLicenses"), matchChildren: true },
+    {
+      href: `/${locale}/dashboard/ltf/license-types`,
+      label: t("navLicenseTypes"),
+      matchChildren: true,
+    },
+    {
+      href: `/${locale}/dashboard/ltf/settings`,
+      label: t("navSettings"),
+      matchChildren: true,
+    },
   ];
 
   return (
@@ -31,7 +40,9 @@ export function LtfAdminLayout({ title, subtitle, children }: LtfAdminLayoutProp
           {subtitle ? <p className="mt-2 text-sm text-zinc-500">{subtitle}</p> : null}
           <nav className="mt-6 flex flex-wrap gap-2">
             {navItems.map((item) => {
-              const isActive = pathname === item.href;
+              const isActive = item.matchChildren
+                ? pathname === item.href || pathname.startsWith(`${item.href}/`)
+                : pathname === item.href;
               return (
                 <Link
                   key={item.href}

@@ -1,21 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Pencil, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
-import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
-import { EntityTable } from "@/components/club-admin/entity-table";
-import { DeleteConfirmModal } from "@/components/ui/delete-confirm-modal";
-import { Modal } from "@/components/ui/modal";
+import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -24,97 +17,74 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Club,
-  License,
-  Member,
-  createMember,
-  deleteMember,
-  getClubs,
-  getLicenses,
-  getMembers,
-  updateMember,
-} from "@/lib/ltf-admin-api";
-import { ImportCsvModal } from "@/components/import/import-csv-modal";
+import { Club, License, Member, getClubs, getLicenses, getMembers } from "@/lib/ltf-admin-api";
 
-const memberSchema = z.object({
-  club: z.string().min(1, "Club is required"),
-  first_name: z.string().min(1, "First name is required"),
-  last_name: z.string().min(1, "Last name is required"),
-  sex: z.enum(["M", "F"]),
-  ltf_licenseid: z.string().optional(),
-  date_of_birth: z.string().optional(),
-  belt_rank: z.string().optional(),
-  is_active: z.boolean(),
-});
+const pageSizeOptions = ["25", "50", "100", "150", "200", "all"];
 
-type MemberFormValues = z.infer<typeof memberSchema>;
+type MemberGroup = {
+  member: Member;
+  licenses: License[];
+  total: number;
+  activeCount: number;
+  pendingCount: number;
+  expiredCount: number;
+  revokedCount: number;
+};
+
+type ClubGroup = {
+  clubId: number;
+  clubName: string;
+  members: MemberGroup[];
+  totalMembers: number;
+  totalLicenses: number;
+  activeCount: number;
+  pendingCount: number;
+  expiredCount: number;
+  revokedCount: number;
+};
+
+function getStatusChipClasses(status: License["status"]): string {
+  if (status === "active") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+  if (status === "pending") {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+  if (status === "expired") {
+    return "border-zinc-300 bg-zinc-100 text-zinc-700";
+  }
+  return "border-rose-200 bg-rose-50 text-rose-700";
+}
+
+function formatIssuedAt(value: string | null): string {
+  if (!value) {
+    return "-";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleDateString();
+}
 
 export default function LtfAdminMembersPage() {
   const t = useTranslations("LtfAdmin");
-  const importT = useTranslations("Import");
   const common = useTranslations("Common");
   const pathname = usePathname();
   const locale = pathname?.split("/")[1] || "en";
+
   const [clubs, setClubs] = useState<Club[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [licenses, setLicenses] = useState<License[]>([]);
-  const [editingMember, setEditingMember] = useState<Member | null>(null);
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [memberToDelete, setMemberToDelete] = useState<Member | null>(null);
-  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const [isBatchDeleteOpen, setIsBatchDeleteOpen] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [expandedClubIds, setExpandedClubIds] = useState<number[]>([]);
+  const [expandedMemberIds, setExpandedMemberIds] = useState<number[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("25");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [importType, setImportType] = useState<"clubs" | "members" | null>(null);
 
-  const pageSizeOptions = ["25", "50", "100", "150", "200", "all"];
-
-  const importFields = {
-    clubs: [
-      { key: "name", label: t("clubNameLabel"), required: true },
-      { key: "city", label: t("cityLabel") },
-      { key: "address", label: t("addressLabel") },
-    ],
-    members: [
-      { key: "first_name", label: t("firstNameLabel"), required: true },
-      { key: "last_name", label: t("lastNameLabel"), required: true },
-      { key: "sex", label: t("sexLabel") },
-      { key: "email", label: importT("emailLabel") },
-      { key: "date_of_birth", label: t("dobLabel") },
-      { key: "belt_rank", label: t("beltRankLabel") },
-      { key: "wt_licenseid", label: importT("wtLicenseLabel") },
-      { key: "ltf_licenseid", label: importT("ltfLicenseLabel") },
-      { key: "is_active", label: t("isActiveLabel") },
-    ],
-  };
-
-  const {
-    register,
-    handleSubmit,
-    reset,
-    setValue,
-    watch,
-    formState: { errors, isSubmitting },
-  } = useForm<MemberFormValues>({
-    resolver: zodResolver(memberSchema),
-    defaultValues: {
-      club: "",
-      first_name: "",
-      last_name: "",
-      sex: "M",
-      ltf_licenseid: "",
-      date_of_birth: "",
-      belt_rank: "",
-      is_active: true,
-    },
-  });
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
@@ -126,183 +96,232 @@ export default function LtfAdminMembersPage() {
       setClubs(clubsResponse);
       setMembers(membersResponse);
       setLicenses(licensesResponse);
-      if (clubsResponse.length > 0 && !watch("club")) {
-        setValue("club", String(clubsResponse[0].id));
-      }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to load members.");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
+
+  const clubById = useMemo(() => new Map(clubs.map((club) => [club.id, club])), [clubs]);
+
+  const licensesByMember = useMemo(() => {
+    const grouped = new Map<number, License[]>();
+    for (const license of licenses) {
+      const memberLicenses = grouped.get(license.member);
+      if (memberLicenses) {
+        memberLicenses.push(license);
+      } else {
+        grouped.set(license.member, [license]);
+      }
+    }
+    for (const memberLicenses of grouped.values()) {
+      memberLicenses.sort((left, right) => {
+        const byYear = right.year - left.year;
+        if (byYear !== 0) {
+          return byYear;
+        }
+        return right.id - left.id;
+      });
+    }
+    return grouped;
+  }, [licenses]);
+
+  const activeMembers = useMemo(() => members.filter((member) => member.is_active), [members]);
 
   const searchedMembers = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
     if (!normalizedQuery) {
-      return members;
+      return activeMembers;
     }
-    return members.filter((member) => {
-      const clubName = clubs.find((club) => club.id === member.club)?.name ?? "";
+    return activeMembers.filter((member) => {
+      const clubName = clubById.get(member.club)?.name.toLowerCase() ?? "";
       const fullName = `${member.first_name} ${member.last_name}`.toLowerCase();
+      const licenseId = member.ltf_licenseid.toLowerCase();
+      const beltRank = member.belt_rank.toLowerCase();
+      const memberLicenses = licensesByMember.get(member.id) ?? [];
+      const yearsText = memberLicenses.map((license) => String(license.year)).join(" ");
+      const statusesText = memberLicenses.map((license) => license.status).join(" ");
       return (
-        fullName.includes(normalizedQuery) || clubName.toLowerCase().includes(normalizedQuery)
+        fullName.includes(normalizedQuery) ||
+        clubName.includes(normalizedQuery) ||
+        licenseId.includes(normalizedQuery) ||
+        beltRank.includes(normalizedQuery) ||
+        yearsText.includes(normalizedQuery) ||
+        statusesText.includes(normalizedQuery)
       );
     });
-  }, [clubs, members, searchQuery]);
+  }, [activeMembers, clubById, licensesByMember, searchQuery]);
+
+  const groupedClubRows = useMemo<ClubGroup[]>(() => {
+    const grouped = new Map<number, { clubName: string; members: Member[] }>();
+    for (const member of searchedMembers) {
+      const clubName = clubById.get(member.club)?.name ?? t("unknownClub");
+      const current = grouped.get(member.club);
+      if (current) {
+        current.members.push(member);
+      } else {
+        grouped.set(member.club, { clubName, members: [member] });
+      }
+    }
+
+    return Array.from(grouped.entries())
+      .map(([clubId, entry]) => {
+        const memberGroups = [...entry.members]
+          .sort((left, right) => {
+            const byFirstName = left.first_name.localeCompare(right.first_name);
+            if (byFirstName !== 0) {
+              return byFirstName;
+            }
+            return left.last_name.localeCompare(right.last_name);
+          })
+          .map((member) => {
+            const memberLicenses = licensesByMember.get(member.id) ?? [];
+            const activeCount = memberLicenses.filter((license) => license.status === "active").length;
+            const pendingCount = memberLicenses.filter((license) => license.status === "pending").length;
+            const expiredCount = memberLicenses.filter((license) => license.status === "expired").length;
+            const revokedCount = memberLicenses.filter((license) => license.status === "revoked").length;
+            return {
+              member,
+              licenses: memberLicenses,
+              total: memberLicenses.length,
+              activeCount,
+              pendingCount,
+              expiredCount,
+              revokedCount,
+            };
+          });
+
+        const totalLicenses = memberGroups.reduce((sum, memberGroup) => sum + memberGroup.total, 0);
+        const activeCount = memberGroups.reduce(
+          (sum, memberGroup) => sum + memberGroup.activeCount,
+          0
+        );
+        const pendingCount = memberGroups.reduce(
+          (sum, memberGroup) => sum + memberGroup.pendingCount,
+          0
+        );
+        const expiredCount = memberGroups.reduce(
+          (sum, memberGroup) => sum + memberGroup.expiredCount,
+          0
+        );
+        const revokedCount = memberGroups.reduce(
+          (sum, memberGroup) => sum + memberGroup.revokedCount,
+          0
+        );
+
+        return {
+          clubId,
+          clubName: entry.clubName,
+          members: memberGroups,
+          totalMembers: memberGroups.length,
+          totalLicenses,
+          activeCount,
+          pendingCount,
+          expiredCount,
+          revokedCount,
+        };
+      })
+      .sort((left, right) => left.clubName.localeCompare(right.clubName));
+  }, [clubById, licensesByMember, searchedMembers, t]);
 
   const resolvedPageSize =
-    pageSize === "all" ? Math.max(searchedMembers.length, 1) : Number(pageSize);
-  const totalPages = Math.max(1, Math.ceil(searchedMembers.length / resolvedPageSize));
-  const pagedMembers = useMemo(() => {
+    pageSize === "all" ? Math.max(groupedClubRows.length, 1) : Number(pageSize);
+  const totalPages = Math.max(1, Math.ceil(groupedClubRows.length / resolvedPageSize));
+  const pagedClubRows = useMemo(() => {
     const startIndex = (currentPage - 1) * resolvedPageSize;
-    return searchedMembers.slice(startIndex, startIndex + resolvedPageSize);
-  }, [currentPage, searchedMembers, resolvedPageSize]);
+    return groupedClubRows.slice(startIndex, startIndex + resolvedPageSize);
+  }, [currentPage, groupedClubRows, resolvedPageSize]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, pageSize]);
+  }, [pageSize, searchQuery]);
 
-  const allFilteredIds = useMemo(
-    () => searchedMembers.map((member) => member.id),
-    [searchedMembers]
+  useEffect(() => {
+    const validClubIds = new Set(groupedClubRows.map((clubGroup) => clubGroup.clubId));
+    setExpandedClubIds((previous) => previous.filter((clubId) => validClubIds.has(clubId)));
+    const validMemberIds = new Set(
+      groupedClubRows.flatMap((clubGroup) =>
+        clubGroup.members.map((memberGroup) => memberGroup.member.id)
+      )
+    );
+    setExpandedMemberIds((previous) =>
+      previous.filter((memberId) => validMemberIds.has(memberId))
+    );
+  }, [groupedClubRows]);
+
+  const expandedClubSet = useMemo(() => new Set(expandedClubIds), [expandedClubIds]);
+  const expandedMemberSet = useMemo(() => new Set(expandedMemberIds), [expandedMemberIds]);
+
+  const visibleClubIds = useMemo(() => pagedClubRows.map((clubGroup) => clubGroup.clubId), [pagedClubRows]);
+  const visibleMemberIds = useMemo(
+    () =>
+      pagedClubRows.flatMap((clubGroup) =>
+        clubGroup.members.map((memberGroup) => memberGroup.member.id)
+      ),
+    [pagedClubRows]
   );
-  const allSelected =
-    allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedIds.includes(id));
 
-  const toggleSelectAll = () => {
-    if (allSelected) {
-      setSelectedIds([]);
-    } else {
-      setSelectedIds(allFilteredIds);
-    }
+  const toggleClubExpanded = (clubId: number) => {
+    setExpandedClubIds((previous) =>
+      previous.includes(clubId)
+        ? previous.filter((item) => item !== clubId)
+        : [...previous, clubId]
+    );
   };
 
-  const toggleSelectRow = (id: number) => {
-    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+  const toggleMemberExpanded = (memberId: number) => {
+    setExpandedMemberIds((previous) =>
+      previous.includes(memberId)
+        ? previous.filter((item) => item !== memberId)
+        : [...previous, memberId]
+    );
   };
 
-  const onSubmit = async (values: MemberFormValues) => {
-    setErrorMessage(null);
-    const payload = {
-      club: Number(values.club),
-      first_name: values.first_name,
-      last_name: values.last_name,
-      sex: values.sex,
-      ltf_licenseid: values.ltf_licenseid ?? "",
-      date_of_birth: values.date_of_birth ? values.date_of_birth : null,
-      belt_rank: values.belt_rank ?? "",
-      is_active: values.is_active,
-    };
-    try {
-      if (editingMember) {
-        await updateMember(editingMember.id, payload);
-      } else {
-        await createMember(payload);
+  const expandAllVisibleClubs = () => {
+    setExpandedClubIds((previous) => Array.from(new Set([...previous, ...visibleClubIds])));
+  };
+
+  const collapseAllVisibleClubs = () => {
+    const visibleClubIdSet = new Set(visibleClubIds);
+    const visibleMemberIdSet = new Set(visibleMemberIds);
+    setExpandedClubIds((previous) => previous.filter((clubId) => !visibleClubIdSet.has(clubId)));
+    setExpandedMemberIds((previous) =>
+      previous.filter((memberId) => !visibleMemberIdSet.has(memberId))
+    );
+  };
+
+  const expandAllVisibleMembers = () => {
+    setExpandedClubIds((previous) => Array.from(new Set([...previous, ...visibleClubIds])));
+    setExpandedMemberIds((previous) => Array.from(new Set([...previous, ...visibleMemberIds])));
+  };
+
+  const collapseAllVisibleMembers = () => {
+    const visibleMemberIdSet = new Set(visibleMemberIds);
+    setExpandedMemberIds((previous) =>
+      previous.filter((memberId) => !visibleMemberIdSet.has(memberId))
+    );
+  };
+
+  const getStatusLabel = useCallback(
+    (status: License["status"]) => {
+      if (status === "active") {
+        return t("statusActive");
       }
-      setEditingMember(null);
-      setIsFormOpen(false);
-      reset();
-      await loadData();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to save member.");
-    }
-  };
-
-  const startEdit = (member: Member) => {
-    setEditingMember(member);
-    setIsFormOpen(true);
-    reset({
-      club: String(member.club),
-      first_name: member.first_name,
-      last_name: member.last_name,
-      sex: member.sex,
-      ltf_licenseid: member.ltf_licenseid ?? "",
-      date_of_birth: member.date_of_birth ?? "",
-      belt_rank: member.belt_rank ?? "",
-      is_active: member.is_active,
-    });
-  };
-
-  const startCreate = () => {
-    setEditingMember(null);
-    setIsFormOpen(true);
-    reset({
-      club: clubs[0] ? String(clubs[0].id) : "",
-      first_name: "",
-      last_name: "",
-      sex: "M",
-      ltf_licenseid: "",
-      date_of_birth: "",
-      belt_rank: "",
-      is_active: true,
-    });
-  };
-
-  const selectedLicenses = useMemo(() => {
-    if (!memberToDelete) {
-      return [];
-    }
-    return licenses.filter((license) => license.member === memberToDelete.id);
-  }, [licenses, memberToDelete]);
-
-  const licenseItems = selectedLicenses.map((license) => {
-    const statusLabel =
-      license.status === "active"
-        ? t("statusActive")
-        : license.status === "expired"
-        ? t("statusExpired")
-        : t("statusPending");
-    return `${license.year} · ${statusLabel}`;
-  });
-
-  const handleDelete = (member: Member) => {
-    setMemberToDelete(member);
-    setIsDeleteOpen(true);
-  };
-
-  const confirmDelete = async () => {
-    if (!memberToDelete) {
-      return;
-    }
-    try {
-      await deleteMember(memberToDelete.id);
-      setIsDeleteOpen(false);
-      setMemberToDelete(null);
-      await loadData();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to delete member.");
-    }
-  };
-
-  const selectedMembers = members.filter((member) => selectedIds.includes(member.id));
-  const selectedLicenseItems = selectedMembers.flatMap((member) => {
-    const memberName = `${member.first_name} ${member.last_name}`;
-    return licenses
-      .filter((license) => license.member === member.id)
-      .map((license) => {
-        const statusLabel =
-          license.status === "active"
-            ? t("statusActive")
-            : license.status === "expired"
-            ? t("statusExpired")
-            : t("statusPending");
-        return `${memberName} — ${license.year} · ${statusLabel}`;
-      });
-  });
-
-  const confirmBatchDelete = async () => {
-    try {
-      await Promise.all(selectedMembers.map((member) => deleteMember(member.id)));
-      setSelectedIds([]);
-      await loadData();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to delete members.");
-    }
-  };
+      if (status === "pending") {
+        return t("statusPending");
+      }
+      if (status === "expired") {
+        return t("statusExpired");
+      }
+      return t("statusRevoked");
+    },
+    [t]
+  );
 
   return (
     <LtfAdminLayout title={t("membersTitle")} subtitle={t("membersSubtitle")}>
@@ -329,36 +348,41 @@ export default function LtfAdminMembersPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Select
-              value=""
-              onValueChange={(value) => {
-                if (value === "delete") {
-                  setIsBatchDeleteOpen(true);
-                }
-              }}
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={visibleClubIds.length === 0}
+              onClick={expandAllVisibleClubs}
             >
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder={common("batchActionsLabel")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="delete" disabled={selectedIds.length === 0}>
-                  {common("batchDeleteLabel")}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <Button onClick={startCreate}>{t("createMember")}</Button>
-            <Select
-              value={importType ?? ""}
-              onValueChange={(value) => setImportType(value as "clubs" | "members")}
+              {t("expandAllClubs")}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={visibleClubIds.length === 0}
+              onClick={collapseAllVisibleClubs}
             >
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder={importT("importLabel")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="clubs">{importT("importClubs")}</SelectItem>
-                <SelectItem value="members">{importT("importMembers")}</SelectItem>
-              </SelectContent>
-            </Select>
+              {t("collapseAllClubs")}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={visibleMemberIds.length === 0}
+              onClick={expandAllVisibleMembers}
+            >
+              {t("expandAllMembers")}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={visibleMemberIds.length === 0}
+              onClick={collapseAllVisibleMembers}
+            >
+              {t("collapseAllMembers")}
+            </Button>
+          </div>
+          <div className="space-y-1 text-xs text-zinc-500">
+            <p>{t("membersReadOnlyHint")}</p>
           </div>
           <div className="flex items-center gap-2 text-sm text-zinc-500">
             {t("pageLabel", { current: currentPage, total: totalPages })}
@@ -366,7 +390,7 @@ export default function LtfAdminMembersPage() {
               variant="outline"
               size="sm"
               disabled={currentPage === 1}
-              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              onClick={() => setCurrentPage((previous) => Math.max(1, previous - 1))}
             >
               {t("previousPage")}
             </Button>
@@ -374,7 +398,7 @@ export default function LtfAdminMembersPage() {
               variant="outline"
               size="sm"
               disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              onClick={() => setCurrentPage((previous) => Math.min(totalPages, previous + 1))}
             >
               {t("nextPage")}
             </Button>
@@ -383,244 +407,191 @@ export default function LtfAdminMembersPage() {
 
         {isLoading ? (
           <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
-        ) : searchedMembers.length === 0 ? (
+        ) : groupedClubRows.length === 0 ? (
           <EmptyState title={t("noResultsTitle")} description={t("noMembersResultsSubtitle")} />
         ) : (
-          <EntityTable
-            columns={[
-              {
-                key: "select",
-                header: (
-                  <input
-                    type="checkbox"
-                    aria-label={common("selectAllLabel")}
-                    checked={allSelected}
-                    onChange={toggleSelectAll}
-                  />
-                ),
-                render: (member) => (
-                  <input
-                    type="checkbox"
-                    aria-label={common("selectRowLabel")}
-                    checked={selectedIds.includes(member.id)}
-                    onChange={() => toggleSelectRow(member.id)}
-                  />
-                ),
-              },
-              { key: "first_name", header: t("firstNameLabel") },
-              { key: "last_name", header: t("lastNameLabel") },
-              {
-                key: "sex",
-                header: t("sexLabel"),
-                render: (member) => (member.sex === "F" ? t("sexFemale") : t("sexMale")),
-              },
-              {
-                key: "club",
-                header: t("clubLabel"),
-                render: (member) =>
-                  clubs.find((club) => club.id === member.club)?.name ?? t("unknownClub"),
-              },
-              { key: "belt_rank", header: t("beltRankLabel") },
-              { key: "ltf_licenseid", header: t("ltfLicenseLabel") },
-              {
-                key: "is_active",
-                header: t("isActiveLabel"),
-                render: (member) => (member.is_active ? t("activeLabel") : t("inactiveLabel")),
-              },
-              {
-                key: "actions",
-                header: t("actionsLabel"),
-                render: (member) => (
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      size="icon-sm"
-                      aria-label={t("editAction")}
-                      onClick={() => startEdit(member)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href={`/${locale}/dashboard/ltf/members/${member.id}`}>{t("viewMemberAction")}</Link>
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="icon-sm"
-                      aria-label={t("deleteAction")}
-                      onClick={() => handleDelete(member)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ),
-              },
-            ]}
-            rows={pagedMembers}
-          />
+          <div className="overflow-x-auto rounded-2xl border border-zinc-100 bg-white shadow-sm">
+            <table className="min-w-full text-left text-sm">
+              <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+                <tr>
+                  <th className="w-10 px-4 py-3 font-medium" />
+                  <th className="px-4 py-3 font-medium">{t("clubLabel")}</th>
+                  <th className="px-4 py-3 font-medium">{t("totalMembers")}</th>
+                  <th className="px-4 py-3 font-medium">{t("licensesTitle")}</th>
+                  <th className="px-4 py-3 font-medium">{t("statusActive")}</th>
+                  <th className="px-4 py-3 font-medium">{t("statusPending")}</th>
+                  <th className="px-4 py-3 font-medium">{t("statusExpired")}</th>
+                  <th className="px-4 py-3 font-medium">{t("statusRevoked")}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {pagedClubRows.map((clubGroup) => {
+                  const clubExpanded = expandedClubSet.has(clubGroup.clubId);
+                  return (
+                    <Fragment key={clubGroup.clubId}>
+                      <tr
+                        className="cursor-pointer text-zinc-700 hover:bg-zinc-50"
+                        onClick={() => toggleClubExpanded(clubGroup.clubId)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            toggleClubExpanded(clubGroup.clubId);
+                          }
+                        }}
+                        tabIndex={0}
+                        role="button"
+                        aria-expanded={clubExpanded}
+                      >
+                        <td className="px-4 py-3 text-zinc-500">
+                          {clubExpanded ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </td>
+                        <td className="px-4 py-3 font-medium">{clubGroup.clubName}</td>
+                        <td className="px-4 py-3">{clubGroup.totalMembers}</td>
+                        <td className="px-4 py-3">{clubGroup.totalLicenses}</td>
+                        <td className="px-4 py-3">{clubGroup.activeCount}</td>
+                        <td className="px-4 py-3">{clubGroup.pendingCount}</td>
+                        <td className="px-4 py-3">{clubGroup.expiredCount}</td>
+                        <td className="px-4 py-3">{clubGroup.revokedCount}</td>
+                      </tr>
+                      {clubExpanded ? (
+                        <tr className="bg-zinc-50/60">
+                          <td colSpan={8} className="px-6 py-3">
+                            <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+                              <table className="min-w-full text-left text-sm">
+                                <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+                                  <tr>
+                                    <th className="w-10 px-4 py-2 font-medium" />
+                                    <th className="px-4 py-2 font-medium">{t("memberLabel")}</th>
+                                    <th className="px-4 py-2 font-medium">{t("beltRankLabel")}</th>
+                                    <th className="px-4 py-2 font-medium">{t("ltfLicenseLabel")}</th>
+                                    <th className="px-4 py-2 font-medium">{t("licensesTitle")}</th>
+                                    <th className="px-4 py-2 font-medium">{t("statusActive")}</th>
+                                    <th className="px-4 py-2 font-medium">{t("statusPending")}</th>
+                                    <th className="px-4 py-2 font-medium">{t("statusExpired")}</th>
+                                    <th className="px-4 py-2 font-medium">{t("statusRevoked")}</th>
+                                    <th className="px-4 py-2 font-medium">{t("actionsLabel")}</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-zinc-100">
+                                  {clubGroup.members.map((memberGroup) => {
+                                    const memberExpanded = expandedMemberSet.has(
+                                      memberGroup.member.id
+                                    );
+                                    return (
+                                      <Fragment key={memberGroup.member.id}>
+                                        <tr
+                                          className="cursor-pointer text-zinc-700 hover:bg-zinc-50"
+                                          onClick={() => toggleMemberExpanded(memberGroup.member.id)}
+                                          onKeyDown={(event) => {
+                                            if (event.key === "Enter" || event.key === " ") {
+                                              event.preventDefault();
+                                              toggleMemberExpanded(memberGroup.member.id);
+                                            }
+                                          }}
+                                          tabIndex={0}
+                                          role="button"
+                                          aria-expanded={memberExpanded}
+                                        >
+                                          <td className="px-4 py-2 text-zinc-500">
+                                            {memberExpanded ? (
+                                              <ChevronDown className="h-4 w-4" />
+                                            ) : (
+                                              <ChevronRight className="h-4 w-4" />
+                                            )}
+                                          </td>
+                                          <td className="px-4 py-2 font-medium">
+                                            {memberGroup.member.first_name} {memberGroup.member.last_name}
+                                          </td>
+                                          <td className="px-4 py-2">
+                                            {memberGroup.member.belt_rank || "-"}
+                                          </td>
+                                          <td className="px-4 py-2">
+                                            {memberGroup.member.ltf_licenseid || "-"}
+                                          </td>
+                                          <td className="px-4 py-2">{memberGroup.total}</td>
+                                          <td className="px-4 py-2">{memberGroup.activeCount}</td>
+                                          <td className="px-4 py-2">{memberGroup.pendingCount}</td>
+                                          <td className="px-4 py-2">{memberGroup.expiredCount}</td>
+                                          <td className="px-4 py-2">{memberGroup.revokedCount}</td>
+                                          <td className="px-4 py-2" onClick={(event) => event.stopPropagation()}>
+                                            <Button variant="outline" size="sm" asChild>
+                                              <Link
+                                                href={`/${locale}/dashboard/ltf/members/${memberGroup.member.id}`}
+                                              >
+                                                {t("viewMemberAction")}
+                                              </Link>
+                                            </Button>
+                                          </td>
+                                        </tr>
+                                        {memberExpanded ? (
+                                          <tr className="bg-zinc-50/50">
+                                            <td colSpan={10} className="px-6 py-3">
+                                              {memberGroup.licenses.length === 0 ? (
+                                                <p className="text-sm text-zinc-500">
+                                                  {t("noMemberLicensesSubtitle")}
+                                                </p>
+                                              ) : (
+                                                <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
+                                                  <table className="min-w-full text-left text-sm">
+                                                    <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+                                                      <tr>
+                                                        <th className="px-4 py-2 font-medium">
+                                                          {t("yearLabel")}
+                                                        </th>
+                                                        <th className="px-4 py-2 font-medium">
+                                                          {t("statusLabel")}
+                                                        </th>
+                                                        <th className="px-4 py-2 font-medium">
+                                                          {t("issuedAtLabel")}
+                                                        </th>
+                                                      </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-zinc-100">
+                                                      {memberGroup.licenses.map((license) => (
+                                                        <tr key={license.id} className="text-zinc-700">
+                                                          <td className="px-4 py-2">{license.year}</td>
+                                                          <td className="px-4 py-2">
+                                                            <span
+                                                              className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${getStatusChipClasses(
+                                                                license.status
+                                                              )}`}
+                                                            >
+                                                              {getStatusLabel(license.status)}
+                                                            </span>
+                                                          </td>
+                                                          <td className="px-4 py-2">
+                                                            {formatIssuedAt(license.issued_at)}
+                                                          </td>
+                                                        </tr>
+                                                      ))}
+                                                    </tbody>
+                                                  </table>
+                                                </div>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        ) : null}
+                                      </Fragment>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
-
-      <Modal
-        title={editingMember ? t("updateMember") : t("createMember")}
-        description={t("memberFormSubtitle")}
-        isOpen={isFormOpen}
-        onClose={() => setIsFormOpen(false)}
-      >
-        <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
-          <div className="space-y-2 md:col-span-2">
-            <label className="text-sm font-medium text-zinc-700">{t("clubLabel")}</label>
-            <Select
-              value={watch("club")}
-              onValueChange={(value) => setValue("club", value, { shouldValidate: true })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={t("selectClubPlaceholder")} />
-              </SelectTrigger>
-              <SelectContent>
-                {clubs.map((club) => (
-                  <SelectItem key={club.id} value={String(club.id)}>
-                    {club.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.club ? <p className="text-sm text-red-600">{errors.club.message}</p> : null}
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("firstNameLabel")}</label>
-            <Input placeholder="Jane" {...register("first_name")} />
-            {errors.first_name ? (
-              <p className="text-sm text-red-600">{errors.first_name.message}</p>
-            ) : null}
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("lastNameLabel")}</label>
-            <Input placeholder="Doe" {...register("last_name")} />
-            {errors.last_name ? (
-              <p className="text-sm text-red-600">{errors.last_name.message}</p>
-            ) : null}
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("sexLabel")}</label>
-            <Select
-              value={watch("sex")}
-              onValueChange={(value) => setValue("sex", value as "M" | "F", { shouldValidate: true })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={t("sexLabel")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="M">{t("sexMale")}</SelectItem>
-                <SelectItem value="F">{t("sexFemale")}</SelectItem>
-              </SelectContent>
-            </Select>
-            {errors.sex ? <p className="text-sm text-red-600">{errors.sex.message}</p> : null}
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("ltfLicenseLabel")}</label>
-            <Input placeholder="LTF-12345" {...register("ltf_licenseid")} />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("dobLabel")}</label>
-            <Input type="date" {...register("date_of_birth")} />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("beltRankLabel")}</label>
-            <Input placeholder="1st Dan" {...register("belt_rank")} />
-          </div>
-
-          <div className="flex items-center gap-2 md:col-span-2">
-            <Checkbox
-              checked={watch("is_active")}
-              onCheckedChange={(value) => setValue("is_active", Boolean(value))}
-              id="ltf-member-active"
-            />
-            <label htmlFor="ltf-member-active" className="text-sm font-medium text-zinc-700">
-              {t("isActiveLabel")}
-            </label>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Button type="submit" disabled={isSubmitting}>
-              {editingMember ? t("updateMember") : t("createMember")}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setEditingMember(null);
-                setIsFormOpen(false);
-                reset();
-              }}
-            >
-              {t("cancelEdit")}
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      <DeleteConfirmModal
-        isOpen={isDeleteOpen}
-        title={common("deleteTitle", { item: common("itemMember") })}
-        description={common("deleteMemberDescription", {
-          name: memberToDelete
-            ? `${memberToDelete.first_name} ${memberToDelete.last_name}`
-            : "",
-        })}
-        listTitle={common("deleteCascadeTitle")}
-        listItems={licenseItems}
-        confirmLabel={common("deleteConfirmButton")}
-        cancelLabel={common("deleteCancelButton")}
-        onConfirm={confirmDelete}
-        onCancel={() => {
-          setIsDeleteOpen(false);
-          setMemberToDelete(null);
-        }}
-      />
-
-      <DeleteConfirmModal
-        isOpen={isBatchDeleteOpen}
-        title={common("deleteTitle", { item: common("itemMember") })}
-        description={common("deleteSelectedDescription", {
-          count: selectedMembers.length,
-          item: common("itemMember"),
-        })}
-        listTitle={common("deleteCascadeTitle")}
-        listItems={selectedLicenseItems}
-        confirmLabel={common("deleteConfirmButton")}
-        cancelLabel={common("deleteCancelButton")}
-        onConfirm={() => {
-          setIsBatchDeleteOpen(false);
-          confirmBatchDelete();
-        }}
-        onCancel={() => setIsBatchDeleteOpen(false)}
-      />
-
-      <ImportCsvModal
-        isOpen={importType === "clubs"}
-        onClose={() => setImportType(null)}
-        type="clubs"
-        title={importT("importClubs")}
-        subtitle={importT("importClubsSubtitle")}
-        fields={importFields.clubs}
-        onComplete={loadData}
-      />
-      <ImportCsvModal
-        isOpen={importType === "members"}
-        onClose={() => setImportType(null)}
-        type="members"
-        title={importT("importMembers")}
-        subtitle={importT("importMembersSubtitle")}
-        fields={importFields.members}
-        clubOptions={clubs}
-        onComplete={loadData}
-      />
     </LtfAdminLayout>
   );
 }

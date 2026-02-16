@@ -123,11 +123,113 @@ export type Payment = {
 
 export type LicensePrice = {
   id: number;
+  license_type: number;
   amount: string;
   currency: string;
   effective_from: string;
   created_by: number | null;
   created_at: string;
+};
+
+export type LicenseTypePolicy = {
+  id: number;
+  license_type: number;
+  allow_current_year_order: boolean;
+  current_start_month: number;
+  current_start_day: number;
+  current_end_month: number;
+  current_end_day: number;
+  allow_next_year_preorder: boolean;
+  next_start_month: number;
+  next_start_day: number;
+  next_end_month: number;
+  next_end_day: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FinanceLicenseType = {
+  id: number;
+  name: string;
+  code: string;
+  created_at: string;
+  updated_at: string;
+  policy?: LicenseTypePolicy;
+};
+
+export type OverviewLink = {
+  label_key: string;
+  path: string;
+};
+
+export type LtfFinanceOverviewResponse = {
+  meta: {
+    version: "1.0";
+    role: "ltf_finance";
+    generated_at: string;
+    period: {
+      today: string;
+      month_start: string;
+      month_end: string;
+      expiring_window_days: number;
+    };
+  };
+  currency: string;
+  cards: {
+    received_orders: number;
+    delivered_orders: number;
+    cancelled_orders: number;
+    issued_invoices_open: number;
+    paid_invoices: number;
+    outstanding_amount: string;
+    collected_this_month_amount: string;
+    pricing_coverage: {
+      total_license_types: number;
+      with_active_price: number;
+      missing_active_price: number;
+    };
+  };
+  action_queue: Array<{
+    key:
+      | "issued_invoices_overdue_7d"
+      | "license_types_without_active_price"
+      | "paid_orders_with_pending_licenses"
+      | "failed_or_cancelled_payments_30d";
+    count: number;
+    severity: "info" | "warning" | "critical";
+    link: OverviewLink;
+  }>;
+  distributions: {
+    orders_by_status: {
+      draft: number;
+      pending: number;
+      paid: number;
+      cancelled: number;
+      refunded: number;
+    };
+    invoices_by_status: {
+      draft: number;
+      issued: number;
+      paid: number;
+      void: number;
+    };
+  };
+  recent_activity: Array<{
+    id: number;
+    created_at: string;
+    action: string;
+    message: string;
+    club_id: number | null;
+    order_id: number | null;
+    invoice_id: number | null;
+  }>;
+  links: {
+    orders: OverviewLink;
+    invoices: OverviewLink;
+    payments: OverviewLink;
+    license_settings: OverviewLink;
+    audit_log: OverviewLink;
+  };
 };
 
 export function getFinanceOrders() {
@@ -170,17 +272,70 @@ export function getFinanceAuditLogs() {
   return apiRequest<FinanceAuditLog[]>("/api/finance-audit-logs/");
 }
 
-export function getLicensePrices() {
-  return apiRequest<LicensePrice[]>("/api/license-prices/");
+export function getLtfFinanceOverview() {
+  return apiRequest<LtfFinanceOverviewResponse>("/api/dashboard/overview/ltf-finance/");
+}
+
+export function getLicensePrices(params?: { licenseTypeId?: number }) {
+  const search = new URLSearchParams();
+  if (params?.licenseTypeId) {
+    search.set("license_type", String(params.licenseTypeId));
+  }
+  const suffix = search.toString();
+  return apiRequest<LicensePrice[]>(`/api/license-prices/${suffix ? `?${suffix}` : ""}`);
 }
 
 export function createLicensePrice(input: {
+  license_type?: number;
   amount: string;
   currency?: string;
   effective_from?: string;
 }) {
   return apiRequest<LicensePrice>("/api/license-prices/", {
     method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function getFinanceLicenseTypes() {
+  return apiRequest<FinanceLicenseType[]>("/api/license-types/");
+}
+
+export function createFinanceLicenseType(input: {
+  name: string;
+  initial_price_amount?: string;
+  initial_price_currency?: string;
+  initial_price_effective_from?: string;
+}) {
+  return apiRequest<FinanceLicenseType>("/api/license-types/", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateFinanceLicenseType(id: number, input: { name: string }) {
+  return apiRequest<FinanceLicenseType>(`/api/license-types/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteFinanceLicenseType(id: number) {
+  return apiRequest<void>(`/api/license-types/${id}/`, {
+    method: "DELETE",
+  });
+}
+
+export function getFinanceLicenseTypePolicy(licenseTypeId: number) {
+  return apiRequest<LicenseTypePolicy>(`/api/license-types/${licenseTypeId}/policy/`);
+}
+
+export function updateFinanceLicenseTypePolicy(
+  licenseTypeId: number,
+  input: Partial<Omit<LicenseTypePolicy, "id" | "license_type" | "created_at" | "updated_at">>
+) {
+  return apiRequest<LicenseTypePolicy>(`/api/license-types/${licenseTypeId}/policy/`, {
+    method: "PATCH",
     body: JSON.stringify(input),
   });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -56,7 +56,7 @@ export default function LtfClubDetailPage() {
     [t]
   );
 
-  const loadClub = async () => {
+  const loadClub = useCallback(async () => {
     if (!clubId) {
       setErrorMessage(t("unknownClub"));
       setIsLoading(false);
@@ -72,9 +72,9 @@ export default function LtfClubDetailPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [clubId, t]);
 
-  const loadAdmins = async () => {
+  const loadAdmins = useCallback(async () => {
     if (!clubId) {
       return;
     }
@@ -90,17 +90,17 @@ export default function LtfClubDetailPage() {
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to load club admins.");
     }
-  };
-
-  useEffect(() => {
-    loadClub();
   }, [clubId]);
 
   useEffect(() => {
+    void loadClub();
+  }, [loadClub]);
+
+  useEffect(() => {
     if (activeTab === "admins") {
-      loadAdmins();
+      void loadAdmins();
     }
-  }, [activeTab, clubId]);
+  }, [activeTab, loadAdmins]);
 
   const handleAddAdmin = async () => {
     if (!clubId || !selectedMemberId) {
@@ -181,12 +181,20 @@ export default function LtfClubDetailPage() {
                 <span className="font-medium">{club.name}</span>
               </div>
               <div className="flex flex-col gap-1">
-                <span className="text-xs text-zinc-500">{t("cityLabel")}</span>
-                <span className="font-medium">{club.city || "-"}</span>
+                <span className="text-xs text-zinc-500">{t("postalCodeLabel")}</span>
+                <span className="font-medium">{club.postal_code || "-"}</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-zinc-500">{t("localityLabel")}</span>
+                <span className="font-medium">{club.locality || club.city || "-"}</span>
               </div>
               <div className="flex flex-col gap-1 md:col-span-2">
-                <span className="text-xs text-zinc-500">{t("addressLabel")}</span>
-                <span className="font-medium">{club.address || "-"}</span>
+                <span className="text-xs text-zinc-500">{t("addressLine1Label")}</span>
+                <span className="font-medium">{club.address_line1 || club.address || "-"}</span>
+              </div>
+              <div className="flex flex-col gap-1 md:col-span-2">
+                <span className="text-xs text-zinc-500">{t("addressLine2Label")}</span>
+                <span className="font-medium">{club.address_line2 || "-"}</span>
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-xs text-zinc-500">{t("maxAdminsLabel")}</span>

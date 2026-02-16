@@ -26,11 +26,19 @@ from licenses.models import LicenseHistoryEvent
 class MemberViewSet(viewsets.ModelViewSet):
     serializer_class = MemberSerializer
     permission_classes = [permissions.IsAuthenticated]
+    _COACH_ALLOWED_UPDATE_FIELDS = {"belt_rank"}
 
     def get_permissions(self):
-        if self.action in ["create", "update", "partial_update", "destroy"]:
-            user = self.request.user
-            if user and user.is_authenticated and user.role == "ltf_finance":
+        user = self.request.user
+        if self.action in ["create", "destroy"]:
+            if user and user.is_authenticated and user.role in [
+                "ltf_admin",
+                "ltf_finance",
+                "coach",
+            ]:
+                return [permissions.IsAdminUser()]
+        if self.action in ["update", "partial_update"]:
+            if user and user.is_authenticated and user.role in ["ltf_admin", "ltf_finance"]:
                 return [permissions.IsAdminUser()]
         return [permissions.IsAuthenticated()]
 
@@ -41,7 +49,9 @@ class MemberViewSet(viewsets.ModelViewSet):
         if not user or not user.is_authenticated:
             return Member.objects.none()
         if user.role in ["ltf_admin", "ltf_finance"]:
-            return Member.objects.select_related("club", "user", "photo_consent_attested_by").all()
+            return Member.objects.select_related("club", "user", "photo_consent_attested_by").filter(
+                is_active=True
+            )
         if user.role in ["club_admin", "coach"]:
             return Member.objects.select_related("club", "user", "photo_consent_attested_by").filter(
                 club__admins=user
@@ -59,16 +69,39 @@ class MemberViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
+    def _is_coach(self, user) -> bool:
+        return bool(user and user.is_authenticated and user.role == "coach")
+
+    def _coach_update_allowed(self, request) -> bool:
+        if not self._is_coach(request.user):
+            return True
+        payload_fields = set(request.data.keys())
+        return bool(payload_fields) and payload_fields.issubset(self._COACH_ALLOWED_UPDATE_FIELDS)
+
+    def _coach_update_forbidden_response(self):
+        return Response(
+            {"detail": "Not allowed. Coaches can only update belt rank."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    def update(self, request, *args, **kwargs):
+        if not self._coach_update_allowed(request):
+            return self._coach_update_forbidden_response()
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        if not self._coach_update_allowed(request):
+            return self._coach_update_forbidden_response()
+        return super().partial_update(request, *args, **kwargs)
+
     def _is_grade_manager(self, user) -> bool:
         return user and user.is_authenticated and user.role in [
-            "ltf_admin",
             "club_admin",
             "coach",
         ]
 
     def _is_photo_manager(self, user) -> bool:
         return user and user.is_authenticated and user.role in [
-            "ltf_admin",
             "club_admin",
             "member",
         ]

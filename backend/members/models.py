@@ -12,6 +12,14 @@ class Member(models.Model):
         MALE = "M", _("Male")
         FEMALE = "F", _("Female")
 
+    class LicenseRole(models.TextChoices):
+        ATHLETE = "athlete", _("Athlete")
+        COACH = "coach", _("Coach")
+        REFEREE = "referee", _("Referee")
+        OFFICIAL = "official", _("Official")
+        DOCTOR = "doctor", _("Doctor")
+        PHYSIOTHERAPIST = "physiotherapist", _("Physiotherapist")
+
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -28,6 +36,16 @@ class Member(models.Model):
     ltf_licenseid = models.CharField(max_length=20, blank=True)
     date_of_birth = models.DateField(null=True, blank=True)
     belt_rank = models.CharField(max_length=100, blank=True)
+    primary_license_role = models.CharField(
+        max_length=32,
+        choices=LicenseRole.choices,
+        blank=True,
+    )
+    secondary_license_role = models.CharField(
+        max_length=32,
+        choices=LicenseRole.choices,
+        blank=True,
+    )
     profile_picture_original = models.ImageField(
         upload_to="members/profile_pictures/original/",
         null=True,
@@ -55,6 +73,22 @@ class Member(models.Model):
     is_active = models.BooleanField(default=True)  # type: ignore[call-arg]
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(secondary_license_role="")
+                | ~models.Q(primary_license_role=""),
+                name="member_secondary_role_requires_primary",
+            ),
+            models.CheckConstraint(
+                check=~(
+                    ~models.Q(primary_license_role="")
+                    & models.Q(primary_license_role=models.F("secondary_license_role"))
+                ),
+                name="member_primary_secondary_role_must_differ",
+            ),
+        ]
 
     def save(self, *args, **kwargs):
         # Normalize names for consistent display/searching.

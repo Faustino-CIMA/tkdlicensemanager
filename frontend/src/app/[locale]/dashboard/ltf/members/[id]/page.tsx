@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 
 import { EmptyState } from "@/components/club-admin/empty-state";
@@ -11,13 +11,11 @@ import { ProfilePhotoManager } from "@/components/profile-photo/profile-photo-ma
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { Button } from "@/components/ui/button";
 import {
-  deleteMemberProfilePicture,
   downloadMemberProfilePicture,
   Member,
   MemberHistoryResponse,
   getMember,
   getMemberHistory,
-  promoteMemberGrade,
 } from "@/lib/ltf-admin-api";
 
 type TabKey = "overview" | "history";
@@ -25,7 +23,6 @@ type TabKey = "overview" | "history";
 export default function LtfMemberDetailPage() {
   const t = useTranslations("LtfAdmin");
   const params = useParams();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const rawLocale = params?.locale;
   const rawId = params?.id;
@@ -123,6 +120,7 @@ export default function LtfMemberDetailPage() {
         ) : activeTab === "overview" ? (
           <section className="rounded-3xl bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-zinc-900">{t("memberOverviewTab")}</h2>
+            <p className="mt-1 text-sm text-zinc-500">{t("membersReadOnlyHint")}</p>
             <div className="mt-4">
               <ProfilePhotoManager
                 imageUrl={member.profile_picture_url}
@@ -151,12 +149,8 @@ export default function LtfMemberDetailPage() {
                   emptyPhotoLabel: t("photoEmptyLabel"),
                   removeBackgroundUnsupported: t("photoUnsupportedError"),
                 }}
-                onDelete={async () => {
-                  await deleteMemberProfilePicture(member.id);
-                  await loadMember();
-                }}
+                readOnly
                 onDownload={handlePhotoDownload}
-                onEdit={() => router.push(`/${locale}/dashboard/ltf/members/${member.id}/photo`)}
               />
             </div>
             <div className="mt-4 grid gap-3 text-sm text-zinc-700 md:grid-cols-2">
@@ -190,20 +184,6 @@ export default function LtfMemberDetailPage() {
             notesLabel={t("historyNotesLabel")}
             fromLabel={t("historyFromLabel")}
             toLabel={t("historyToLabel")}
-            promoteTitle={t("promoteGradeTitle")}
-            promoteToGradeLabel={t("promoteToGradeLabel")}
-            promoteDateLabel={t("promoteDateLabel")}
-            promoteExamDateLabel={t("promoteExamDateLabel")}
-            promoteProofLabel={t("promoteProofLabel")}
-            promoteNotesLabel={t("promoteNotesLabel")}
-            promoteSubmitLabel={t("promoteSubmitLabel")}
-            onPromote={async (input) => {
-              if (!member) {
-                return;
-              }
-              await promoteMemberGrade(member.id, input);
-              await loadMember();
-            }}
             licenseHistory={history?.license_history ?? []}
             gradeHistory={history?.grade_history ?? []}
           />

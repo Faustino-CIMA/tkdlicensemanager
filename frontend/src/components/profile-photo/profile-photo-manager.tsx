@@ -52,6 +52,7 @@ type ProfilePhotoManagerProps = {
   onDelete?: () => Promise<void>;
   onDownload?: () => Promise<void>;
   onEdit?: () => void;
+  readOnly?: boolean;
   isPageEditor?: boolean;
   onCancelEditor?: () => void;
 };
@@ -120,6 +121,7 @@ export function ProfilePhotoManager({
   onDelete,
   onDownload,
   onEdit,
+  readOnly = false,
   isPageEditor = false,
   onCancelEditor,
 }: ProfilePhotoManagerProps) {
@@ -547,20 +549,22 @@ export function ProfilePhotoManager({
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => (onEdit ? onEdit() : openEditor())}
-                >
-                  {labels.changeButton}
-                </Button>
+                {!readOnly ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => (onEdit ? onEdit() : openEditor())}
+                  >
+                    {labels.changeButton}
+                  </Button>
+                ) : null}
                 {hasStoredPhoto && onDownload ? (
                   <Button type="button" variant="outline" size="sm" onClick={onDownload}>
                     {labels.downloadButton}
                   </Button>
                 ) : null}
-                {hasStoredPhoto && onDelete ? (
+                {hasStoredPhoto && onDelete && !readOnly ? (
                   <Button
                     type="button"
                     variant="destructive"

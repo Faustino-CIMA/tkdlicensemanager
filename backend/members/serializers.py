@@ -8,6 +8,16 @@ from .models import GradePromotionHistory
 
 class MemberSerializer(serializers.ModelSerializer):
     sex = serializers.ChoiceField(choices=Member.Sex.choices, default=Member.Sex.MALE)
+    primary_license_role = serializers.ChoiceField(
+        choices=Member.LicenseRole.choices,
+        required=False,
+        allow_blank=True,
+    )
+    secondary_license_role = serializers.ChoiceField(
+        choices=Member.LicenseRole.choices,
+        required=False,
+        allow_blank=True,
+    )
     profile_picture_url = serializers.SerializerMethodField()
     profile_picture_thumbnail_url = serializers.SerializerMethodField()
 
@@ -25,6 +35,8 @@ class MemberSerializer(serializers.ModelSerializer):
             "ltf_licenseid",
             "date_of_birth",
             "belt_rank",
+            "primary_license_role",
+            "secondary_license_role",
             "profile_picture_url",
             "profile_picture_thumbnail_url",
             "photo_edit_metadata",
@@ -43,6 +55,27 @@ class MemberSerializer(serializers.ModelSerializer):
             "photo_consent_attested_at",
             "photo_consent_attested_by",
         ]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        primary_role = attrs.get(
+            "primary_license_role",
+            getattr(self.instance, "primary_license_role", ""),
+        ) or ""
+        secondary_role = attrs.get(
+            "secondary_license_role",
+            getattr(self.instance, "secondary_license_role", ""),
+        ) or ""
+
+        if secondary_role and not primary_role:
+            raise serializers.ValidationError(
+                {"secondary_license_role": "Secondary role requires a primary role."}
+            )
+        if primary_role and secondary_role and primary_role == secondary_role:
+            raise serializers.ValidationError(
+                {"secondary_license_role": "Secondary role must differ from primary role."}
+            )
+        return attrs
 
     def update(self, instance, validated_data):
         previous_belt_rank = str(instance.belt_rank or "").strip()

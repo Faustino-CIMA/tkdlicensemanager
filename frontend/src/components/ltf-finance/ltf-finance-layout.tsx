@@ -16,10 +16,16 @@ export function LtfFinanceLayout({ title, subtitle, children }: LtfFinanceLayout
   const locale = pathname?.split("/")[1] || "en";
 
   const navItems = [
-    { href: `/${locale}/dashboard/ltf-finance/orders`, label: t("navOrders") },
-    { href: `/${locale}/dashboard/ltf-finance/invoices`, label: t("navInvoices") },
-    { href: `/${locale}/dashboard/ltf-finance/payments`, label: t("navPayments") },
-    { href: `/${locale}/dashboard/ltf-finance/audit-log`, label: t("navAuditLog") },
+    { href: `/${locale}/dashboard/ltf-finance`, label: t("navOverview"), matchChildren: false },
+    { href: `/${locale}/dashboard/ltf-finance/orders`, label: t("navOrders"), matchChildren: true },
+    { href: `/${locale}/dashboard/ltf-finance/invoices`, label: t("navInvoices"), matchChildren: true },
+    { href: `/${locale}/dashboard/ltf-finance/payments`, label: t("navPayments"), matchChildren: true },
+    { href: `/${locale}/dashboard/ltf-finance/audit-log`, label: t("navAuditLog"), matchChildren: true },
+    {
+      href: `/${locale}/dashboard/ltf-finance/license-settings`,
+      label: t("navLicenseSettings"),
+      matchChildren: true,
+    },
   ];
 
   return (
@@ -30,7 +36,9 @@ export function LtfFinanceLayout({ title, subtitle, children }: LtfFinanceLayout
           {subtitle ? <p className="mt-2 text-sm text-zinc-500">{subtitle}</p> : null}
           <nav className="mt-6 flex flex-wrap gap-2">
             {navItems.map((item) => {
-              const isActive = pathname === item.href;
+              const isActive = item.matchChildren
+                ? pathname === item.href || pathname.startsWith(`${item.href}/`)
+                : pathname === item.href;
               return (
                 <Link
                   key={item.href}
