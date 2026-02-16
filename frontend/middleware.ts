@@ -93,6 +93,49 @@ export default function middleware(request: Request) {
     // #endregion
   }
 
+  if (isRootPath) {
+    const location = response.headers.get("location");
+    if (location) {
+      let normalizedLocation = location;
+      try {
+        const parsed = new URL(location);
+        if (
+          parsed.hostname === "localhost" ||
+          parsed.hostname === "127.0.0.1" ||
+          parsed.hostname === "0.0.0.0"
+        ) {
+          normalizedLocation = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+        }
+      } catch {
+        normalizedLocation = location;
+      }
+      if (normalizedLocation !== location) {
+        response.headers.set("location", normalizedLocation);
+        const normalizedPayload = {
+          runId: "frontend-root-route-v1",
+          hypothesisId: "FIX_H4",
+          location: "frontend/middleware.ts:normalize",
+          message: "Normalized root redirect location away from loopback host",
+          data: {
+            pathname: requestUrl.pathname,
+            originalLocation: location,
+            normalizedLocation,
+            status: response.status,
+          },
+          timestamp: Date.now(),
+        };
+        // #region agent log
+        fetch("http://127.0.0.1:7242/ingest/8fff0ab0-a0ae-4efd-a694-181dff4f138a", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(normalizedPayload),
+        }).catch(() => {});
+        console.log(JSON.stringify(normalizedPayload));
+        // #endregion
+      }
+    }
+  }
+
   return response;
 }
 
