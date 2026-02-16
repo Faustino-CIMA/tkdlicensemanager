@@ -75,6 +75,9 @@ def _agent_debug_log(hypothesis_id: str, message: str, data: dict[str, object]) 
             break
         except OSError:
             continue
+    # region agent log
+    print(json.dumps(payload, ensure_ascii=True), flush=True)
+    # endregion
 
 
 ALLOWED_HOSTS = split_csv(config("DJANGO_ALLOWED_HOSTS", default="localhost,127.0.0.1,[::1]"))
