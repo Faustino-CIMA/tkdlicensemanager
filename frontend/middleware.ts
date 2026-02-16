@@ -8,6 +8,11 @@ const intlMiddleware = createMiddleware({
 
 export default function middleware(request: Request) {
   const requestUrl = new URL(request.url);
+  const forwardedHost = request.headers.get("x-forwarded-host") ?? "";
+  const hostHeader = request.headers.get("host") ?? "";
+  const forwardedProto = request.headers.get("x-forwarded-proto") ?? "";
+  const publicHost = forwardedHost || hostHeader || requestUrl.host;
+  const publicProto = forwardedProto || requestUrl.protocol.replace(":", "");
   const isAdminPath =
     requestUrl.pathname === "/admin" ||
     requestUrl.pathname.startsWith("/admin/") ||
@@ -39,17 +44,43 @@ export default function middleware(request: Request) {
     }).catch(() => {});
     console.log(JSON.stringify(entryPayload));
     // #endregion
+    const backendBase = (process.env.NEXT_PUBLIC_API_URL || "").trim();
+    if (backendBase) {
+      const adminTarget = new URL(requestUrl.pathname + requestUrl.search, backendBase).toString();
+      const adminRedirect = NextResponse.redirect(adminTarget, { status: 307 });
+      const redirectPayload = {
+        runId: "admin-redirect-v2",
+        hypothesisId: "FIX_H1",
+        location: "frontend/middleware.ts:admin-forward",
+        message: "Forwarding admin path to backend host",
+        data: {
+          pathname: requestUrl.pathname,
+          backendBase,
+          adminTarget,
+          status: adminRedirect.status,
+        },
+        timestamp: Date.now(),
+      };
+      // #region agent log
+      fetch("http://127.0.0.1:7242/ingest/8fff0ab0-a0ae-4efd-a694-181dff4f138a", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(redirectPayload),
+      }).catch(() => {});
+      console.log(JSON.stringify(redirectPayload));
+      // #endregion
+      return adminRedirect;
+    }
 
-    const bypassResponse = NextResponse.next();
     const bypassPayload = {
       runId: "admin-redirect-v2",
       hypothesisId: "FIX_H1",
       location: "frontend/middleware.ts:bypass",
-      message: "Bypassing i18n middleware for admin path",
+      message: "Bypassing i18n middleware for admin path (no backend base configured)",
       data: {
         pathname: requestUrl.pathname,
-        status: bypassResponse.status,
-        redirectLocation: bypassResponse.headers.get("location") ?? "",
+        status: 200,
+        redirectLocation: "",
       },
       timestamp: Date.now(),
     };
@@ -61,7 +92,7 @@ export default function middleware(request: Request) {
     }).catch(() => {});
     console.log(JSON.stringify(bypassPayload));
     // #endregion
-    return bypassResponse;
+    return NextResponse.next();
   }
 
   const response = intlMiddleware(request);
@@ -104,7 +135,7 @@ export default function middleware(request: Request) {
           parsed.hostname === "127.0.0.1" ||
           parsed.hostname === "0.0.0.0"
         ) {
-          normalizedLocation = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+          normalizedLocation = `${publicProto}://${publicHost}${parsed.pathname}${parsed.search}${parsed.hash}`;
         }
       } catch {
         normalizedLocation = location;
@@ -118,6 +149,11 @@ export default function middleware(request: Request) {
           message: "Normalized root redirect location away from loopback host",
           data: {
             pathname: requestUrl.pathname,
+            forwardedHost,
+            hostHeader,
+            forwardedProto,
+            publicHost,
+            publicProto,
             originalLocation: location,
             normalizedLocation,
             status: response.status,
