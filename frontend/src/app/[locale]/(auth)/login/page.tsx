@@ -20,6 +20,25 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
+function sendLoginDebugLog(
+  location: string,
+  message: string,
+  data: Record<string, unknown>
+) {
+  fetch("http://127.0.0.1:7242/ingest/8fff0ab0-a0ae-4efd-a694-181dff4f138a", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      runId: "frontend-login-fetch-v1",
+      hypothesisId: "H1_H2_H3_H4",
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+}
+
 export default function LoginPage() {
   const t = useTranslations("Auth");
   const router = useRouter();
@@ -42,12 +61,33 @@ export default function LoginPage() {
   const onSubmit = async (values: LoginFormValues) => {
     setErrorMessage(null);
     setShowVerifyLink(false);
+    // #region agent log
+    sendLoginDebugLog(
+      "frontend/src/app/[locale]/(auth)/login/page.tsx:onSubmit",
+      "Login form submitted",
+      {
+        locale,
+        usernameLength: values.username.length,
+        passwordLength: values.password.length,
+      }
+    );
+    // #endregion
     try {
       const response = await login(values);
       setToken(response.token);
       router.push(`/${locale}/dashboard`);
     } catch (error) {
       const rawMessage = error instanceof Error ? error.message : "Login failed";
+      // #region agent log
+      sendLoginDebugLog(
+        "frontend/src/app/[locale]/(auth)/login/page.tsx:catch",
+        "Login submit failed",
+        {
+          locale,
+          rawMessage,
+        }
+      );
+      // #endregion
       const isNotVerified = rawMessage.toLowerCase().includes("not verified");
       const message = isNotVerified ? t("emailNotVerified") : rawMessage;
       setErrorMessage(message);
