@@ -76,7 +76,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/')\"",
+          "python -c \"import urllib.request,sys; req=urllib.request.Request('http://localhost:8000/api/health/', headers={'X-Forwarded-Proto':'https'}); resp=urllib.request.urlopen(req); sys.exit(0 if resp.getcode()==200 else 1)\"",
         ]
       interval: 10s
       timeout: 5s
