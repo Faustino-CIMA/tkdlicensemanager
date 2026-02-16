@@ -1,12 +1,12 @@
 import createMiddleware from "next-intl/middleware";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 const intlMiddleware = createMiddleware({
   locales: ["en", "lb"],
   defaultLocale: "en",
 });
 
-export default function middleware(request: Request) {
+export default function middleware(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const forwardedHost = request.headers.get("x-forwarded-host") ?? "";
   const hostHeader = request.headers.get("host") ?? "";
