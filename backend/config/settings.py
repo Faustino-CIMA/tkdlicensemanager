@@ -6,7 +6,6 @@ import base64
 import hashlib
 import json
 import re
-import time
 from pathlib import Path
 
 from decouple import config
@@ -51,34 +50,6 @@ def split_regex_list(value: str) -> list[str]:
 def derive_fernet_key(secret: str) -> str:
     digest = hashlib.sha256(secret.encode("utf-8")).digest()
     return base64.urlsafe_b64encode(digest).decode("utf-8")
-
-
-def _agent_debug_log(hypothesis_id: str, message: str, data: dict[str, object]) -> None:
-    candidate_paths = [
-        Path("/home/faustino/Developments/Applications/tkdlicensemanager/.cursor/debug.log"),
-        Path("/app/.cursor/debug.log"),
-    ]
-    payload = {
-        "id": f"settings_{int(time.time() * 1000)}",
-        "timestamp": int(time.time() * 1000),
-        "runId": "dockploy-healthcheck",
-        "hypothesisId": hypothesis_id,
-        "location": "backend/config/settings.py",
-        "message": message,
-        "data": data,
-    }
-    for log_path in candidate_paths:
-        try:
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-            with log_path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
-            break
-        except OSError:
-            continue
-    # region agent log
-    print(json.dumps(payload, ensure_ascii=True), flush=True)
-    # endregion
-
 
 ALLOWED_HOSTS = split_csv(config("DJANGO_ALLOWED_HOSTS", default="localhost,127.0.0.1,[::1]"))
 if DEBUG and config("DJANGO_ALLOW_ALL_HOSTS_IN_DEBUG", cast=bool, default=True):
@@ -147,7 +118,6 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "simple_history.middleware.HistoryRequestMiddleware",
     "allauth.account.middleware.AccountMiddleware",
-    "config.exception_debug_middleware.ExceptionDebugMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -286,22 +256,6 @@ CSRF_TRUSTED_ORIGINS = split_csv(
         default="http://localhost:3000,http://127.0.0.1:3000",
     )
 )
-# region agent log
-_agent_debug_log(
-    "H1_H2",
-    "Loaded security and origin settings",
-    {
-        "debug": DEBUG,
-        "secure_ssl_redirect": SECURE_SSL_REDIRECT,
-        "secure_use_x_forwarded_proto": config(
-            "DJANGO_SECURE_USE_X_FORWARDED_PROTO", cast=bool, default=False
-        ),
-        "allowed_hosts": ALLOWED_HOSTS,
-        "csrf_trusted_origins": CSRF_TRUSTED_ORIGINS,
-        "cors_allowed_origins": CORS_ALLOWED_ORIGINS,
-    },
-)
-# endregion
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 RESEND_API_KEY = config("RESEND_API_KEY", default="")

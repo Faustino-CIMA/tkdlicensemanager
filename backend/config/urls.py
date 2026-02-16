@@ -1,7 +1,3 @@
-import json
-import time
-from pathlib import Path
-
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
@@ -64,47 +60,7 @@ router.register(r"club-orders", ClubOrderViewSet, basename="club-order")
 router.register(r"club-invoices", ClubInvoiceViewSet, basename="club-invoice")
 router.register(r"finance-audit-logs", FinanceAuditLogViewSet, basename="finance-audit-log")
 
-
-def _agent_debug_log(hypothesis_id: str, message: str, data: dict[str, object]) -> None:
-    candidate_paths = [
-        Path("/home/faustino/Developments/Applications/tkdlicensemanager/.cursor/debug.log"),
-        Path("/app/.cursor/debug.log"),
-    ]
-    payload = {
-        "id": f"urls_{int(time.time() * 1000)}",
-        "timestamp": int(time.time() * 1000),
-        "runId": "dockploy-healthcheck",
-        "hypothesisId": hypothesis_id,
-        "location": "backend/config/urls.py:health_check",
-        "message": message,
-        "data": data,
-    }
-    for log_path in candidate_paths:
-        try:
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-            with log_path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
-            break
-        except OSError:
-            continue
-    # region agent log
-    print(json.dumps(payload, ensure_ascii=True), flush=True)
-    # endregion
-
 def health_check(request):
-    # region agent log
-    _agent_debug_log(
-        "H1_H3",
-        "Health endpoint reached",
-        {
-            "is_secure": request.is_secure(),
-            "scheme": request.scheme,
-            "host": request.get_host(),
-            "x_forwarded_proto": request.META.get("HTTP_X_FORWARDED_PROTO", ""),
-            "x_forwarded_host": request.META.get("HTTP_X_FORWARDED_HOST", ""),
-        },
-    )
-    # endregion
     return JsonResponse({"status": "ok"})
 
 
