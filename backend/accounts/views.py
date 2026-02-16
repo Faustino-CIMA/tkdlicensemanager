@@ -1,3 +1,7 @@
+import json
+import time
+from pathlib import Path
+
 from allauth.account.models import EmailAddress, EmailConfirmationHMAC
 from django.conf import settings
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
@@ -30,6 +34,33 @@ from .serializers import (
     UserSerializer,
     VerifyEmailSerializer,
 )
+
+
+def _agent_debug_log(hypothesis_id: str, message: str, data: dict[str, object]) -> None:
+    candidate_paths = [
+        Path("/home/faustino/Developments/Applications/tkdlicensemanager/.cursor/debug.log"),
+        Path("/app/.cursor/debug.log"),
+    ]
+    payload = {
+        "id": f"accounts_{int(time.time() * 1000)}",
+        "timestamp": int(time.time() * 1000),
+        "runId": "frontend-login-network-v1",
+        "hypothesisId": hypothesis_id,
+        "location": "backend/accounts/views.py:LoginView",
+        "message": message,
+        "data": data,
+    }
+    for log_path in candidate_paths:
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with log_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
+            break
+        except OSError:
+            continue
+    # region agent log
+    print(json.dumps(payload, ensure_ascii=True), flush=True)
+    # endregion
 
 
 @extend_schema(
@@ -70,11 +101,67 @@ class LoginView(views.APIView):
     permission_classes = [permissions.AllowAny]
     serializer_class = LoginSerializer
 
+    def options(self, request, *args, **kwargs):
+        _agent_debug_log(
+            "H1_H2_H3",
+            "Login endpoint OPTIONS request reached backend",
+            {
+                "path": request.path,
+                "origin": request.headers.get("Origin", ""),
+                "host": request.get_host(),
+                "x_forwarded_proto": request.headers.get("X-Forwarded-Proto", ""),
+                "x_forwarded_host": request.headers.get("X-Forwarded-Host", ""),
+                "ac_request_method": request.headers.get(
+                    "Access-Control-Request-Method", ""
+                ),
+                "ac_request_headers": request.headers.get(
+                    "Access-Control-Request-Headers", ""
+                ),
+            },
+        )
+        return super().options(request, *args, **kwargs)
+
     def post(self, request):
+        _agent_debug_log(
+            "H1_H2_H4",
+            "Login endpoint POST request reached backend",
+            {
+                "path": request.path,
+                "origin": request.headers.get("Origin", ""),
+                "referer": request.headers.get("Referer", ""),
+                "host": request.get_host(),
+                "x_forwarded_proto": request.headers.get("X-Forwarded-Proto", ""),
+                "x_forwarded_host": request.headers.get("X-Forwarded-Host", ""),
+                "content_type": request.content_type or "",
+                "has_username": isinstance(request.data, dict)
+                and "username" in request.data,
+                "has_password": isinstance(request.data, dict)
+                and "password" in request.data,
+            },
+        )
         serializer = LoginSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except Exception as exc:
+            _agent_debug_log(
+                "H4",
+                "Login serializer validation failed",
+                {
+                    "exception_type": exc.__class__.__name__,
+                    "exception_message": str(exc),
+                },
+            )
+            raise
         user = serializer.validated_data["user"]
         token, _ = Token.objects.get_or_create(user=user)
+        _agent_debug_log(
+            "H4",
+            "Login request succeeded",
+            {
+                "user_id": user.id,
+                "username_length": len(user.username or ""),
+            },
+        )
         return response.Response({"token": token.key, "user": UserSerializer(user).data})
 
 
