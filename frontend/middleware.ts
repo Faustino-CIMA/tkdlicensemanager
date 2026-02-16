@@ -13,6 +13,10 @@ export default function middleware(request: Request) {
     requestUrl.pathname.startsWith("/admin/") ||
     requestUrl.pathname === "/en/admin" ||
     requestUrl.pathname.startsWith("/en/admin/");
+  const isRootPath =
+    requestUrl.pathname === "/" ||
+    requestUrl.pathname === "/en" ||
+    requestUrl.pathname === "/en/";
 
   if (isAdminPath) {
     const entryPayload = {
@@ -62,14 +66,18 @@ export default function middleware(request: Request) {
 
   const response = intlMiddleware(request);
 
-  if (isAdminPath) {
+  if (isAdminPath || isRootPath) {
+    const runId = isRootPath ? "frontend-root-route-v1" : "admin-redirect-v2";
     const exitPayload = {
-      runId: "admin-redirect-v2",
-      hypothesisId: "H1",
+      runId,
+      hypothesisId: isRootPath ? "H1_H2_H3_H4" : "H1",
       location: "frontend/middleware.ts:exit",
-      message: "Admin-path middleware response",
+      message: isRootPath
+        ? "Root-path middleware response"
+        : "Admin-path middleware response",
       data: {
         pathname: requestUrl.pathname,
+        host: requestUrl.host,
         status: response.status,
         redirectLocation: response.headers.get("location") ?? "",
       },
