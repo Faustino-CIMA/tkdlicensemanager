@@ -5,8 +5,10 @@ import base64
 from celery import shared_task
 from django.conf import settings
 from django.db import IntegrityError
+from django.db.models import Q
 from django.template.loader import render_to_string
 from django.utils import timezone
+import stripe
 
 from accounts.email_utils import send_resend_email
 
@@ -112,6 +114,104 @@ def process_stripe_webhook_event(event_payload: dict) -> None:
         return
 
     activate_order_from_stripe.delay(order_id_int, stripe_data)
+
+
+@shared_task
+def reconcile_pending_stripe_orders(limit: int = 100) -> int:
+    if not settings.STRIPE_SECRET_KEY:
+        return 0
+
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+    stripe.api_version = settings.STRIPE_API_VERSION
+
+    pending_orders = (
+        Order.objects.filter(status__in=[Order.Status.DRAFT, Order.Status.PENDING])
+        .filter(
+            Q(stripe_payment_intent_id__isnull=False)
+            | Q(stripe_checkout_session_id__isnull=False)
+        )
+        .exclude(stripe_payment_intent_id="")
+        .select_related("member__user")
+        .order_by("-updated_at")[:limit]
+    )
+
+    # Include orders that only have checkout session IDs (without PI cached on order).
+    if len(pending_orders) < limit:
+        session_only_orders = (
+            Order.objects.filter(status__in=[Order.Status.DRAFT, Order.Status.PENDING])
+            .filter(stripe_checkout_session_id__isnull=False)
+            .exclude(stripe_checkout_session_id="")
+            .exclude(id__in=[order.id for order in pending_orders])
+            .select_related("member__user")
+            .order_by("-updated_at")[: max(0, limit - len(pending_orders))]
+        )
+        pending_orders = list(pending_orders) + list(session_only_orders)
+    else:
+        pending_orders = list(pending_orders)
+
+    processed_count = 0
+    for order in pending_orders:
+        stripe_data = {}
+        payment_details = {}
+        payment_intent_id = order.stripe_payment_intent_id or ""
+        checkout_session_id = order.stripe_checkout_session_id or ""
+
+        try:
+            if checkout_session_id:
+                session = stripe.checkout.Session.retrieve(checkout_session_id)
+                if session.get("payment_status") != "paid":
+                    continue
+                stripe_data["stripe_checkout_session_id"] = session.get("id")
+                stripe_data["stripe_customer_id"] = session.get("customer")
+                session_pi = session.get("payment_intent")
+                if isinstance(session_pi, str) and session_pi:
+                    payment_intent_id = session_pi
+                    stripe_data["stripe_payment_intent_id"] = session_pi
+
+            if payment_intent_id:
+                payment_intent = stripe.PaymentIntent.retrieve(
+                    payment_intent_id,
+                    expand=["charges.data.payment_method_details"],
+                )
+                if payment_intent.get("status") != "succeeded":
+                    continue
+                stripe_data["stripe_payment_intent_id"] = payment_intent.get("id")
+                stripe_data["stripe_customer_id"] = payment_intent.get("customer")
+                charges = payment_intent.get("charges", {}).get("data", [])
+                if charges:
+                    card = charges[0].get("payment_method_details", {}).get("card", {}) or {}
+                    payment_details = {
+                        "payment_method": "card",
+                        "payment_provider": "stripe",
+                        "card_brand": card.get("brand") or "",
+                        "card_last4": card.get("last4") or "",
+                        "card_exp_month": card.get("exp_month"),
+                        "card_exp_year": card.get("exp_year"),
+                    }
+            else:
+                # No payment intent available and no paid checkout session.
+                continue
+        except stripe.error.StripeError:  # type: ignore[attr-defined]
+            continue
+
+        updated = apply_payment_and_activate(
+            order,
+            actor=None,
+            stripe_data=stripe_data,
+            payment_details=payment_details,
+            message="Payment reconciled from Stripe provider state and licenses activated.",
+        )
+        if updated:
+            processed_count += 1
+
+    if processed_count:
+        FinanceAuditLog.objects.create(
+            action="stripe.reconciled",
+            message=f"Reconciled {processed_count} pending Stripe orders.",
+            metadata={"processed_count": processed_count},
+        )
+
+    return processed_count
 
 
 @shared_task

@@ -31,7 +31,11 @@ from .models import (
 )
 from .pdf_utils import build_invoice_context
 from .services import apply_payment_and_activate
-from .tasks import activate_eligible_paid_licenses, reconcile_expired_licenses
+from .tasks import (
+    activate_eligible_paid_licenses,
+    reconcile_expired_licenses,
+    reconcile_pending_stripe_orders,
+)
 
 
 class LicenseModelTests(TestCase):
@@ -982,6 +986,33 @@ class LicenseActivationRulesTests(TestCase):
         )
         return order, invoice
 
+    def _create_pending_order_for_license(self, license_record: License):
+        order = Order.objects.create(
+            club=self.club,
+            member=self.member,
+            status=Order.Status.PENDING,
+            subtotal=Decimal("25.00"),
+            tax_total=Decimal("5.00"),
+            total=Decimal("30.00"),
+        )
+        invoice = Invoice.objects.create(
+            order=order,
+            club=self.club,
+            member=self.member,
+            status=Invoice.Status.DRAFT,
+            subtotal=Decimal("25.00"),
+            tax_total=Decimal("5.00"),
+            total=Decimal("30.00"),
+            issued_at=timezone.now(),
+        )
+        OrderItem.objects.create(
+            order=order,
+            license=license_record,
+            price_snapshot=Decimal("30.00"),
+            quantity=1,
+        )
+        return order, invoice
+
     def test_active_license_constraint_blocks_second_active_license(self):
         current_year = timezone.localdate().year
         License.objects.create(
@@ -1092,6 +1123,113 @@ class LicenseActivationRulesTests(TestCase):
         pending_license.refresh_from_db()
         self.assertEqual(activated_count, 0)
         self.assertEqual(pending_license.status, License.Status.PENDING)
+
+    @patch("licenses.tasks.stripe.PaymentIntent.retrieve")
+    def test_reconcile_pending_stripe_orders_uses_payment_intent(self, payment_intent_mock):
+        today = timezone.localdate()
+        license_record = License.objects.create(
+            member=self.member,
+            club=self.club,
+            license_type=self.license_type,
+            year=today.year,
+            status=License.Status.PENDING,
+            start_date=today,
+            end_date=today + timedelta(days=30),
+        )
+        order, _invoice = self._create_pending_order_for_license(license_record)
+        order.stripe_payment_intent_id = "pi_reconcile_123"
+        order.save(update_fields=["stripe_payment_intent_id", "updated_at"])
+
+        payment_intent_mock.return_value = {
+            "id": "pi_reconcile_123",
+            "status": "succeeded",
+            "customer": "cus_reconcile_123",
+            "charges": {
+                "data": [
+                    {
+                        "payment_method_details": {
+                            "card": {
+                                "brand": "visa",
+                                "last4": "4242",
+                                "exp_month": 12,
+                                "exp_year": 2030,
+                            }
+                        }
+                    }
+                ]
+            },
+        }
+
+        processed_count = reconcile_pending_stripe_orders()
+        self.assertEqual(processed_count, 1)
+
+        order.refresh_from_db()
+        license_record.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.PAID)
+        self.assertEqual(order.invoice.status, Invoice.Status.PAID)
+        self.assertEqual(license_record.status, License.Status.ACTIVE)
+        self.assertEqual(order.invoice.stripe_customer_id, "cus_reconcile_123")
+
+        payment = Payment.objects.filter(order=order).order_by("-created_at").first()
+        self.assertIsNotNone(payment)
+        self.assertEqual(payment.status, Payment.Status.PAID)
+        self.assertEqual(payment.provider, Payment.Provider.STRIPE)
+        self.assertEqual(payment.method, Payment.Method.CARD)
+
+    @patch("licenses.tasks.stripe.PaymentIntent.retrieve")
+    @patch("licenses.tasks.stripe.checkout.Session.retrieve")
+    def test_reconcile_pending_stripe_orders_uses_checkout_session(
+        self,
+        session_mock,
+        payment_intent_mock,
+    ):
+        today = timezone.localdate()
+        license_record = License.objects.create(
+            member=self.member,
+            club=self.club,
+            license_type=self.license_type,
+            year=today.year,
+            status=License.Status.PENDING,
+            start_date=today,
+            end_date=today + timedelta(days=30),
+        )
+        order, _invoice = self._create_pending_order_for_license(license_record)
+        order.stripe_checkout_session_id = "cs_reconcile_123"
+        order.save(update_fields=["stripe_checkout_session_id", "updated_at"])
+
+        session_mock.return_value = {
+            "id": "cs_reconcile_123",
+            "payment_status": "paid",
+            "customer": "cus_checkout_123",
+            "payment_intent": "pi_from_checkout_123",
+        }
+        payment_intent_mock.return_value = {
+            "id": "pi_from_checkout_123",
+            "status": "succeeded",
+            "customer": "cus_checkout_123",
+            "charges": {
+                "data": [
+                    {
+                        "payment_method_details": {
+                            "card": {
+                                "brand": "mastercard",
+                                "last4": "4444",
+                                "exp_month": 8,
+                                "exp_year": 2032,
+                            }
+                        }
+                    }
+                ]
+            },
+        }
+
+        processed_count = reconcile_pending_stripe_orders()
+        self.assertEqual(processed_count, 1)
+
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.PAID)
+        self.assertEqual(order.stripe_payment_intent_id, "pi_from_checkout_123")
+        self.assertEqual(order.invoice.stripe_customer_id, "cus_checkout_123")
 
 
 class ClubOrderCheckoutTests(TestCase):
