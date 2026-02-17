@@ -129,6 +129,17 @@ def _map_order_eligibility_reason_code(detail_text: str) -> str:
     return "not_eligible"
 
 
+def _map_payconiq_payment_status(payconiq_status: str | None) -> tuple[str, bool]:
+    normalized = (payconiq_status or "").strip().lower()
+    if normalized in {"paid", "succeeded", "success", "completed", "settled"}:
+        return Payment.Status.PAID, True
+    if normalized in {"failed", "error", "declined"}:
+        return Payment.Status.FAILED, False
+    if normalized in {"cancelled", "canceled", "expired"}:
+        return Payment.Status.CANCELLED, False
+    return Payment.Status.PENDING, False
+
+
 class LicenseViewSet(viewsets.ModelViewSet):
     serializer_class = LicenseSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -978,7 +989,33 @@ class PayconiqPaymentViewSet(viewsets.GenericViewSet):
             return Response({"detail": "Not a Payconiq payment."}, status=HTTP_400_BAD_REQUEST)
 
         payment.payconiq_status = get_status(payment_id=payment.payconiq_payment_id)
-        payment.save(update_fields=["payconiq_status"])
+        mapped_status, should_finalize_order = _map_payconiq_payment_status(
+            payment.payconiq_status
+        )
+
+        payment_update_fields = ["payconiq_status"]
+        if payment.status != mapped_status:
+            payment.status = mapped_status
+            payment_update_fields.append("status")
+        if mapped_status == Payment.Status.PAID and payment.paid_at is None:
+            payment.paid_at = timezone.now()
+            payment_update_fields.append("paid_at")
+        payment.save(update_fields=payment_update_fields)
+
+        if should_finalize_order:
+            apply_payment_and_activate(
+                payment.order,
+                actor=request.user if request.user.is_authenticated else None,
+                payment_details={
+                    "payment_method": payment.method,
+                    "payment_provider": payment.provider,
+                    "payment_reference": payment.reference,
+                    "payment_notes": payment.notes,
+                    "paid_at": payment.paid_at or timezone.now(),
+                },
+                message="Payconiq payment confirmed and licenses activated.",
+            )
+            payment.refresh_from_db()
 
         return Response(PayconiqPaymentSerializer(payment).data, status=status.HTTP_200_OK)
 

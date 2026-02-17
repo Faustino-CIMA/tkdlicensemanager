@@ -588,6 +588,11 @@ class OrderApiTests(TestCase):
             self.assertEqual(license_record.status, License.Status.ACTIVE)
             self.assertIsNotNone(license_record.issued_at)
             self.assertLessEqual(license_record.issued_at, timezone.now())
+        payment = Payment.objects.filter(order=order).order_by("-created_at").first()
+        self.assertIsNotNone(payment)
+        self.assertEqual(payment.status, Payment.Status.PAID)
+        self.assertEqual(payment.provider, Payment.Provider.STRIPE)
+        self.assertEqual(payment.method, Payment.Method.CARD)
         self.assertTrue(
             FinanceAuditLog.objects.filter(order_id=order_id, action="order.paid").exists()
         )
@@ -645,6 +650,12 @@ class OrderApiTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        order = Order.objects.get(id=order_id)
+        payment = Payment.objects.filter(order=order).order_by("-created_at").first()
+        self.assertIsNotNone(payment)
+        self.assertEqual(payment.status, Payment.Status.PAID)
+        self.assertEqual(payment.provider, Payment.Provider.MANUAL)
+        self.assertEqual(payment.method, Payment.Method.BANK_TRANSFER)
 
     @patch("licenses.views.stripe.checkout.Session.create")
     def test_checkout_requires_consent(self, session_create_mock):
@@ -1181,6 +1192,15 @@ class StripeWebhookSignatureTests(TestCase):
             tax_total=Decimal("5.00"),
             total=Decimal("30.00"),
         )
+        self.invoice = Invoice.objects.create(
+            order=self.order,
+            club=self.club,
+            member=self.member,
+            status=Invoice.Status.DRAFT,
+            subtotal=Decimal("25.00"),
+            tax_total=Decimal("5.00"),
+            total=Decimal("30.00"),
+        )
 
     def _sign_payload(self, payload: str, secret: str) -> str:
         timestamp = int(time.time())
@@ -1235,6 +1255,11 @@ class StripeWebhookSignatureTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.order.refresh_from_db()
         self.assertEqual(self.order.status, Order.Status.PAID)
+        payment = Payment.objects.filter(order=self.order).order_by("-created_at").first()
+        self.assertIsNotNone(payment)
+        self.assertEqual(payment.status, Payment.Status.PAID)
+        self.assertEqual(payment.provider, Payment.Provider.STRIPE)
+        self.assertEqual(payment.method, Payment.Method.CARD)
         self.assertTrue(
             FinanceAuditLog.objects.filter(order=self.order, action="order.paid").exists()
         )
@@ -1387,6 +1412,31 @@ class PayconiqPaymentTests(TestCase):
         status_response = self.client.get(f"/api/payconiq/{payment_id}/status/")
         self.assertEqual(status_response.status_code, status.HTTP_200_OK)
         self.assertEqual(status_response.data["payconiq_status"], "PENDING")
+
+    @override_settings(PAYCONIQ_MODE="mock")
+    @patch("licenses.views.get_status", return_value="PAID")
+    def test_payconiq_status_paid_finalizes_order_and_invoice(self, status_mock):
+        self.client.force_authenticate(user=self.club_admin)
+        create_response = self.client.post(
+            "/api/payconiq/create/",
+            {"invoice_id": self.invoice.id},
+            format="json",
+        )
+        payment_id = create_response.data["id"]
+
+        status_response = self.client.get(f"/api/payconiq/{payment_id}/status/")
+        self.assertEqual(status_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(status_response.data["payconiq_status"], "PAID")
+        self.assertEqual(status_response.data["status"], Payment.Status.PAID)
+
+        self.order.refresh_from_db()
+        self.invoice.refresh_from_db()
+        self.assertEqual(self.order.status, Order.Status.PAID)
+        self.assertEqual(self.invoice.status, Invoice.Status.PAID)
+        self.assertIsNotNone(self.invoice.paid_at)
+        self.assertTrue(
+            FinanceAuditLog.objects.filter(order=self.order, action="order.paid").exists()
+        )
 
     @override_settings(
         PAYCONIQ_MODE="mock",

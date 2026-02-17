@@ -141,20 +141,62 @@ def apply_payment_and_activate(
             payment_amount = payment_details.get("amount") or invoice.total
             payment_currency = payment_details.get("currency") or invoice.currency
             payment_notes = payment_details.get("payment_notes") or ""
-
+            existing_payment = None
             if payment_reference:
-                payment_exists = Payment.objects.filter(
-                    invoice=invoice, reference=payment_reference
-                ).exists()
+                existing_payment = (
+                    Payment.objects.filter(invoice=invoice, reference=payment_reference)
+                    .order_by("-created_at")
+                    .first()
+                )
             else:
-                payment_exists = Payment.objects.filter(
-                    invoice=invoice,
-                    method=payment_method,
-                    amount=payment_amount,
-                    currency=payment_currency,
-                    paid_at=payment_paid_at,
-                ).exists()
-            if not payment_exists:
+                existing_payment = (
+                    Payment.objects.filter(
+                        invoice=invoice,
+                        method=payment_method,
+                        amount=payment_amount,
+                        currency=payment_currency,
+                        paid_at=payment_paid_at,
+                    )
+                    .order_by("-created_at")
+                    .first()
+                )
+
+            if existing_payment:
+                payment_update_fields = []
+                if existing_payment.status != Payment.Status.PAID:
+                    existing_payment.status = Payment.Status.PAID
+                    payment_update_fields.append("status")
+                if existing_payment.method != payment_method:
+                    existing_payment.method = payment_method
+                    payment_update_fields.append("method")
+                if existing_payment.provider != payment_provider:
+                    existing_payment.provider = payment_provider
+                    payment_update_fields.append("provider")
+                if payment_reference and existing_payment.reference != payment_reference:
+                    existing_payment.reference = payment_reference
+                    payment_update_fields.append("reference")
+                if existing_payment.notes != payment_notes:
+                    existing_payment.notes = payment_notes
+                    payment_update_fields.append("notes")
+                if existing_payment.card_brand != card_brand:
+                    existing_payment.card_brand = card_brand
+                    payment_update_fields.append("card_brand")
+                if existing_payment.card_last4 != card_last4:
+                    existing_payment.card_last4 = card_last4
+                    payment_update_fields.append("card_last4")
+                if existing_payment.card_exp_month != card_exp_month:
+                    existing_payment.card_exp_month = card_exp_month
+                    payment_update_fields.append("card_exp_month")
+                if existing_payment.card_exp_year != card_exp_year:
+                    existing_payment.card_exp_year = card_exp_year
+                    payment_update_fields.append("card_exp_year")
+                if existing_payment.paid_at != payment_paid_at:
+                    existing_payment.paid_at = payment_paid_at
+                    payment_update_fields.append("paid_at")
+                if payment_update_fields:
+                    existing_payment.save(update_fields=payment_update_fields)
+                created_payment = existing_payment
+            else:
                 created_payment = Payment.objects.create(
                     invoice=invoice,
                     order=order,
@@ -162,6 +204,7 @@ def apply_payment_and_activate(
                     currency=payment_currency,
                     method=payment_method,
                     provider=payment_provider,
+                    status=Payment.Status.PAID,
                     reference=payment_reference or "",
                     notes=payment_notes,
                     card_brand=card_brand,
