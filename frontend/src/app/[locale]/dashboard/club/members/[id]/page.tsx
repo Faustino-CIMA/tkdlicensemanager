@@ -28,7 +28,7 @@ import {
   updateMember,
 } from "@/lib/club-admin-api";
 import { apiRequest } from "@/lib/api";
-import { formatDisplayDate } from "@/lib/date-display";
+import { formatDateInputValue, formatDisplayDate, parseDisplayDateToIso } from "@/lib/date-display";
 
 type TabKey = "overview" | "history";
 type MemberDetailQueryUpdates = {
@@ -52,7 +52,13 @@ const memberSchema = z.object({
   email: z.union([z.literal(""), z.string().email("Please enter a valid email address.")]),
   wt_licenseid: z.string().max(32, "WT license ID must be at most 32 characters."),
   ltf_licenseid: z.string().max(20, "LTF license ID must be at most 20 characters."),
-  date_of_birth: z.string(),
+  date_of_birth: z.string().refine(
+    (value) => {
+      const normalized = String(value ?? "").trim();
+      return !normalized || parseDisplayDateToIso(normalized) !== null;
+    },
+    "Use date format 29 Nov 2026."
+  ),
   belt_rank: z.string().max(50, "Belt rank must be at most 50 characters."),
   primary_license_role: z.enum(LICENSE_ROLE_VALUES).or(z.literal("")).optional(),
   secondary_license_role: z.enum(LICENSE_ROLE_VALUES).or(z.literal("")).optional(),
@@ -239,7 +245,7 @@ export default function ClubMemberDetailPage() {
       email: member.email ?? "",
       wt_licenseid: member.wt_licenseid ?? "",
       ltf_licenseid: member.ltf_licenseid ?? "",
-      date_of_birth: member.date_of_birth ?? "",
+      date_of_birth: formatDateInputValue(member.date_of_birth),
       belt_rank: member.belt_rank ?? "",
       primary_license_role: member.primary_license_role ?? "",
       secondary_license_role: member.secondary_license_role ?? "",
@@ -264,7 +270,7 @@ export default function ClubMemberDetailPage() {
         email: member.email ?? "",
         wt_licenseid: member.wt_licenseid ?? "",
         ltf_licenseid: member.ltf_licenseid ?? "",
-        date_of_birth: member.date_of_birth ?? "",
+        date_of_birth: formatDateInputValue(member.date_of_birth),
         belt_rank: member.belt_rank ?? "",
         primary_license_role: member.primary_license_role ?? "",
         secondary_license_role: member.secondary_license_role ?? "",
@@ -278,6 +284,7 @@ export default function ClubMemberDetailPage() {
       return;
     }
     setErrorMessage(null);
+    const dateOfBirthIso = parseDisplayDateToIso(values.date_of_birth);
     try {
       if (isCoach) {
         await updateMember(member.id, {
@@ -292,7 +299,7 @@ export default function ClubMemberDetailPage() {
           email: values.email.trim(),
           wt_licenseid: values.wt_licenseid.trim(),
           ltf_licenseid: values.ltf_licenseid.trim(),
-          date_of_birth: values.date_of_birth ? values.date_of_birth : null,
+          date_of_birth: dateOfBirthIso,
           belt_rank: values.belt_rank.trim(),
           primary_license_role: values.primary_license_role ?? "",
           secondary_license_role: values.secondary_license_role ?? "",
@@ -470,7 +477,7 @@ export default function ClubMemberDetailPage() {
                   <Label htmlFor="member-wt-license">{importT("wtLicenseLabel")}</Label>
                   <Input
                     id="member-wt-license"
-                    placeholder="WT-12345"
+                    placeholder="LUX-12345"
                     disabled={isCoach}
                     {...register("wt_licenseid")}
                   />
@@ -494,7 +501,15 @@ export default function ClubMemberDetailPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="member-dob">{t("dobLabel")}</Label>
-                  <Input id="member-dob" type="date" disabled={isCoach} {...register("date_of_birth")} />
+                  <Input
+                    id="member-dob"
+                    placeholder="29 Nov 2026"
+                    disabled={isCoach}
+                    {...register("date_of_birth")}
+                  />
+                  {errors.date_of_birth ? (
+                    <p className="text-sm text-red-600">{errors.date_of_birth.message}</p>
+                  ) : null}
                 </div>
 
                 <div className="space-y-2">

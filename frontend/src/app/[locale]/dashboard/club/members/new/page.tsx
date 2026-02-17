@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { apiRequest } from "@/lib/api";
 import { Club, createMember, getClubs } from "@/lib/club-admin-api";
+import { parseDisplayDateToIso } from "@/lib/date-display";
 
 const LICENSE_ROLE_VALUES = [
   "athlete",
@@ -42,7 +43,16 @@ const createMemberSchema = z
     sex: z.enum(["M", "F"]),
     wt_licenseid: z.string().max(20, "WT license ID must be at most 20 characters."),
     ltf_license_prefix: z.enum(["LTF", "LUX"]),
-    date_of_birth: z.string().optional(),
+    date_of_birth: z
+      .string()
+      .optional()
+      .refine(
+        (value) => {
+          const normalized = String(value ?? "").trim();
+          return !normalized || parseDisplayDateToIso(normalized) !== null;
+        },
+        "Use date format 29 Nov 2026."
+      ),
     belt_rank: z.string().optional(),
     primary_license_role: z.enum(LICENSE_ROLE_VALUES).or(z.literal("")).optional(),
     secondary_license_role: z.enum(LICENSE_ROLE_VALUES).or(z.literal("")).optional(),
@@ -159,6 +169,7 @@ export default function ClubAdminMemberCreatePage() {
     setErrorMessage(null);
     try {
       const clubId = Number(values.club);
+      const dateOfBirthIso = parseDisplayDateToIso(values.date_of_birth);
       await createMember({
         club: clubId,
         first_name: values.first_name.trim(),
@@ -166,7 +177,7 @@ export default function ClubAdminMemberCreatePage() {
         sex: values.sex,
         wt_licenseid: values.wt_licenseid.trim() || undefined,
         ltf_license_prefix: values.ltf_license_prefix,
-        date_of_birth: values.date_of_birth ? values.date_of_birth : null,
+        date_of_birth: dateOfBirthIso,
         belt_rank: values.belt_rank?.trim() || "",
         primary_license_role: values.primary_license_role ?? "",
         secondary_license_role: values.secondary_license_role ?? "",
@@ -280,7 +291,7 @@ export default function ClubAdminMemberCreatePage() {
 
             <div className="space-y-2">
               <Label htmlFor="member-wt-license">{importT("wtLicenseLabel")}</Label>
-              <Input id="member-wt-license" placeholder="WT-12345" {...register("wt_licenseid")} />
+              <Input id="member-wt-license" placeholder="LUX-12345" {...register("wt_licenseid")} />
               {errors.wt_licenseid ? (
                 <p className="text-sm text-red-600">{errors.wt_licenseid.message}</p>
               ) : null}
@@ -307,7 +318,10 @@ export default function ClubAdminMemberCreatePage() {
 
             <div className="space-y-2">
               <Label htmlFor="member-dob">{t("dobLabel")}</Label>
-              <Input id="member-dob" type="date" {...register("date_of_birth")} />
+              <Input id="member-dob" placeholder="29 Nov 2026" {...register("date_of_birth")} />
+              {errors.date_of_birth ? (
+                <p className="text-sm text-red-600">{errors.date_of_birth.message}</p>
+              ) : null}
             </div>
 
             <div className="space-y-2">

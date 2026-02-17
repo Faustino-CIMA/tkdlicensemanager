@@ -3,9 +3,11 @@ import json
 import shutil
 import tempfile
 from datetime import date
+from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db.utils import ProgrammingError
 from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -189,6 +191,27 @@ class MemberApiTests(TestCase):
         created_member = Member.objects.get(id=response.data["id"])
         self.assertTrue(created_member.ltf_licenseid.startswith("LTF-"))
         self.assertEqual(created_member.ltf_licenseid, response.data["ltf_licenseid"])
+
+    def test_club_admin_create_member_falls_back_when_counter_table_missing(self):
+        self.client.force_authenticate(user=self.club_admin)
+        with patch(
+            "members.services.MemberLicenseIdCounter.objects.select_for_update",
+            side_effect=ProgrammingError("relation does not exist"),
+        ):
+            response = self.client.post(
+                "/api/members/",
+                {
+                    "club": self.club.id,
+                    "first_name": "Lina",
+                    "last_name": "Vale",
+                    "sex": "F",
+                    "ltf_license_prefix": "LTF",
+                },
+                format="json",
+            )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        created_member = Member.objects.get(id=response.data["id"])
+        self.assertTrue(created_member.ltf_licenseid.startswith("LTF-"))
 
     def test_member_create_rejects_duplicate_wt_licenseid(self):
         self.member.wt_licenseid = "WT-0001"
