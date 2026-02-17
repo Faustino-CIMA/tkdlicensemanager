@@ -88,6 +88,16 @@ class Member(models.Model):
                 ),
                 name="member_primary_secondary_role_must_differ",
             ),
+            models.UniqueConstraint(
+                fields=["wt_licenseid"],
+                condition=~models.Q(wt_licenseid=""),
+                name="member_unique_nonblank_wt_licenseid",
+            ),
+            models.UniqueConstraint(
+                fields=["ltf_licenseid"],
+                condition=~models.Q(ltf_licenseid=""),
+                name="member_unique_nonblank_ltf_licenseid",
+            ),
         ]
 
     def save(self, *args, **kwargs):
@@ -118,6 +128,19 @@ class Member(models.Model):
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
+
+
+class MemberLicenseIdCounter(models.Model):
+    class Prefix(models.TextChoices):
+        LUX = "LUX", _("LUX")
+        LTF = "LTF", _("LTF")
+
+    prefix = models.CharField(max_length=8, choices=Prefix.choices, unique=True)
+    next_value = models.PositiveBigIntegerField(default=1)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.prefix} -> {self.next_value}"
 
 
 class GradePromotionHistory(models.Model):

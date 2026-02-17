@@ -13,7 +13,7 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from .models import GradePromotionHistory, Member
+from .models import GradePromotionHistory, Member, MemberLicenseIdCounter
 
 MIN_PRINT_WIDTH = 945
 MIN_PRINT_HEIGHT = 1181
@@ -280,3 +280,30 @@ def clear_member_profile_picture(
         update_fields.extend(["photo_consent_attested_at", "photo_consent_attested_by"])
     member.save(update_fields=update_fields)
     return member
+
+
+def generate_next_ltf_license_id(*, prefix: str) -> str:
+    normalized_prefix = str(prefix or "").strip().upper()
+    allowed_prefixes = {
+        MemberLicenseIdCounter.Prefix.LTF,
+        MemberLicenseIdCounter.Prefix.LUX,
+    }
+    if normalized_prefix not in allowed_prefixes:
+        raise ValidationError(_("Invalid LTF license ID prefix."))
+
+    with transaction.atomic():
+        counter, _ = (
+            MemberLicenseIdCounter.objects.select_for_update()
+            .get_or_create(
+                prefix=normalized_prefix,
+                defaults={"next_value": 1},
+            )
+        )
+        next_value = int(counter.next_value)
+        candidate = f"{normalized_prefix}-{next_value:06d}"
+        while Member.objects.filter(ltf_licenseid=candidate).exists():
+            next_value += 1
+            candidate = f"{normalized_prefix}-{next_value:06d}"
+        counter.next_value = next_value + 1
+        counter.save(update_fields=["next_value", "updated_at"])
+    return candidate

@@ -334,6 +334,22 @@ class MemberImportPreviewView(views.APIView):
             (m.first_name.lower(), m.last_name.lower()): m.id
             for m in Member.objects.filter(club_id=club_id).only("id", "first_name", "last_name")
         }
+        existing_wt_ids = {
+            value.strip().upper()
+            for value in Member.objects.exclude(wt_licenseid="")
+            .values_list("wt_licenseid", flat=True)
+            .iterator()
+            if value
+        }
+        existing_ltf_ids = {
+            value.strip().upper()
+            for value in Member.objects.exclude(ltf_licenseid="")
+            .values_list("ltf_licenseid", flat=True)
+            .iterator()
+            if value
+        }
+        seen_wt_ids = set()
+        seen_ltf_ids = set()
 
         preview_rows = []
         for index, row in enumerate(rows, start=1):
@@ -384,6 +400,16 @@ class MemberImportPreviewView(views.APIView):
                 if first_name and last_name
                 else None
             )
+            wt_licenseid = row_data.get(mapping.get("wt_licenseid", ""), "").strip().upper()
+            ltf_licenseid = row_data.get(mapping.get("ltf_licenseid", ""), "").strip().upper()
+            if wt_licenseid:
+                if wt_licenseid in existing_wt_ids or wt_licenseid in seen_wt_ids:
+                    errors.append("wt_licenseid must be unique")
+                seen_wt_ids.add(wt_licenseid)
+            if ltf_licenseid:
+                if ltf_licenseid in existing_ltf_ids or ltf_licenseid in seen_ltf_ids:
+                    errors.append("ltf_licenseid must be unique")
+                seen_ltf_ids.add(ltf_licenseid)
 
             preview_rows.append(
                 {
@@ -394,8 +420,8 @@ class MemberImportPreviewView(views.APIView):
                         "date_of_birth": dob.isoformat() if dob else None,
                         "belt_rank": row_data.get(mapping.get("belt_rank", ""), "").strip(),
                         "email": row_data.get(mapping.get("email", ""), "").strip(),
-                        "wt_licenseid": row_data.get(mapping.get("wt_licenseid", ""), "").strip(),
-                        "ltf_licenseid": row_data.get(mapping.get("ltf_licenseid", ""), "").strip(),
+                        "wt_licenseid": wt_licenseid,
+                        "ltf_licenseid": ltf_licenseid,
                         "sex": sex_value,
                         "is_active": is_active_value,
                         "primary_license_role": primary_license_role,
@@ -456,6 +482,22 @@ class MemberImportConfirmView(views.APIView):
         created = 0
         skipped = 0
         row_errors = []
+        existing_wt_ids = {
+            value.strip().upper()
+            for value in Member.objects.exclude(wt_licenseid="")
+            .values_list("wt_licenseid", flat=True)
+            .iterator()
+            if value
+        }
+        existing_ltf_ids = {
+            value.strip().upper()
+            for value in Member.objects.exclude(ltf_licenseid="")
+            .values_list("ltf_licenseid", flat=True)
+            .iterator()
+            if value
+        }
+        created_wt_ids = set()
+        created_ltf_ids = set()
 
         with transaction.atomic():
             for index, row in enumerate(rows, start=1):
@@ -506,6 +548,14 @@ class MemberImportConfirmView(views.APIView):
                     and primary_license_role == secondary_license_role
                 ):
                     errors.append("secondary_license_role must differ from primary_license_role")
+                wt_licenseid = row_data.get(mapping.get("wt_licenseid", ""), "").strip().upper()
+                ltf_licenseid = row_data.get(mapping.get("ltf_licenseid", ""), "").strip().upper()
+                if wt_licenseid:
+                    if wt_licenseid in existing_wt_ids or wt_licenseid in created_wt_ids:
+                        errors.append("wt_licenseid must be unique")
+                if ltf_licenseid:
+                    if ltf_licenseid in existing_ltf_ids or ltf_licenseid in created_ltf_ids:
+                        errors.append("ltf_licenseid must be unique")
 
                 if errors:
                     row_errors.append({"row_index": index, "errors": errors})
@@ -517,8 +567,8 @@ class MemberImportConfirmView(views.APIView):
                     "date_of_birth": dob,
                     "belt_rank": row_data.get(mapping.get("belt_rank", ""), "").strip(),
                     "email": row_data.get(mapping.get("email", ""), "").strip(),
-                    "wt_licenseid": row_data.get(mapping.get("wt_licenseid", ""), "").strip(),
-                    "ltf_licenseid": row_data.get(mapping.get("ltf_licenseid", ""), "").strip(),
+                    "wt_licenseid": wt_licenseid,
+                    "ltf_licenseid": ltf_licenseid,
                     "primary_license_role": primary_license_role,
                     "secondary_license_role": secondary_license_role,
                 }
@@ -527,6 +577,10 @@ class MemberImportConfirmView(views.APIView):
                 if is_active_value is not None:
                     member_payload["is_active"] = is_active_value
                 Member.objects.create(**member_payload)
+                if wt_licenseid:
+                    created_wt_ids.add(wt_licenseid)
+                if ltf_licenseid:
+                    created_ltf_ids.add(ltf_licenseid)
                 created += 1
 
         return response.Response(

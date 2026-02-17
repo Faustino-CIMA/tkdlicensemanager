@@ -4,6 +4,7 @@ from licenses.models import LicenseHistoryEvent
 
 from .models import Member
 from .models import GradePromotionHistory
+from .services import generate_next_ltf_license_id
 
 
 class MemberSerializer(serializers.ModelSerializer):
@@ -20,6 +21,12 @@ class MemberSerializer(serializers.ModelSerializer):
     )
     profile_picture_url = serializers.SerializerMethodField()
     profile_picture_thumbnail_url = serializers.SerializerMethodField()
+    ltf_license_prefix = serializers.ChoiceField(
+        choices=[("LUX", "LUX"), ("LTF", "LTF")],
+        write_only=True,
+        required=False,
+        default="LTF",
+    )
 
     class Meta:
         model = Member
@@ -33,6 +40,7 @@ class MemberSerializer(serializers.ModelSerializer):
             "email",
             "wt_licenseid",
             "ltf_licenseid",
+            "ltf_license_prefix",
             "date_of_birth",
             "belt_rank",
             "primary_license_role",
@@ -58,6 +66,13 @@ class MemberSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        wt_licenseid = attrs.get("wt_licenseid")
+        if wt_licenseid is not None:
+            attrs["wt_licenseid"] = str(wt_licenseid).strip().upper()
+        ltf_licenseid = attrs.get("ltf_licenseid")
+        if ltf_licenseid is not None:
+            attrs["ltf_licenseid"] = str(ltf_licenseid).strip().upper()
+
         primary_role = attrs.get(
             "primary_license_role",
             getattr(self.instance, "primary_license_role", ""),
@@ -77,7 +92,36 @@ class MemberSerializer(serializers.ModelSerializer):
             )
         return attrs
 
+    def validate_wt_licenseid(self, value):
+        normalized_value = str(value or "").strip().upper()
+        if not normalized_value:
+            return ""
+        queryset = Member.objects.filter(wt_licenseid=normalized_value)
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        if queryset.exists():
+            raise serializers.ValidationError("WT license ID must be unique.")
+        return normalized_value
+
+    def validate_ltf_licenseid(self, value):
+        normalized_value = str(value or "").strip().upper()
+        if not normalized_value:
+            return ""
+        queryset = Member.objects.filter(ltf_licenseid=normalized_value)
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        if queryset.exists():
+            raise serializers.ValidationError("LTF license ID must be unique.")
+        return normalized_value
+
+    def create(self, validated_data):
+        ltf_prefix = validated_data.pop("ltf_license_prefix", "LTF")
+        if not str(validated_data.get("ltf_licenseid", "")).strip():
+            validated_data["ltf_licenseid"] = generate_next_ltf_license_id(prefix=ltf_prefix)
+        return super().create(validated_data)
+
     def update(self, instance, validated_data):
+        validated_data.pop("ltf_license_prefix", None)
         previous_belt_rank = str(instance.belt_rank or "").strip()
         updated_member = super().update(instance, validated_data)
         new_belt_rank = str(updated_member.belt_rank or "").strip()

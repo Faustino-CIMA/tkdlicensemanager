@@ -154,6 +154,79 @@ class MemberApiTests(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_club_admin_create_member_auto_generates_ltf_licenseid_with_prefix(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            "/api/members/",
+            {
+                "club": self.club.id,
+                "first_name": "Ari",
+                "last_name": "Kim",
+                "sex": "M",
+                "ltf_license_prefix": "LUX",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        created_id = response.data["id"]
+        created_member = Member.objects.get(id=created_id)
+        self.assertTrue(created_member.ltf_licenseid.startswith("LUX-"))
+        self.assertEqual(created_member.ltf_licenseid, response.data["ltf_licenseid"])
+
+    def test_club_admin_create_member_auto_generates_ltf_licenseid_with_default_prefix(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            "/api/members/",
+            {
+                "club": self.club.id,
+                "first_name": "Iris",
+                "last_name": "Cole",
+                "sex": "F",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        created_member = Member.objects.get(id=response.data["id"])
+        self.assertTrue(created_member.ltf_licenseid.startswith("LTF-"))
+        self.assertEqual(created_member.ltf_licenseid, response.data["ltf_licenseid"])
+
+    def test_member_create_rejects_duplicate_wt_licenseid(self):
+        self.member.wt_licenseid = "WT-0001"
+        self.member.save(update_fields=["wt_licenseid", "updated_at"])
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            "/api/members/",
+            {
+                "club": self.club.id,
+                "first_name": "Nina",
+                "last_name": "Park",
+                "sex": "F",
+                "wt_licenseid": "wt-0001",
+                "ltf_license_prefix": "LTF",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("wt_licenseid", response.data)
+
+    def test_member_create_rejects_duplicate_ltf_licenseid(self):
+        self.member.ltf_licenseid = "LTF-000001"
+        self.member.save(update_fields=["ltf_licenseid", "updated_at"])
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            "/api/members/",
+            {
+                "club": self.club.id,
+                "first_name": "Nina",
+                "last_name": "Park",
+                "sex": "F",
+                "ltf_licenseid": "ltf-000001",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("ltf_licenseid", response.data)
+
     def test_ltf_admin_cannot_update_member(self):
         self.client.force_authenticate(user=self.ltf_admin)
         response = self.client.patch(
@@ -597,6 +670,36 @@ class MemberImportTests(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(Member.objects.count(), 1)
+
+    def test_confirm_rejects_duplicate_ltf_licenseid(self):
+        Member.objects.create(
+            club=self.club,
+            first_name="Existing",
+            last_name="Member",
+            ltf_licenseid="LTF-000777",
+        )
+        self.client.force_authenticate(user=self.ltf_admin)
+        csv_data = "first_name,last_name,ltf_id\nAna,Ng,LTF-000777\n"
+        file_obj = BytesIO(csv_data.encode("utf-8"))
+        file_obj.name = "members_duplicate_ltf.csv"
+        mapping = {
+            "first_name": "first_name",
+            "last_name": "last_name",
+            "ltf_licenseid": "ltf_id",
+        }
+        response = self.client.post(
+            "/api/imports/members/confirm/",
+            {
+                "file": file_obj,
+                "mapping": json.dumps(mapping),
+                "club_id": self.club.id,
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["created"], 0)
+        self.assertEqual(len(response.data["errors"]), 1)
+        self.assertIn("ltf_licenseid must be unique", response.data["errors"][0]["errors"])
 
     def test_preview_reports_invalid_license_role(self):
         self.client.force_authenticate(user=self.ltf_admin)
