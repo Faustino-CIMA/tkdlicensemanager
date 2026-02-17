@@ -708,7 +708,7 @@
     "noLicensesResultsSubtitle": "Probéiert en anert Schlësselwuert oder läscht d'Sich.",
     "noLicenseTypesResultsSubtitle": "Leet e Lizenztyp un fir unzefänken.",
     "licenseTypeFormSubtitle": "Lizenztypen am System uleeën oder änneren.",
-    "licenseTypeNamePlaceholder": "Bezuelt",
+    "licenseTypeNamePlaceholder": "z.B. Joreslizenz Standard",
     "createLicenseType": "Lizenztyp uleeën",
     "updateLicenseType": "Lizenztyp änneren",
     "clubDetailTitle": "Veräin: {club}",

@@ -54,6 +54,7 @@ class LicenseTypePolicy(models.Model):
 
 
 def get_default_license_type():
+    # Kept for historical migrations that reference this callable.
     license_type, _ = LicenseType._default_manager.get_or_create(
         code="paid",
         defaults={"name": "Paid"},
@@ -67,7 +68,6 @@ class LicensePrice(models.Model):
         LicenseType,
         on_delete=models.PROTECT,
         related_name="prices",
-        default=get_default_license_type,
     )
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     currency = models.CharField(max_length=3, default="EUR")
@@ -88,13 +88,8 @@ class LicensePrice(models.Model):
         return f"{self.license_type.name}: {self.amount} {self.currency} ({self.effective_from})"
 
     @classmethod
-    def get_active_price(cls, *, license_type: LicenseType | None = None, as_of=None):
+    def get_active_price(cls, *, license_type: LicenseType, as_of=None):
         date_value = as_of or timezone.localdate()
-        if license_type is None:
-            license_type = cast(
-                LicenseType,
-                LicenseType._default_manager.get(pk=get_default_license_type()),
-            )
         return (
             cls.objects.filter(license_type=license_type, effective_from__lte=date_value)
             .order_by("-effective_from", "-created_at")
@@ -123,7 +118,6 @@ class License(models.Model):
         LicenseType,
         on_delete=models.PROTECT,
         related_name="licenses",
-        default=get_default_license_type,
     )
     year = models.PositiveIntegerField()
     start_date = models.DateField()

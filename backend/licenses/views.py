@@ -37,7 +37,6 @@ from .models import (
     Order,
     OrderItem,
     Payment,
-    get_default_license_type,
 )
 from .history import log_license_created, log_license_status_change
 from .serializers import (
@@ -1131,7 +1130,7 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
         serializer.is_valid(raise_exception=True)
         club = serializer.validated_data["club"]
         member_ids = serializer.validated_data["member_ids"]
-        selected_license_type = serializer.validated_data.get("license_type")
+        license_type = serializer.validated_data["license_type"]
         year = serializer.validated_data["year"]
         quantity = serializer.validated_data["quantity"]
         tax_total = serializer.validated_data["tax_total"]
@@ -1146,8 +1145,6 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        default_license_type = LicenseType.objects.get(pk=get_default_license_type())
-        license_type = selected_license_type or default_license_type
         policy_errors = []
         for member in members:
             try:

@@ -20,7 +20,6 @@ from .models import (
     Order,
     OrderItem,
     Payment,
-    get_default_license_type,
 )
 from .policy import get_or_create_license_type_policy, validate_member_license_order
 
@@ -103,9 +102,7 @@ class OrderSerializer(serializers.ModelSerializer):
 
 
 class OrderItemCreateSerializer(serializers.Serializer):
-    license_type = serializers.PrimaryKeyRelatedField(
-        queryset=LicenseType.objects.all(), required=False, allow_null=True
-    )
+    license_type = serializers.PrimaryKeyRelatedField(queryset=LicenseType.objects.all())
     year = serializers.IntegerField(min_value=2000, max_value=2100)
     price_snapshot = serializers.DecimalField(max_digits=10, decimal_places=2)
     quantity = serializers.IntegerField(min_value=1, default=1)
@@ -135,11 +132,9 @@ class OrderCreateSerializer(serializers.Serializer):
                 {"member": "Member does not belong to the specified club."}
             )
 
-        default_license_type_id = get_default_license_type()
-        default_license_type = LicenseType.objects.get(pk=default_license_type_id)
         item_errors = {}
         for index, item in enumerate(items):
-            license_type = item.get("license_type") or default_license_type
+            license_type = item["license_type"]
             try:
                 validate_member_license_order(
                     member=member,
@@ -180,12 +175,9 @@ class OrderCreateSerializer(serializers.Serializer):
                 total=total,
             )
 
-            default_license_type_id = get_default_license_type()
-            default_license_type = LicenseType.objects.get(pk=default_license_type_id)
-
             created_license_ids = []
             for item in items:
-                license_type = item.get("license_type") or default_license_type
+                license_type = item["license_type"]
                 license_record = License.objects.create(
                     member=member,
                     club=club,
@@ -264,9 +256,7 @@ class OrderCreateSerializer(serializers.Serializer):
 
 class ClubOrderBatchSerializer(serializers.Serializer):
     club = serializers.PrimaryKeyRelatedField(queryset=Club.objects.all())
-    license_type = serializers.PrimaryKeyRelatedField(
-        queryset=LicenseType.objects.all(), required=False, allow_null=True
-    )
+    license_type = serializers.PrimaryKeyRelatedField(queryset=LicenseType.objects.all())
     member_ids = serializers.ListField(
         child=serializers.IntegerField(), min_length=1, allow_empty=False
     )

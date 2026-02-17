@@ -12,7 +12,7 @@ from rest_framework.test import APIClient
 from PIL import Image
 
 from clubs.models import Club
-from licenses.models import License, LicenseHistoryEvent
+from licenses.models import License, LicenseHistoryEvent, LicenseType
 from members.models import GradePromotionHistory, Member
 from members.services import process_member_profile_picture
 from .adapter import CustomAccountAdapter
@@ -145,7 +145,16 @@ class AuthApiTests(TestCase):
         self.assertTrue(email_address.verified)
 
     def test_data_export_contains_history_payloads(self):
-        license_record = License.objects.create(member=self.member, club=self.club, year=2026)
+        license_type = LicenseType.objects.create(
+            name="Export Annual",
+            code="export-annual",
+        )
+        license_record = License.objects.create(
+            member=self.member,
+            club=self.club,
+            license_type=license_type,
+            year=2026,
+        )
         LicenseHistoryEvent.objects.create(
             member=self.member,
             license=license_record,

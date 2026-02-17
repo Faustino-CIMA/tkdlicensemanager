@@ -708,7 +708,7 @@
     "noLicensesResultsSubtitle": "Try a different keyword or clear the search.",
     "noLicenseTypesResultsSubtitle": "Add a license type to get started.",
     "licenseTypeFormSubtitle": "Create or update license types used in the system.",
-    "licenseTypeNamePlaceholder": "Paid",
+    "licenseTypeNamePlaceholder": "e.g. Annual Standard",
     "createLicenseType": "Create license type",
     "updateLicenseType": "Update license type",
     "clubDetailTitle": "Club: {club}",

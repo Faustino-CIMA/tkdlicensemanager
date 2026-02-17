@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from accounts.models import User
-from licenses.models import License
+from licenses.models import License, LicenseType
 from members.models import Member
 
 from .models import Club, FederationProfile
@@ -64,7 +64,16 @@ class ClubApiTests(TestCase):
             first_name="Jon",
             last_name="Schmitt",
         )
-        License.objects.create(member=member, club=self.club, year=2026)
+        license_type = LicenseType.objects.create(
+            name="Club Lock Annual",
+            code="club-lock-annual",
+        )
+        License.objects.create(
+            member=member,
+            club=self.club,
+            license_type=license_type,
+            year=2026,
+        )
         self.client.force_authenticate(user=self.ltf_admin)
         response = self.client.delete(f"/api/clubs/{self.club.id}/")
         self.assertEqual(response.status_code, 409)

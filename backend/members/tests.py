@@ -13,7 +13,7 @@ from PIL import Image
 
 from accounts.models import User
 from clubs.models import Club
-from licenses.models import License, LicenseHistoryEvent
+from licenses.models import License, LicenseHistoryEvent, LicenseType
 
 from .models import GradePromotionHistory, Member
 from .services import add_grade_promotion
@@ -70,6 +70,10 @@ class MemberApiTests(TestCase):
             first_name="Noah",
             last_name="Gray",
             is_active=False,
+        )
+        self.license_type = LicenseType.objects.create(
+            name="Members Annual",
+            code="members-annual",
         )
 
     def tearDown(self):
@@ -308,6 +312,7 @@ class MemberApiTests(TestCase):
         license_record = License.objects.create(
             member=self.member,
             club=self.club,
+            license_type=self.license_type,
             year=2026,
             status=License.Status.PENDING,
         )
@@ -332,6 +337,7 @@ class MemberApiTests(TestCase):
         license_record = License.objects.create(
             member=self.member,
             club=self.club,
+            license_type=self.license_type,
             year=2026,
             status=License.Status.PENDING,
         )
@@ -347,6 +353,7 @@ class MemberApiTests(TestCase):
         order_license = License.objects.create(
             member=self.member,
             club=self.club,
+            license_type=self.license_type,
             year=2027,
             status=License.Status.PENDING,
         )

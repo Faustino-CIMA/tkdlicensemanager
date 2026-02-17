@@ -286,7 +286,7 @@ export function getLicensePrices(params?: { licenseTypeId?: number }) {
 }
 
 export function createLicensePrice(input: {
-  license_type?: number;
+  license_type: number;
   amount: string;
   currency?: string;
   effective_from?: string;

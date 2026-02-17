@@ -47,8 +47,13 @@ class LicenseModelTests(TestCase):
             first_name="Kai",
             last_name="Zhang",
         )
-
-        license_record = License.objects.create(member=member, club=club, year=2026)
+        license_type = LicenseType.objects.create(name="Model Annual", code="model-annual")
+        license_record = License.objects.create(
+            member=member,
+            club=club,
+            license_type=license_type,
+            year=2026,
+        )
 
         self.assertEqual(license_record.start_date, date(2026, 1, 1))
         self.assertEqual(license_record.end_date, date(2026, 12, 31))
@@ -61,7 +66,16 @@ class LicenseModelTests(TestCase):
         )
         club = Club.objects.create(name="History Club", created_by=admin)
         member = Member.objects.create(club=club, first_name="Ana", last_name="Park")
-        license_record = License.objects.create(member=member, club=club, year=2027)
+        license_type = LicenseType.objects.create(
+            name="History Annual",
+            code="history-annual",
+        )
+        license_record = License.objects.create(
+            member=member,
+            club=club,
+            license_type=license_type,
+            year=2027,
+        )
         license_record.status = License.Status.ACTIVE
         license_record.save(update_fields=["status", "updated_at"])
 
@@ -75,7 +89,16 @@ class LicenseModelTests(TestCase):
         )
         club = Club.objects.create(name="Immutable Club", created_by=admin)
         member = Member.objects.create(club=club, first_name="Noah", last_name="Stone")
-        license_record = License.objects.create(member=member, club=club, year=2028)
+        license_type = LicenseType.objects.create(
+            name="Immutable Annual",
+            code="immutable-annual",
+        )
+        license_record = License.objects.create(
+            member=member,
+            club=club,
+            license_type=license_type,
+            year=2028,
+        )
         event = LicenseHistoryEvent.objects.create(
             member=member,
             license=license_record,
@@ -103,7 +126,13 @@ class LicenseHistoryTaskTests(TestCase):
         )
         club = Club.objects.create(name="Expiry Club", created_by=admin)
         member = Member.objects.create(club=club, first_name="Mila", last_name="Fox")
-        old_license = License.objects.create(member=member, club=club, year=2024)
+        license_type = LicenseType.objects.create(name="Expiry Annual", code="expiry-annual")
+        old_license = License.objects.create(
+            member=member,
+            club=club,
+            license_type=license_type,
+            year=2024,
+        )
         old_license.status = License.Status.ACTIVE
         old_license.end_date = date(2024, 12, 31)
         old_license.save(update_fields=["status", "end_date", "updated_at"])
@@ -133,7 +162,16 @@ class MemberDeletionCascadeTests(TestCase):
             first_name="Lina",
             last_name="Meyer",
         )
-        License.objects.create(member=member, club=club, year=2026)
+        license_type = LicenseType.objects.create(
+            name="Cascade Annual",
+            code="cascade-annual",
+        )
+        License.objects.create(
+            member=member,
+            club=club,
+            license_type=license_type,
+            year=2026,
+        )
 
         member.delete()
 
@@ -229,9 +267,7 @@ class LicenseTypeApiTests(TestCase):
 
     def test_delete_blocked_when_in_use(self):
         self.client.force_authenticate(user=self.ltf_finance)
-        license_type, _ = LicenseType.objects.get_or_create(
-            name="Paid", defaults={"code": "paid"}
-        )
+        license_type = LicenseType.objects.create(name="In Use", code="in-use")
         club = Club.objects.create(name="Locked Club", created_by=self.ltf_admin)
         member = Member.objects.create(club=club, first_name="Dina", last_name="Lopez")
         License.objects.create(member=member, club=club, year=2026, license_type=license_type)
@@ -365,9 +401,14 @@ class FinanceModelTests(TestCase):
             first_name="Maya",
             last_name="Rossi",
         )
+        self.license_type = LicenseType.objects.create(
+            name="Finance Annual",
+            code="finance-annual",
+        )
         self.license_record = License.objects.create(
             member=self.member,
             club=self.club,
+            license_type=self.license_type,
             year=2026,
         )
 
@@ -455,6 +496,10 @@ class OrderApiTests(TestCase):
             first_name="Ria",
             last_name="Bauer",
         )
+        self.license_type = LicenseType.objects.create(
+            name="Orders Annual",
+            code="orders-annual",
+        )
 
     def _order_payload(self):
         return {
@@ -464,6 +509,7 @@ class OrderApiTests(TestCase):
             "tax_total": "5.00",
             "items": [
                 {
+                    "license_type": self.license_type.id,
                     "year": 2026,
                     "price_snapshot": "30.00",
                     "quantity": 1,
@@ -1057,9 +1103,14 @@ class ClubOrderCheckoutTests(TestCase):
             first_name="Nora",
             last_name="Klein",
         )
+        self.license_type = LicenseType.objects.create(
+            name="Checkout Annual",
+            code="checkout-annual",
+        )
         self.license_record = License.objects.create(
             member=self.member,
             club=self.club,
+            license_type=self.license_type,
             year=2026,
         )
         self.order = Order.objects.create(
