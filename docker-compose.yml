@@ -38,26 +38,11 @@ services:
     networks:
       - app-net
 
-  init-permissions:
-    build:
-      context: ./backend
-    restart: "no"
-    user: "0:0"
-    command: >
-      sh -c "APP_UID=$$(id -u app) &&
-      APP_GID=$$(id -g app) &&
-      chown -R $$APP_UID:$$APP_GID /app/media /app/staticfiles /var/lib/celerybeat"
-    volumes:
-      - mediafiles_data:/app/media
-      - staticfiles_data:/app/staticfiles
-      - celerybeat_data:/var/lib/celerybeat
-    networks:
-      - app-net
-
   backend:
     build:
       context: ./backend
     restart: unless-stopped
+    user: "0:0"
     env_file:
       - .env
     environment:
@@ -72,16 +57,17 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      init-permissions:
-        condition: service_completed_successfully
     command: >
-      sh -c "python manage.py collectstatic --noinput &&
+      sh -c "APP_UID=$$(id -u app) &&
+      APP_GID=$$(id -g app) &&
+      chown -R $$APP_UID:$$APP_GID /app/media /app/staticfiles /var/lib/celerybeat &&
+      runuser -u app -- sh -lc 'python manage.py collectstatic --noinput &&
       gunicorn config.wsgi:application
       --bind 0.0.0.0:8000
       --workers 3
       --threads 2
       --timeout 120
-      --access-logfile -"
+      --access-logfile -'"
     volumes:
       - ./backend:/app
       # Keep for debug-mode logging (shared host log path)
@@ -106,6 +92,7 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
+    user: "0:0"
     env_file:
       - .env
     environment:
@@ -120,9 +107,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      init-permissions:
-        condition: service_completed_successfully
-    command: celery -A config worker -l info
+    command: >
+      sh -c "APP_UID=$$(id -u app) &&
+      APP_GID=$$(id -g app) &&
+      chown -R $$APP_UID:$$APP_GID /app/media /var/lib/celerybeat &&
+      runuser -u app -- celery -A config worker -l info"
     volumes:
       - ./backend:/app
       # Keep for debug-mode logging (shared host log path)
@@ -135,6 +124,7 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
+    user: "0:0"
     env_file:
       - .env
     environment:
@@ -150,9 +140,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      init-permissions:
-        condition: service_completed_successfully
-    command: celery -A config beat -l info
+    command: >
+      sh -c "APP_UID=$$(id -u app) &&
+      APP_GID=$$(id -g app) &&
+      chown -R $$APP_UID:$$APP_GID /app/media /var/lib/celerybeat &&
+      runuser -u app -- celery -A config beat -l info"
     volumes:
       - ./backend:/app
       # Keep for debug-mode logging (shared host log path)
