@@ -11,11 +11,9 @@ import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { Button } from "@/components/ui/button";
 import { DeleteConfirmModal } from "@/components/ui/delete-confirm-modal";
 import { Input } from "@/components/ui/input";
-import { Modal } from "@/components/ui/modal";
 import {
   FinanceLicenseType,
   LicensePrice,
-  createFinanceLicenseType,
   createLicensePrice,
   deleteFinanceLicenseType,
   getFinanceLicenseTypes,
@@ -44,13 +42,6 @@ export default function LtfFinanceLicenseSettingsPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-
-  const [isTypeModalOpen, setIsTypeModalOpen] = useState(false);
-  const [licenseTypeName, setLicenseTypeName] = useState("");
-  const [initialPriceAmount, setInitialPriceAmount] = useState("");
-  const [initialPriceEffectiveFrom, setInitialPriceEffectiveFrom] = useState("");
-  const [initialPriceIsFree, setInitialPriceIsFree] = useState(false);
-  const [isSavingType, setIsSavingType] = useState(false);
 
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [licenseTypeToDelete, setLicenseTypeToDelete] = useState<FinanceLicenseType | null>(null);
@@ -124,49 +115,6 @@ export default function LtfFinanceLicenseSettingsPage() {
     });
     return grouped;
   }, [licenseTypes, prices]);
-
-  const openCreateTypeModal = () => {
-    setLicenseTypeName("");
-    setInitialPriceAmount("");
-    setInitialPriceEffectiveFrom("");
-    setInitialPriceIsFree(false);
-    setIsTypeModalOpen(true);
-  };
-
-  const saveLicenseType = async () => {
-    const trimmed = licenseTypeName.trim();
-    if (!trimmed) {
-      setErrorMessage(t("licenseTypeNameRequiredError"));
-      return;
-    }
-    const normalizedInitialAmount = initialPriceIsFree ? "0.00" : initialPriceAmount.trim();
-    if (!normalizedInitialAmount) {
-      setErrorMessage(t("initialPriceRequiredError"));
-      return;
-    }
-    setErrorMessage(null);
-    setSuccessMessage(null);
-    setIsSavingType(true);
-    try {
-      await createFinanceLicenseType({
-        name: trimmed,
-        initial_price_amount: normalizedInitialAmount,
-        initial_price_currency: "EUR",
-        initial_price_effective_from: initialPriceEffectiveFrom || undefined,
-      });
-      setIsTypeModalOpen(false);
-      setLicenseTypeName("");
-      setInitialPriceAmount("");
-      setInitialPriceEffectiveFrom("");
-      setInitialPriceIsFree(false);
-      setSuccessMessage(t("licenseTypeSavedMessage"));
-      await loadData();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : t("licenseTypeSaveError"));
-    } finally {
-      setIsSavingType(false);
-    }
-  };
 
   const openDeleteTypeModal = (licenseType: FinanceLicenseType) => {
     setLicenseTypeToDelete(licenseType);
@@ -248,7 +196,11 @@ export default function LtfFinanceLicenseSettingsPage() {
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
             />
-            <Button onClick={openCreateTypeModal}>{t("createLicenseType")}</Button>
+            <Button
+              onClick={() => router.push(`/${locale}/dashboard/ltf-finance/license-settings/new`)}
+            >
+              {t("createLicenseType")}
+            </Button>
           </div>
         </div>
 
@@ -379,6 +331,7 @@ export default function LtfFinanceLicenseSettingsPage() {
                             updatePriceDraft(licenseType.id, { effectiveFrom: event.target.value })
                           }
                         />
+                        <p className="text-xs text-zinc-500">{t("priceEffectiveFromHint")}</p>
                       </div>
                       <div className="flex items-end">
                         <Button onClick={() => savePrice(licenseType.id)} disabled={isSavingPrice}>
@@ -393,90 +346,6 @@ export default function LtfFinanceLicenseSettingsPage() {
           </div>
         )}
       </section>
-
-      <Modal
-        title={t("createLicenseType")}
-        description={t("licenseTypeFormSubtitle")}
-        isOpen={isTypeModalOpen}
-        onClose={() => {
-          setIsTypeModalOpen(false);
-          setLicenseTypeName("");
-          setInitialPriceAmount("");
-          setInitialPriceEffectiveFrom("");
-          setInitialPriceIsFree(false);
-        }}
-      >
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("licenseTypeNameLabel")}</label>
-            <Input
-              placeholder={t("licenseTypeNamePlaceholder")}
-              value={licenseTypeName}
-              onChange={(event) => setLicenseTypeName(event.target.value)}
-            />
-          </div>
-          <div className="space-y-4 rounded-xl border border-zinc-200 p-4">
-            <p className="text-sm font-medium text-zinc-700">{t("initialPriceSectionLabel")}</p>
-            <label className="flex items-center gap-2 text-sm text-zinc-700">
-              <input
-                type="checkbox"
-                checked={initialPriceIsFree}
-                onChange={(event) => {
-                  const nextValue = event.target.checked;
-                  setInitialPriceIsFree(nextValue);
-                  if (nextValue) {
-                    setInitialPriceAmount("0.00");
-                  } else {
-                    setInitialPriceAmount("");
-                  }
-                }}
-              />
-              {t("initialPriceFreeLabel")}
-            </label>
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-zinc-700">{t("priceAmountLabel")}</label>
-                <Input
-                  value={initialPriceAmount}
-                  onChange={(event) => setInitialPriceAmount(event.target.value)}
-                  placeholder="0.00"
-                  inputMode="decimal"
-                  disabled={initialPriceIsFree}
-                />
-                <p className="text-xs text-zinc-500">{t("initialPriceHint")}</p>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-zinc-700">
-                  {t("priceEffectiveFromLabel")}
-                </label>
-                <Input
-                  type="date"
-                  value={initialPriceEffectiveFrom}
-                  onChange={(event) => setInitialPriceEffectiveFrom(event.target.value)}
-                />
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button onClick={saveLicenseType} disabled={isSavingType}>
-              {isSavingType ? t("savingAction") : t("createLicenseType")}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setIsTypeModalOpen(false);
-                setLicenseTypeName("");
-                setInitialPriceAmount("");
-                setInitialPriceEffectiveFrom("");
-                setInitialPriceIsFree(false);
-              }}
-            >
-              {common("deleteCancelButton")}
-            </Button>
-          </div>
-        </div>
-      </Modal>
 
       <DeleteConfirmModal
         isOpen={isDeleteOpen}
