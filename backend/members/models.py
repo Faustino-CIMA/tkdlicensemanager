@@ -3,6 +3,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
+from typing import TYPE_CHECKING, cast
 
 from clubs.models import Club
 
@@ -82,10 +83,8 @@ class Member(models.Model):
                 name="member_secondary_role_requires_primary",
             ),
             models.CheckConstraint(
-                check=~(
-                    ~models.Q(primary_license_role="")
-                    & models.Q(primary_license_role=models.F("secondary_license_role"))
-                ),
+                check=models.Q(primary_license_role="")
+                | ~models.Q(primary_license_role=models.F("secondary_license_role")),
                 name="member_primary_secondary_role_must_differ",
             ),
             models.UniqueConstraint(
@@ -136,7 +135,7 @@ class MemberLicenseIdCounter(models.Model):
         LTF = "LTF", _("LTF")
 
     prefix = models.CharField(max_length=8, choices=Prefix.choices, unique=True)
-    next_value = models.PositiveBigIntegerField(default=1)
+    next_value = models.PositiveBigIntegerField(default=1)  # type: ignore[call-arg]
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
@@ -173,14 +172,30 @@ class GradePromotionHistory(models.Model):
             models.Index(fields=["club", "-promotion_date"]),
         ]
 
+    if TYPE_CHECKING:
+        objects: models.Manager
+        member_id: int | None
+        club_id: int | None
+
     def clean(self):
-        if self.member_id and self.club_id and self.member.club_id != self.club_id:
+        member_id = cast(int | None, getattr(self, "member_id", None))
+        club_id = cast(int | None, getattr(self, "club_id", None))
+        member_club_id = cast(
+            int | None, getattr(getattr(self, "member", None), "club_id", None)
+        )
+
+        if (
+            member_id
+            and club_id
+            and member_club_id is not None
+            and member_club_id != club_id
+        ):
             raise ValidationError(_("Member does not belong to this club."))
         if self.exam_date and self.exam_date > self.promotion_date:
             raise ValidationError(_("Exam date cannot be after promotion date."))
-        if self.member_id and self._state.adding:
+        if member_id and self._state.adding:
             latest = (
-                GradePromotionHistory.objects.filter(member_id=self.member_id)
+                GradePromotionHistory.objects.filter(member_id=member_id)
                 .order_by("-promotion_date", "-created_at")
                 .first()
             )
