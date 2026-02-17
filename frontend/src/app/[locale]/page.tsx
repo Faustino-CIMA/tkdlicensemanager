@@ -22,12 +22,6 @@ export default async function HomePage({ params }: HomePageProps) {
           >
             {t("signIn")}
           </Link>
-          <Link
-            href={`/${locale}/register`}
-            className="rounded-full border border-zinc-200 px-5 py-2 text-sm font-medium text-zinc-900"
-          >
-            {t("createAccount")}
-          </Link>
         </div>
       </div>
     </main>

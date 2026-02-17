@@ -5,6 +5,9 @@ from django.conf import settings
 
 
 class CustomAccountAdapter(DefaultAccountAdapter):
+    def is_open_for_signup(self, request):
+        return False
+
     def get_email_confirmation_url(self, request, emailconfirmation):
         locale = self._get_locale(request)
         base_url = settings.FRONTEND_BASE_URL.rstrip("/")

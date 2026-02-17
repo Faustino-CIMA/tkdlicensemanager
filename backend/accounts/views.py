@@ -24,41 +24,10 @@ from .serializers import (
     LoginSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
-    RegisterResponseSerializer,
-    RegisterSerializer,
     ResendVerificationSerializer,
     UserSerializer,
     VerifyEmailSerializer,
 )
-
-@extend_schema(
-    request=RegisterSerializer,
-    responses=RegisterResponseSerializer,
-)
-class RegisterView(views.APIView):
-    permission_classes = [permissions.AllowAny]
-    serializer_class = RegisterSerializer
-
-    def post(self, request):
-        locale = request.data.get("locale") if isinstance(request.data, dict) else None
-        request.confirmation_locale = locale or request.query_params.get("locale")
-
-        data = request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
-        data.pop("locale", None)
-
-        serializer = RegisterSerializer(data=data)
-        serializer.is_valid(raise_exception=True)
-        user = serializer.save()
-        EmailAddress.objects.add_email(
-            request, user, user.email, confirm=True, signup=True
-        )
-        return response.Response(
-            {
-                "detail": "Check your email to verify your account.",
-                "user": UserSerializer(user).data,
-            },
-            status=status.HTTP_201_CREATED,
-        )
 
 
 @extend_schema(

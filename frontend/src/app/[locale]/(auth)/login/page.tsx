@@ -97,12 +97,6 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <p className="mt-4 text-sm text-zinc-500">
-          Need an account?{" "}
-          <Link className="font-medium text-zinc-900" href={`/${locale}/register`}>
-            {t("registerTitle")}
-          </Link>
-        </p>
       </div>
     </main>
   );

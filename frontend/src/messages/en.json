@@ -2,8 +2,7 @@
   "Home": {
     "title": "LTF License Manager",
     "subtitle": "Secure, modern license management for Taekwondo in Luxembourg.",
-    "signIn": "Sign in",
-    "createAccount": "Create account"
+    "signIn": "Sign in"
   },
   "Common": {
     "languageLabel": "Language",
@@ -59,7 +58,6 @@
   },
   "Auth": {
     "loginTitle": "Sign in",
-    "registerTitle": "Create account",
     "username": "Username",
     "email": "Email",
     "password": "Password",
@@ -69,7 +67,6 @@
     "submit": "Submit",
     "loading": "Loading...",
     "emailNotVerified": "Your email isn't verified yet. Please check your inbox or request a new verification email.",
-    "verifyNotice": "Check your email to verify your account before signing in.",
     "verifyPrompt": "Not verified yet?",
     "verifyLink": "Verify your email"
   },

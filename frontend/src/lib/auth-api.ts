@@ -6,15 +6,6 @@ type LoginInput = {
   password: string;
 };
 
-type RegisterInput = {
-  username: string;
-  email: string;
-  password: string;
-  first_name: string;
-  last_name: string;
-  locale?: string;
-};
-
 type RegisterResponse = {
   detail: string;
 };
@@ -44,17 +35,6 @@ export function login(input: LoginInput) {
     method: "POST",
     body: JSON.stringify(input),
   });
-}
-
-export function register(input: RegisterInput) {
-  const locale = input.locale ?? "en";
-  return apiRequest<RegisterResponse>(
-    `/api/auth/register/?locale=${encodeURIComponent(locale)}`,
-    {
-      method: "POST",
-      body: JSON.stringify({ ...input, locale }),
-    }
-  );
 }
 
 export function resendVerification(input: ResendVerificationInput) {

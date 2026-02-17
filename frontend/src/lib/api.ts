@@ -47,7 +47,6 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     typeof FormData !== "undefined" && options.body instanceof FormData;
   const skipAuthHeader =
     path.startsWith("/api/auth/login/") ||
-    path.startsWith("/api/auth/register/") ||
     path.startsWith("/api/auth/verify-email/") ||
     path.startsWith("/api/auth/resend-verification/") ||
     path.startsWith("/api/auth/password-reset/");

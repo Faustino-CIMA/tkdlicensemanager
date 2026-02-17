@@ -15,6 +15,7 @@ from clubs.models import Club
 from licenses.models import License, LicenseHistoryEvent
 from members.models import GradePromotionHistory, Member
 from members.services import process_member_profile_picture
+from .adapter import CustomAccountAdapter
 from .models import User
 from .permissions import IsLtfFinance, IsLtfFinanceOrLtfAdmin
 
@@ -91,6 +92,20 @@ class AuthApiTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 400)
+
+    def test_register_endpoint_is_not_available(self):
+        response = self.client.post(
+            "/api/auth/register/",
+            {
+                "username": "newuser",
+                "email": "newuser@example.com",
+                "password": "pass12345",
+                "first_name": "New",
+                "last_name": "User",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 404)
 
     def test_login_succeeds_with_verified_email(self):
         EmailAddress.objects.create(
@@ -231,3 +246,9 @@ class FinancePermissionTests(TestCase):
             request = self._request_for_user(user)
             self.assertFalse(self.permission.has_permission(request, None))
             self.assertFalse(self.permission_with_admin.has_permission(request, None))
+
+
+class CustomAccountAdapterTests(TestCase):
+    def test_signup_is_closed(self):
+        adapter = CustomAccountAdapter()
+        self.assertFalse(adapter.is_open_for_signup(request=None))

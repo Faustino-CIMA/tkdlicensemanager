@@ -2,8 +2,7 @@
   "Home": {
     "title": "LTF Lizenz Manager",
     "subtitle": "Sécher a modern Lizenzverwaltung fir Taekwondo zu Lëtzebuerg.",
-    "signIn": "Aloggen",
-    "createAccount": "Kont uleeën"
+    "signIn": "Aloggen"
   },
   "Common": {
     "languageLabel": "Sprooch",
@@ -59,7 +58,6 @@
   },
   "Auth": {
     "loginTitle": "Aloggen",
-    "registerTitle": "Kont uleeën",
     "username": "Benotzernumm",
     "email": "E-Mail",
     "password": "Passwuert",
@@ -69,7 +67,6 @@
     "submit": "Schécken",
     "loading": "Lueden...",
     "emailNotVerified": "Är E-Mail ass nach net bestätegt. Kuckt w.e.g. Är Inbox oder frot eng nei Bestätegungs-E-Mail un.",
-    "verifyNotice": "Kuckt w.e.g. Är E-Mail fir Äre Kont ze bestätegen, ier Dir Iech aloggt.",
     "verifyPrompt": "Net bestätegt?",
     "verifyLink": "E-Mail bestätegen"
   },
