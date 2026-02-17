@@ -293,37 +293,6 @@ class OrderViewSet(viewsets.ModelViewSet):
         order = self.get_object()
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        consent_user = order.member.user if order.member and order.member.user else None
-        consent_confirmed = serializer.validated_data.get("club_admin_consent_confirmed", False)
-        stripe_processing_requested = bool(
-            serializer.validated_data.get("stripe_payment_intent_id")
-            or serializer.validated_data.get("stripe_checkout_session_id")
-            or serializer.validated_data.get("stripe_invoice_id")
-            or serializer.validated_data.get("stripe_customer_id")
-            or serializer.validated_data.get("payment_provider") == Payment.Provider.STRIPE
-        )
-        consent_required = stripe_processing_requested and not (
-            consent_user and consent_user.consent_given
-        )
-        if consent_required and not consent_confirmed:
-            return Response(
-                {"detail": "Member consent is required for Stripe processing."},
-                status=HTTP_400_BAD_REQUEST,
-            )
-        if consent_required and consent_confirmed:
-            FinanceAuditLog.objects.create(
-                action="consent.confirmed",
-                message="Consent confirmed for Stripe processing.",
-                actor=request.user if request.user.is_authenticated else None,
-                club=order.club,
-                member=order.member,
-                order=order,
-                invoice=getattr(order, "invoice", None),
-                metadata={
-                    "source": "confirm_payment",
-                    "confirmed_by_role": request.user.role if request.user.is_authenticated else None,
-                },
-            )
         if order.status == Order.Status.PAID:
             return Response(
                 {"detail": "Order is already marked as paid."},
@@ -374,22 +343,6 @@ class OrderViewSet(viewsets.ModelViewSet):
         order = self.get_object()
         request_serializer = CheckoutSessionRequestSerializer(data=request.data)
         request_serializer.is_valid(raise_exception=True)
-        consent_confirmed = request_serializer.validated_data.get(
-            "club_admin_consent_confirmed", False
-        )
-        consent_user = order.member.user if order.member and order.member.user else None
-        if consent_user:
-            if not consent_user.consent_given:
-                return Response(
-                    {"detail": "Member consent is required for Stripe processing."},
-                    status=HTTP_400_BAD_REQUEST,
-                )
-        else:
-            if not consent_confirmed:
-                return Response(
-                    {"detail": "Club admin consent confirmation is required."},
-                    status=HTTP_400_BAD_REQUEST,
-                )
         if order.status not in [Order.Status.DRAFT, Order.Status.PENDING]:
             return Response(
                 {"detail": "Checkout session cannot be created for this order status."},
@@ -1330,35 +1283,6 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
         order = self.get_object()
         request_serializer = CheckoutSessionRequestSerializer(data=request.data)
         request_serializer.is_valid(raise_exception=True)
-        consent_confirmed = request_serializer.validated_data.get(
-            "club_admin_consent_confirmed", False
-        )
-        consent_user = order.member.user if order.member and order.member.user else None
-        is_club_admin = (
-            request.user.is_authenticated and request.user.role == "club_admin"
-        )
-        consent_required = (not is_club_admin) and not (
-            consent_user and consent_user.consent_given
-        )
-        if consent_required and not consent_confirmed:
-            return Response(
-                {"detail": "Member consent is required for Stripe processing."},
-                status=HTTP_400_BAD_REQUEST,
-            )
-        if consent_required and consent_confirmed:
-            FinanceAuditLog.objects.create(
-                action="consent.confirmed",
-                message="Consent confirmed for Stripe processing.",
-                actor=request.user if request.user.is_authenticated else None,
-                club=order.club,
-                member=order.member,
-                order=order,
-                invoice=getattr(order, "invoice", None),
-                metadata={
-                    "source": "club_create_checkout_session",
-                    "confirmed_by_role": request.user.role if request.user.is_authenticated else None,
-                },
-            )
         if order.status not in [Order.Status.DRAFT, Order.Status.PENDING]:
             return Response(
                 {"detail": "Checkout session cannot be created for this order status."},

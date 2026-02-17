@@ -27,19 +27,6 @@ def activate_order_from_stripe(order_id: int, stripe_data: dict | None = None) -
     except Order.DoesNotExist:
         return
 
-    if order.member and order.member.user and not order.member.user.consent_given:
-        FinanceAuditLog.objects.create(
-            action="order.payment_blocked",
-            message="Stripe task skipped because consent is missing.",
-            actor=None,
-            club=order.club,
-            member=order.member,
-            order=order,
-            invoice=None,
-            metadata={"reason": "consent_missing"},
-        )
-        return
-
     stripe_data = stripe_data or {}
     payment_details = stripe_data.pop("payment_details", None)
     apply_payment_and_activate(
@@ -99,20 +86,6 @@ def process_stripe_webhook_event(event_payload: dict) -> None:
     order = Order.objects.filter(id=order_id_int).select_related("member__user").first()
     if not order:
         return
-    if order.member and order.member.user and not order.member.user.consent_given:
-        invoice = Invoice.objects.filter(order=order).first()
-        FinanceAuditLog.objects.create(
-            action="order.payment_blocked",
-            message="Payment webhook received but consent missing.",
-            actor=None,
-            club=order.club,
-            member=order.member,
-            order=order,
-            invoice=invoice,
-            metadata={"reason": "consent_missing"},
-        )
-        return
-
     activate_order_from_stripe.delay(order_id_int, stripe_data)
 
 

@@ -621,7 +621,7 @@ class OrderApiTests(TestCase):
         response = self.client.get("/api/finance-audit-logs/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_confirm_payment_requires_consent_confirmation(self):
+    def test_confirm_payment_allows_stripe_without_consent_confirmation(self):
         self.client.force_authenticate(user=self.ltf_finance)
         order = Order.objects.create(
             club=self.club,
@@ -635,7 +635,9 @@ class OrderApiTests(TestCase):
             {"stripe_payment_intent_id": "pi_no_consent"},
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.PAID)
 
     def test_confirm_payment_manual_does_not_require_consent(self):
         self.client.force_authenticate(user=self.ltf_finance)
@@ -662,7 +664,7 @@ class OrderApiTests(TestCase):
         self.assertEqual(payment.method, Payment.Method.BANK_TRANSFER)
 
     @patch("licenses.views.stripe.checkout.Session.create")
-    def test_checkout_requires_consent(self, session_create_mock):
+    def test_checkout_allows_member_without_consent(self, session_create_mock):
         member_user = User.objects.create_user(
             username="member1",
             password="pass12345",
@@ -681,10 +683,10 @@ class OrderApiTests(TestCase):
         response = self.client.post(
             f"/api/orders/{order.id}/create-checkout-session/", {}, format="json"
         )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        session_create_mock.assert_not_called()
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        session_create_mock.assert_called_once()
 
-    def test_confirm_payment_requires_consent(self):
+    def test_confirm_payment_allows_member_without_consent(self):
         member_user = User.objects.create_user(
             username="member2",
             password="pass12345",
@@ -703,7 +705,7 @@ class OrderApiTests(TestCase):
             {"stripe_payment_intent_id": "pi_123"},
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_activate_licenses_allows_admin(self):
         self.client.force_authenticate(user=self.ltf_finance)
@@ -1407,7 +1409,7 @@ class StripeWebhookSignatureTests(TestCase):
         CELERY_TASK_ALWAYS_EAGER=True,
         CELERY_TASK_EAGER_PROPAGATES=True,
     )
-    def test_webhook_blocks_without_consent(self):
+    def test_webhook_allows_processing_without_consent(self):
         no_consent_user = User.objects.create_user(
             username="member-no-consent",
             password="pass12345",
@@ -1445,8 +1447,13 @@ class StripeWebhookSignatureTests(TestCase):
             HTTP_STRIPE_SIGNATURE=signature,
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertTrue(
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.PAID)
+        self.assertFalse(
             FinanceAuditLog.objects.filter(order=order, action="order.payment_blocked").exists()
+        )
+        self.assertTrue(
+            FinanceAuditLog.objects.filter(order=order, action="order.paid").exists()
         )
 
 
