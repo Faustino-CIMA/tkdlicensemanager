@@ -20,6 +20,7 @@ import {
   getMembers,
 } from "@/lib/club-admin-api";
 import { getClubInvoices, getClubOrders } from "@/lib/club-finance-api";
+import { formatDisplayDateTime } from "@/lib/date-display";
 import { FinanceInvoice, FinanceOrder } from "@/lib/ltf-finance-api";
 
 type QueueSeverity = "info" | "warning" | "critical";
@@ -51,14 +52,6 @@ function getSeverityClasses(severity: QueueSeverity) {
     return "border-amber-200 bg-amber-50 text-amber-700";
   }
   return "border-sky-200 bg-sky-50 text-sky-700";
-}
-
-function formatDateTime(value: string) {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-  return parsed.toLocaleString();
 }
 
 function toTimestamp(value: string | null) {
@@ -299,7 +292,7 @@ export default function ClubAdminOverviewPage() {
         reference: order.order_number,
         statusLabel,
         totalLabel: `${order.total} ${order.currency}`,
-        atLabel: formatDateTime(order.created_at),
+        atLabel: formatDisplayDateTime(order.created_at),
         timestamp: toTimestamp(order.created_at),
         href: `/${locale}/dashboard/club/orders/${order.id}`,
       };
@@ -322,7 +315,7 @@ export default function ClubAdminOverviewPage() {
         reference: invoice.invoice_number,
         statusLabel,
         totalLabel: `${invoice.total} ${invoice.currency}`,
-        atLabel: formatDateTime(referenceDate),
+        atLabel: formatDisplayDateTime(referenceDate),
         timestamp: toTimestamp(referenceDate),
         href: `/${locale}/dashboard/club/invoices/${invoice.id}`,
       };
@@ -356,7 +349,7 @@ export default function ClubAdminOverviewPage() {
           <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
             <p className="text-xs text-zinc-500">
               {lastRefreshAt
-                ? t("lastRefreshLabel", { time: formatDateTime(lastRefreshAt) })
+                ? t("lastRefreshLabel", { time: formatDisplayDateTime(lastRefreshAt) })
                 : t("lastRefreshNever")}
             </p>
             <Button

@@ -9,6 +9,7 @@ import { EntityTable } from "@/components/club-admin/entity-table";
 import { SummaryCard } from "@/components/club-admin/summary-card";
 import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { Button } from "@/components/ui/button";
+import { formatDisplayDateTime } from "@/lib/date-display";
 import {
   LtfFinanceOverviewResponse,
   getLtfFinanceOverview,
@@ -24,14 +25,6 @@ function getSeverityClasses(severity: "info" | "warning" | "critical") {
     return "border-amber-200 bg-amber-50 text-amber-700";
   }
   return "border-sky-200 bg-sky-50 text-sky-700";
-}
-
-function formatDateTime(value: string) {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-  return parsed.toLocaleString();
 }
 
 export default function LtfFinanceDashboardPage() {
@@ -129,7 +122,7 @@ export default function LtfFinanceDashboardPage() {
           <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
             <p className="text-xs text-zinc-500">
               {lastRefreshAt
-                ? t("lastRefreshLabel", { time: formatDateTime(lastRefreshAt) })
+                ? t("lastRefreshLabel", { time: formatDisplayDateTime(lastRefreshAt) })
                 : t("lastRefreshNever")}
             </p>
             <Button
@@ -230,7 +223,7 @@ export default function LtfFinanceDashboardPage() {
                     key: "created_at",
                     header: t("createdAtLabel"),
                     render: (row: LtfFinanceOverviewResponse["recent_activity"][number]) =>
-                      formatDateTime(row.created_at),
+                      formatDisplayDateTime(row.created_at),
                   },
                   { key: "action", header: t("actionLabel") },
                   { key: "message", header: t("messageLabel") },

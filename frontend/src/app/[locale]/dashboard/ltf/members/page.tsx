@@ -17,9 +17,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { formatDisplayDate } from "@/lib/date-display";
 import { Club, License, Member, getClubs, getLicenses, getMembers } from "@/lib/ltf-admin-api";
 
-const pageSizeOptions = ["25", "50", "100", "150", "200", "all"];
+const pageSizeOptions = ["10", "25", "50", "100", "150", "200", "all"];
 
 type MemberGroup = {
   member: Member;
@@ -60,11 +61,7 @@ function formatIssuedAt(value: string | null): string {
   if (!value) {
     return "-";
   }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-  return parsed.toLocaleDateString();
+  return formatDisplayDate(value);
 }
 
 export default function LtfAdminMembersPage() {

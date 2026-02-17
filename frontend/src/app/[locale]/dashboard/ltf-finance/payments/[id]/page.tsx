@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { formatDisplayDateTime } from "@/lib/date-display";
 import {
   FinanceInvoice,
   FinanceOrder,
@@ -133,7 +134,7 @@ export default function LtfFinancePaymentDetailPage() {
           ? `${payment.card_brand.toUpperCase()} •••• ${payment.card_last4}`
           : "-",
       amount: `${payment.amount} ${payment.currency}`,
-      paidAt: payment.paid_at ? new Date(payment.paid_at).toLocaleString() : "-",
+      paidAt: formatDisplayDateTime(payment.paid_at),
       recordedBy: payment.created_by ? String(payment.created_by) : "-",
       notes: payment.notes || "-",
     }));
@@ -197,7 +198,7 @@ export default function LtfFinancePaymentDetailPage() {
           <div className="flex flex-col gap-1">
             <span className="text-xs text-zinc-500">{t("paidAtLabel")}</span>
             <span className="font-medium">
-              {invoice.paid_at ? new Date(invoice.paid_at).toLocaleString() : "-"}
+              {formatDisplayDateTime(invoice.paid_at)}
             </span>
           </div>
         </div>

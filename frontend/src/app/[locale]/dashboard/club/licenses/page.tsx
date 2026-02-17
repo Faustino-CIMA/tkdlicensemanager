@@ -16,6 +16,7 @@ import {
   getLicenses,
   getMembers,
 } from "@/lib/club-admin-api";
+import { formatDisplayDate } from "@/lib/date-display";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -50,7 +51,7 @@ export default function ClubAdminLicensesPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const pageSizeOptions = ["25", "50", "100", "150", "200", "all"];
+  const pageSizeOptions = ["10", "25", "50", "100", "150", "200", "all"];
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -291,11 +292,7 @@ export default function ClubAdminLicensesPage() {
     if (!value) {
       return "—";
     }
-    const parsedDate = new Date(value);
-    if (Number.isNaN(parsedDate.getTime())) {
-      return "—";
-    }
-    return parsedDate.toLocaleDateString();
+    return formatDisplayDate(value);
   };
 
   return (

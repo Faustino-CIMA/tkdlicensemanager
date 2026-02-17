@@ -127,6 +127,7 @@ export type MemberInput = {
   email?: string;
   wt_licenseid?: string;
   ltf_licenseid?: string;
+  ltf_license_prefix?: "LUX" | "LTF";
   date_of_birth?: string | null;
   belt_rank?: string;
   primary_license_role?: LicenseRoleValue | "";

@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { formatDisplayDateTime } from "@/lib/date-display";
 import {
   Club,
   FinanceOrder,
@@ -182,7 +183,7 @@ export default function LtfFinanceOrderDetailPage() {
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-xs text-zinc-500">{t("createdAtLabel")}</span>
-            <span className="font-medium">{new Date(order.created_at).toLocaleString()}</span>
+            <span className="font-medium">{formatDisplayDateTime(order.created_at)}</span>
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-xs text-zinc-500">{t("totalLicensesLabel")}</span>

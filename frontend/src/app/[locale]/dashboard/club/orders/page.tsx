@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Member, getMembers } from "@/lib/club-admin-api";
+import { formatDisplayDateTime } from "@/lib/date-display";
 import { FinanceOrder, getClubOrders } from "@/lib/club-finance-api";
 
 export default function ClubAdminOrdersPage() {
@@ -34,7 +35,7 @@ export default function ClubAdminOrdersPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const pageSizeOptions = ["25", "50", "100", "150", "200", "all"];
+  const pageSizeOptions = ["10", "25", "50", "100", "150", "200", "all"];
 
   const loadData = async () => {
     setIsLoading(true);
@@ -130,7 +131,7 @@ export default function ClubAdminOrdersPage() {
     {
       key: "created_at",
       header: t("createdAtLabel"),
-      render: (row: FinanceOrder) => new Date(row.created_at).toLocaleString(),
+      render: (row: FinanceOrder) => formatDisplayDateTime(row.created_at),
     },
   ];
 

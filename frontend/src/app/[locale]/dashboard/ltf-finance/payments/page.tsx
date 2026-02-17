@@ -27,6 +27,7 @@ import {
   getFinanceInvoices,
   getFinanceOrders,
 } from "@/lib/ltf-finance-api";
+import { formatDisplayDateTime } from "@/lib/date-display";
 import { openInvoicePdf } from "@/lib/invoice-pdf";
 
 const AUTO_REFRESH_INTERVAL_MS = 10000;
@@ -71,7 +72,7 @@ export default function LtfFinancePaymentsPage() {
   const [expandedYearKeys, setExpandedYearKeys] = useState<string[]>([]);
   const [expandedStateHydrated, setExpandedStateHydrated] = useState(false);
 
-  const pageSizeOptions = ["25", "50", "100", "150", "200", "all"];
+  const pageSizeOptions = ["10", "25", "50", "100", "150", "200", "all"];
   const expandedClubStorageKey = "ltf_finance_payments_expanded_clubs";
   const expandedYearStorageKey = "ltf_finance_payments_expanded_years";
   const statusOptions = ["all", "draft", "issued", "paid", "void"];
@@ -603,9 +604,7 @@ export default function LtfFinancePaymentsPage() {
                                                             {`${invoice.total} ${invoice.currency}`}
                                                           </td>
                                                           <td className="px-4 py-2">
-                                                            {invoice.paid_at
-                                                              ? new Date(invoice.paid_at).toLocaleString()
-                                                              : "-"}
+                                                            {formatDisplayDateTime(invoice.paid_at)}
                                                           </td>
                                                           <td className="px-4 py-2">
                                                             <Button

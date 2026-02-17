@@ -75,7 +75,7 @@ export default function LtfAdminClubsPage() {
   const [emailInput, setEmailInput] = useState("");
   const [emailError, setEmailError] = useState<string | null>(null);
 
-  const pageSizeOptions = ["25", "50", "100", "150", "200", "all"];
+  const pageSizeOptions = ["10", "25", "50", "100", "150", "200", "all"];
 
   const {
     register,

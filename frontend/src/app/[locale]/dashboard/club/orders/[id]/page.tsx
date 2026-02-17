@@ -11,6 +11,7 @@ import { EntityTable } from "@/components/club-admin/entity-table";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Member, getMembers } from "@/lib/club-admin-api";
+import { formatDisplayDateTime } from "@/lib/date-display";
 import {
   FinanceOrder,
   PayconiqPayment,
@@ -151,7 +152,7 @@ export default function ClubOrderDetailPage() {
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-xs text-zinc-500">{t("createdAtLabel")}</span>
-            <span className="font-medium">{new Date(order.created_at).toLocaleString()}</span>
+            <span className="font-medium">{formatDisplayDateTime(order.created_at)}</span>
           </div>
         </div>
       </section>

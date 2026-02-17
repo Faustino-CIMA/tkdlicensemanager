@@ -9,6 +9,7 @@ import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { SummaryCard } from "@/components/club-admin/summary-card";
 import { Button } from "@/components/ui/button";
+import { formatDisplayDateTime } from "@/lib/date-display";
 import { LtfAdminOverviewResponse, getLtfAdminOverview } from "@/lib/ltf-admin-api";
 
 function getSeverityClasses(severity: "info" | "warning" | "critical") {
@@ -19,14 +20,6 @@ function getSeverityClasses(severity: "info" | "warning" | "critical") {
     return "border-amber-200 bg-amber-50 text-amber-700";
   }
   return "border-sky-200 bg-sky-50 text-sky-700";
-}
-
-function formatDateTime(value: string) {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-  return parsed.toLocaleString();
 }
 
 export default function LtfAdminOverviewPage() {
@@ -99,7 +92,7 @@ export default function LtfAdminOverviewPage() {
           <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
             <p className="text-xs text-zinc-500">
               {lastRefreshAt
-                ? t("lastRefreshLabel", { time: formatDateTime(lastRefreshAt) })
+                ? t("lastRefreshLabel", { time: formatDisplayDateTime(lastRefreshAt) })
                 : t("lastRefreshNever")}
             </p>
             <Button

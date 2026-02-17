@@ -19,6 +19,7 @@ import {
   getFinanceLicenseTypes,
   getLicensePrices,
 } from "@/lib/ltf-finance-api";
+import { formatDisplayDate, formatDisplayDateTime } from "@/lib/date-display";
 
 function formatWindow(startMonth: number, startDay: number, endMonth: number, endDay: number) {
   return `${String(startDay).padStart(2, "0")}/${String(startMonth).padStart(2, "0")} - ${String(
@@ -301,8 +302,16 @@ export default function LtfFinanceLicenseSettingsPage() {
                           header: t("priceAmountLabel"),
                           render: (row: LicensePrice) => `${row.amount} ${row.currency}`,
                         },
-                        { key: "effective_from", header: t("priceEffectiveFromLabel") },
-                        { key: "created_at", header: t("createdAtLabel") },
+                        {
+                          key: "effective_from",
+                          header: t("priceEffectiveFromLabel"),
+                          render: (row: LicensePrice) => formatDisplayDate(row.effective_from),
+                        },
+                        {
+                          key: "created_at",
+                          header: t("createdAtLabel"),
+                          render: (row: LicensePrice) => formatDisplayDateTime(row.created_at),
+                        },
                       ]}
                       rows={rows}
                     />

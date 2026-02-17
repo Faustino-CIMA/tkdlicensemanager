@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { Button } from "@/components/ui/button";
+import { formatDisplayDate } from "@/lib/date-display";
 import {
   Club,
   License,
@@ -154,7 +155,7 @@ export default function LtfLicenseDeletePage() {
               <div>
                 <dt className="text-zinc-500">{t("issuedAtLabel")}</dt>
                 <dd className="font-medium text-zinc-900">
-                  {license.issued_at ? new Date(license.issued_at).toLocaleDateString() : "—"}
+                  {formatDisplayDate(license.issued_at)}
                 </dd>
               </div>
             </dl>

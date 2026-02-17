@@ -65,7 +65,7 @@ describe("MemberHistoryTimeline", () => {
         ]}
       />
     );
-    expect(screen.getByText("2026 - pending")).toBeInTheDocument();
+    expect(screen.getByText("2026 - Issued")).toBeInTheDocument();
     expect(screen.getByText(/From:/)).toBeInTheDocument();
   });
 
@@ -78,7 +78,6 @@ describe("MemberHistoryTimeline", () => {
         promoteTitle="Promote grade"
         promoteToGradeLabel="New grade"
         promoteDateLabel="Promotion date"
-        promoteExamDateLabel="Exam date"
         promoteProofLabel="Proof"
         promoteNotesLabel="Notes"
         promoteSubmitLabel="Save promotion"

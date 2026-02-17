@@ -32,6 +32,7 @@ import {
   getMembers,
   updateLicense,
 } from "@/lib/ltf-admin-api";
+import { formatDisplayDate } from "@/lib/date-display";
 
 const licenseSchema = z.object({
   club: z.string().min(1, "Club is required"),
@@ -71,7 +72,7 @@ export default function LtfAdminLicensesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const lastSelectedLicenseIdRef = useRef<number | null>(null);
 
-  const pageSizeOptions = ["25", "50", "100", "150", "200", "all"];
+  const pageSizeOptions = ["10", "25", "50", "100", "150", "200", "all"];
 
   const {
     handleSubmit,
@@ -434,11 +435,7 @@ export default function LtfAdminLicensesPage() {
     if (!value) {
       return "—";
     }
-    const parsedDate = new Date(value);
-    if (Number.isNaN(parsedDate.getTime())) {
-      return "—";
-    }
-    return parsedDate.toLocaleDateString();
+    return formatDisplayDate(value);
   };
 
   return (

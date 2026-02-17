@@ -3,9 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { Pencil, Trash2 } from "lucide-react";
 
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
@@ -13,18 +10,15 @@ import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
 import { useClubSelection } from "@/components/club-selection-provider";
 import {
-  Club,
   Member,
-  createMember,
   getClubs,
   getMembers,
   updateMember,
 } from "@/lib/club-admin-api";
 import { apiRequest } from "@/lib/api";
+import { formatDisplayDate } from "@/lib/date-display";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Modal } from "@/components/ui/modal";
 import {
   Select,
   SelectContent,
@@ -32,29 +26,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-const LICENSE_ROLE_VALUES = [
-  "athlete",
-  "coach",
-  "referee",
-  "official",
-  "doctor",
-  "physiotherapist",
-] as const;
-
-const memberSchema = z.object({
-  club: z.string().min(1, "Club is required"),
-  first_name: z.string().min(1, "First name is required"),
-  last_name: z.string().min(1, "Last name is required"),
-  sex: z.enum(["M", "F"]),
-  ltf_licenseid: z.string().optional(),
-  date_of_birth: z.string().optional(),
-  belt_rank: z.string().optional(),
-  primary_license_role: z.enum(LICENSE_ROLE_VALUES).or(z.literal("")).optional(),
-  secondary_license_role: z.enum(LICENSE_ROLE_VALUES).or(z.literal("")).optional(),
-  is_active: z.boolean(),
-});
-
-type MemberFormValues = z.infer<typeof memberSchema>;
 type AuthMeResponse = { role: string };
 
 const BATCH_DELETE_STORAGE_KEY = "club_members_batch_delete_payload";
@@ -68,9 +39,7 @@ export default function ClubAdminMembersPage() {
   const router = useRouter();
   const locale = pathname?.split("/")[1] || "en";
   const { selectedClubId, setSelectedClubId } = useClubSelection();
-  const [clubs, setClubs] = useState<Club[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
-  const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const lastSelectedMemberIdRef = useRef<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -84,51 +53,24 @@ export default function ClubAdminMembersPage() {
   const [statusUpdatingIds, setStatusUpdatingIds] = useState<number[]>([]);
   const [currentRole, setCurrentRole] = useState<string | null>(null);
 
-  const pageSizeOptions = ["25", "50", "100", "150", "200", "all"];
-
-  const {
-    register,
-    handleSubmit,
-    reset,
-    setValue,
-    watch,
-    formState: { errors, isSubmitting },
-  } = useForm<MemberFormValues>({
-    resolver: zodResolver(memberSchema),
-    defaultValues: {
-      club: "",
-      first_name: "",
-      last_name: "",
-      sex: "M",
-      ltf_licenseid: "",
-      date_of_birth: "",
-      belt_rank: "",
-      primary_license_role: "",
-      secondary_license_role: "",
-      is_active: true,
-    },
-  });
+  const pageSizeOptions = ["10", "25", "50", "100", "150", "200", "all"];
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
       const [clubsResponse, membersResponse] = await Promise.all([getClubs(), getMembers()]);
-      setClubs(clubsResponse);
       setMembers(membersResponse);
       if (clubsResponse.length > 0 && !selectedClubId) {
         const firstClubId = clubsResponse[0].id;
         setSelectedClubId(firstClubId);
-        setValue("club", String(firstClubId));
-      } else if (selectedClubId) {
-        setValue("club", String(selectedClubId));
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to load members.");
     } finally {
       setIsLoading(false);
     }
-  }, [selectedClubId, setSelectedClubId, setValue]);
+  }, [selectedClubId, setSelectedClubId]);
 
   useEffect(() => {
     loadData();
@@ -155,17 +97,6 @@ export default function ClubAdminMembersPage() {
   }, []);
 
   const canManageMembers = currentRole === "club_admin";
-  const roleLabelByValue = useMemo(
-    () => ({
-      athlete: t("licenseRoleAthlete"),
-      coach: t("licenseRoleCoach"),
-      referee: t("licenseRoleReferee"),
-      official: t("licenseRoleOfficial"),
-      doctor: t("licenseRoleDoctor"),
-      physiotherapist: t("licenseRolePhysiotherapist"),
-    }),
-    [t]
-  );
 
   const filteredMembers = useMemo(() => {
     if (!selectedClubId) {
@@ -223,12 +154,6 @@ export default function ClubAdminMembersPage() {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, selectedClubId, pageSize, statusFilter]);
-
-  useEffect(() => {
-    if (selectedClubId && !watch("club")) {
-      setValue("club", String(selectedClubId));
-    }
-  }, [selectedClubId, setValue, watch]);
   
   useEffect(() => {
     setSelectionHydrated(false);
@@ -385,50 +310,11 @@ export default function ClubAdminMembersPage() {
     lastSelectedMemberIdRef.current = id;
   };
 
-  const onSubmit = async (values: MemberFormValues) => {
-    if (!canManageMembers) {
-      return;
-    }
-    setErrorMessage(null);
-    const payload = {
-      club: Number(values.club),
-      first_name: values.first_name,
-      last_name: values.last_name,
-      sex: values.sex,
-      ltf_licenseid: values.ltf_licenseid ?? "",
-      date_of_birth: values.date_of_birth ? values.date_of_birth : null,
-      belt_rank: values.belt_rank ?? "",
-      primary_license_role: values.primary_license_role ?? "",
-      secondary_license_role: values.secondary_license_role ?? "",
-      is_active: values.is_active,
-    };
-    try {
-      await createMember(payload);
-      setIsFormOpen(false);
-      reset();
-      await loadData();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to save member.");
-    }
-  };
-
   const startCreate = () => {
     if (!canManageMembers) {
       return;
     }
-    setIsFormOpen(true);
-    reset({
-      club: selectedClubId ? String(selectedClubId) : "",
-      first_name: "",
-      last_name: "",
-      sex: "M",
-      ltf_licenseid: "",
-      date_of_birth: "",
-      belt_rank: "",
-      primary_license_role: "",
-      secondary_license_role: "",
-      is_active: true,
-    });
+    router.push(`/${locale}/dashboard/club/members/new`);
   };
 
   const handleDelete = (member: Member) => {
@@ -694,7 +580,11 @@ export default function ClubAdminMembersPage() {
               },
               { key: "belt_rank", header: t("beltRankLabel") },
               { key: "ltf_licenseid", header: t("ltfLicenseLabel") },
-              { key: "date_of_birth", header: t("dobLabel") },
+              {
+                key: "date_of_birth",
+                header: t("dobLabel"),
+                render: (member) => formatDisplayDate(member.date_of_birth),
+              },
               {
                 key: "is_active",
                 header: t("isActiveLabel"),
@@ -765,169 +655,6 @@ export default function ClubAdminMembersPage() {
           />
         )}
       </div>
-
-      <Modal
-        title={t("createMember")}
-        description={t("memberFormSubtitle")}
-        isOpen={isFormOpen}
-        onClose={() => setIsFormOpen(false)}
-      >
-        <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
-          <div className="space-y-2 md:col-span-2">
-            <label className="text-sm font-medium text-zinc-700">{t("clubLabel")}</label>
-            <Select
-              value={watch("club")}
-              onValueChange={(value) => {
-                setSelectedClubId(Number(value));
-                setValue("club", value, { shouldValidate: true });
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={t("selectClubPlaceholder")} />
-              </SelectTrigger>
-              <SelectContent>
-                {clubs.map((club) => (
-                  <SelectItem key={club.id} value={String(club.id)}>
-                    {club.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.club ? <p className="text-sm text-red-600">{errors.club.message}</p> : null}
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("firstNameLabel")}</label>
-            <Input placeholder="Jane" {...register("first_name")} />
-            {errors.first_name ? (
-              <p className="text-sm text-red-600">{errors.first_name.message}</p>
-            ) : null}
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("lastNameLabel")}</label>
-            <Input placeholder="Doe" {...register("last_name")} />
-            {errors.last_name ? (
-              <p className="text-sm text-red-600">{errors.last_name.message}</p>
-            ) : null}
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("sexLabel")}</label>
-            <Select
-              value={watch("sex")}
-              onValueChange={(value) => setValue("sex", value as "M" | "F", { shouldValidate: true })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={t("sexLabel")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="M">{t("sexMale")}</SelectItem>
-                <SelectItem value="F">{t("sexFemale")}</SelectItem>
-              </SelectContent>
-            </Select>
-            {errors.sex ? <p className="text-sm text-red-600">{errors.sex.message}</p> : null}
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("ltfLicenseLabel")}</label>
-            <Input placeholder="LTF-12345" {...register("ltf_licenseid")} />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("dobLabel")}</label>
-            <Input type="date" {...register("date_of_birth")} />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("beltRankLabel")}</label>
-            <Input placeholder="1st Dan" {...register("belt_rank")} />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("primaryLicenseRoleLabel")}</label>
-            <Select
-              value={watch("primary_license_role") || "none"}
-              onValueChange={(value) => {
-                const nextPrimary = value === "none" ? "" : value;
-                setValue("primary_license_role", nextPrimary as MemberFormValues["primary_license_role"], {
-                  shouldValidate: true,
-                });
-                if (nextPrimary === watch("secondary_license_role")) {
-                  setValue("secondary_license_role", "", { shouldValidate: true });
-                }
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={t("primaryLicenseRoleLabel")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">{t("roleNoneOption")}</SelectItem>
-                {LICENSE_ROLE_VALUES.map((role) => (
-                  <SelectItem key={role} value={role}>
-                    {roleLabelByValue[role]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("secondaryLicenseRoleLabel")}</label>
-            <Select
-              disabled={!watch("primary_license_role")}
-              value={watch("secondary_license_role") || "none"}
-              onValueChange={(value) =>
-                setValue(
-                  "secondary_license_role",
-                  (value === "none" ? "" : value) as MemberFormValues["secondary_license_role"],
-                  { shouldValidate: true }
-                )
-              }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={t("secondaryLicenseRoleLabel")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">{t("roleNoneOption")}</SelectItem>
-                {LICENSE_ROLE_VALUES.filter((role) => role !== watch("primary_license_role")).map((role) => (
-                  <SelectItem key={role} value={role}>
-                    {roleLabelByValue[role]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center gap-2 md:col-span-2">
-            <Checkbox
-              checked={watch("is_active")}
-              onCheckedChange={(value) => setValue("is_active", Boolean(value))}
-              id="member-active"
-            />
-            <label htmlFor="member-active" className="text-sm font-medium text-zinc-700">
-              {t("isActiveLabel")}
-            </label>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Button type="submit" disabled={isSubmitting}>
-              {t("createMember")}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setIsFormOpen(false);
-                reset();
-              }}
-            >
-              {t("cancelEdit")}
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
     </ClubAdminLayout>
   );
 }

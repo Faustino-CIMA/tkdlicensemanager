@@ -28,6 +28,7 @@ import {
   updateMember,
 } from "@/lib/club-admin-api";
 import { apiRequest } from "@/lib/api";
+import { formatDisplayDate } from "@/lib/date-display";
 
 type TabKey = "overview" | "history";
 type MemberDetailQueryUpdates = {
@@ -617,7 +618,7 @@ export default function ClubMemberDetailPage() {
                 </div>
                 <div className="flex flex-col gap-1">
                   <span className="text-xs text-zinc-500">{t("dobLabel")}</span>
-                  <span className="font-medium">{member.date_of_birth || "-"}</span>
+                  <span className="font-medium">{formatDisplayDate(member.date_of_birth)}</span>
                 </div>
                 <div className="flex flex-col gap-1">
                   <span className="text-xs text-zinc-500">{t("beltRankLabel")}</span>
@@ -663,7 +664,6 @@ export default function ClubMemberDetailPage() {
             promoteTitle={t("promoteGradeTitle")}
             promoteToGradeLabel={t("promoteToGradeLabel")}
             promoteDateLabel={t("promoteDateLabel")}
-            promoteExamDateLabel={t("promoteExamDateLabel")}
             promoteProofLabel={t("promoteProofLabel")}
             promoteNotesLabel={t("promoteNotesLabel")}
             promoteSubmitLabel={t("promoteSubmitLabel")}

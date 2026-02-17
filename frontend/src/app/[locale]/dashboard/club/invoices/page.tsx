@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FinanceInvoice, FinanceOrder, createClubCheckoutSession, getClubInvoices, getClubOrders } from "@/lib/club-finance-api";
+import { formatDisplayDateTime } from "@/lib/date-display";
 import { openInvoicePdf } from "@/lib/invoice-pdf";
 
 const AUTO_REFRESH_INTERVAL_MS = 10000;
@@ -39,7 +40,7 @@ export default function ClubAdminInvoicesPage() {
   const [activeOrderId, setActiveOrderId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const pageSizeOptions = ["25", "50", "100", "150", "200", "all"];
+  const pageSizeOptions = ["10", "25", "50", "100", "150", "200", "all"];
 
   const loadData = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -210,8 +211,7 @@ export default function ClubAdminInvoicesPage() {
     {
       key: "issued_at",
       header: t("issuedAtLabel"),
-      render: (row: FinanceInvoice) =>
-        row.issued_at ? new Date(row.issued_at).toLocaleString() : "-",
+      render: (row: FinanceInvoice) => formatDisplayDateTime(row.issued_at),
     },
     {
       key: "actions",

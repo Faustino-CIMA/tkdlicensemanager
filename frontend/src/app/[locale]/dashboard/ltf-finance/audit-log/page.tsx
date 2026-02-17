@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { formatDisplayDateTime } from "@/lib/date-display";
 import { FinanceAuditLog, getFinanceAuditLogs } from "@/lib/ltf-finance-api";
 
 export default function LtfFinanceAuditLogPage() {
@@ -26,7 +27,7 @@ export default function LtfFinanceAuditLogPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const pageSizeOptions = ["25", "50", "100", "150", "200", "all"];
+  const pageSizeOptions = ["10", "25", "50", "100", "150", "200", "all"];
 
   const loadLogs = async () => {
     setIsLoading(true);
@@ -82,7 +83,7 @@ export default function LtfFinanceAuditLogPage() {
     {
       key: "created_at",
       header: t("createdAtLabel"),
-      render: (row: FinanceAuditLog) => new Date(row.created_at).toLocaleString(),
+      render: (row: FinanceAuditLog) => formatDisplayDateTime(row.created_at),
     },
     { key: "action", header: t("actionLabel") },
     {

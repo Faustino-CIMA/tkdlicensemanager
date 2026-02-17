@@ -27,6 +27,7 @@ import {
   getFinanceOrders,
   getLicensePrices,
 } from "@/lib/ltf-finance-api";
+import { formatDisplayDate, formatDisplayDateTime } from "@/lib/date-display";
 
 const AUTO_REFRESH_INTERVAL_MS = 10000;
 
@@ -60,7 +61,7 @@ export default function LtfFinanceOrdersPage() {
   const [expandedYearKeys, setExpandedYearKeys] = useState<string[]>([]);
   const [expandedStateHydrated, setExpandedStateHydrated] = useState(false);
 
-  const pageSizeOptions = ["25", "50", "100", "150", "200", "all"];
+  const pageSizeOptions = ["10", "25", "50", "100", "150", "200", "all"];
   const expandedClubStorageKey = "ltf_finance_orders_expanded_clubs";
   const expandedYearStorageKey = "ltf_finance_orders_expanded_years";
 
@@ -200,7 +201,7 @@ export default function LtfFinanceOrdersPage() {
           name: licenseType.name,
           price: latestPrice ? `${latestPrice.amount} ${latestPrice.currency}` : t("noPriceLabel"),
           effectiveFrom: latestPrice
-            ? t("priceEffectiveFrom", { date: latestPrice.effective_from })
+            ? t("priceEffectiveFrom", { date: formatDisplayDate(latestPrice.effective_from) })
             : null,
         };
       });
@@ -573,7 +574,7 @@ export default function LtfFinanceOrdersPage() {
                                                             {`${order.total} ${order.currency}`}
                                                           </td>
                                                           <td className="px-4 py-2">
-                                                            {new Date(order.created_at).toLocaleString()}
+                                                            {formatDisplayDateTime(order.created_at)}
                                                           </td>
                                                         </tr>
                                                       );

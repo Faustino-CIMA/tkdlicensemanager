@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LicenseHistoryEvent, GradeHistoryEntry } from "@/lib/ltf-admin-api";
+import { formatDisplayDate } from "@/lib/date-display";
 
 type HistoryTimelineProps = {
   title: string;
@@ -20,14 +21,12 @@ type HistoryTimelineProps = {
   promoteTitle?: string;
   promoteToGradeLabel?: string;
   promoteDateLabel?: string;
-  promoteExamDateLabel?: string;
   promoteProofLabel?: string;
   promoteNotesLabel?: string;
   promoteSubmitLabel?: string;
   onPromote?: (input: {
     to_grade: string;
     promotion_date?: string;
-    exam_date?: string | null;
     proof_ref?: string;
     notes?: string;
   }) => Promise<void>;
@@ -35,15 +34,23 @@ type HistoryTimelineProps = {
   gradeHistory: GradeHistoryEntry[];
 };
 
-function formatDate(value: string): string {
-  if (!value) {
-    return "-";
+function humanizeEventType(value: LicenseHistoryEvent["event_type"]): string {
+  switch (value) {
+    case "issued":
+      return "Issued";
+    case "renewed":
+      return "Renewed";
+    case "status_changed":
+      return "Status changed";
+    case "expired":
+      return "Expired";
+    case "revoked":
+      return "Revoked";
+    case "payment_linked":
+      return "Payment linked";
+    default:
+      return String(value).replace(/_/g, " ");
   }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-  return date.toLocaleDateString();
 }
 
 export function MemberHistoryTimeline({
@@ -60,7 +67,6 @@ export function MemberHistoryTimeline({
   promoteTitle,
   promoteToGradeLabel,
   promoteDateLabel,
-  promoteExamDateLabel,
   promoteProofLabel,
   promoteNotesLabel,
   promoteSubmitLabel,
@@ -71,7 +77,6 @@ export function MemberHistoryTimeline({
   // useState stores changeable values for form inputs and status messages.
   const [toGrade, setToGrade] = useState("");
   const [promotionDate, setPromotionDate] = useState("");
-  const [examDate, setExamDate] = useState("");
   const [proofRef, setProofRef] = useState("");
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -87,13 +92,11 @@ export function MemberHistoryTimeline({
       await onPromote({
         to_grade: toGrade,
         promotion_date: promotionDate || undefined,
-        exam_date: examDate || null,
         proof_ref: proofRef || undefined,
         notes: notes || undefined,
       });
       setToGrade("");
       setPromotionDate("");
-      setExamDate("");
       setProofRef("");
       setNotes("");
     } catch (error) {
@@ -125,10 +128,6 @@ export function MemberHistoryTimeline({
               />
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-zinc-500">{promoteExamDateLabel}</p>
-              <Input type="date" value={examDate} onChange={(event) => setExamDate(event.target.value)} />
-            </div>
-            <div className="space-y-1">
               <p className="text-xs text-zinc-500">{promoteProofLabel}</p>
               <Input value={proofRef} onChange={(event) => setProofRef(event.target.value)} />
             </div>
@@ -154,11 +153,17 @@ export function MemberHistoryTimeline({
               licenseHistory.map((item) => (
                 <article key={item.id} className="rounded-lg border border-zinc-200 p-3">
                   <p className="text-sm font-medium text-zinc-900">
-                    {item.license_year} - {item.status_after || item.event_type}
+                    {item.license_year} - {humanizeEventType(item.event_type)}
                   </p>
                   <p className="text-xs text-zinc-500">
-                    {eventLabel}: {item.event_type} - {formatDate(item.event_at)}
+                    {eventLabel}: {humanizeEventType(item.event_type)} - {formatDisplayDate(item.event_at)}
                   </p>
+                  {item.status_before !== item.status_after &&
+                  (item.status_before || item.status_after) ? (
+                    <p className="text-xs text-zinc-600">
+                      {fromLabel}: {item.status_before || "-"} - {toLabel}: {item.status_after || "-"}
+                    </p>
+                  ) : null}
                   {item.reason ? (
                     <p className="text-xs text-zinc-600">
                       {reasonLabel}: {item.reason}
@@ -180,7 +185,7 @@ export function MemberHistoryTimeline({
                   <p className="text-sm font-medium text-zinc-900">
                     {fromLabel}: {item.from_grade || "-"} - {toLabel}: {item.to_grade}
                   </p>
-                  <p className="text-xs text-zinc-500">{formatDate(item.promotion_date)}</p>
+                  <p className="text-xs text-zinc-500">{formatDisplayDate(item.promotion_date)}</p>
                   {item.notes ? (
                     <p className="text-xs text-zinc-600">
                       {notesLabel}: {item.notes}
