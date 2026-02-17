@@ -1,6 +1,4 @@
 from pathlib import Path
-import json
-import time
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
@@ -23,31 +21,6 @@ from .serializers import (
 )
 from .services import add_grade_promotion, clear_member_profile_picture, process_member_profile_picture
 from licenses.models import LicenseHistoryEvent
-
-
-def _agent_debug_log(*, run_id: str, hypothesis_id: str, location: str, message: str, data: dict):
-    try:
-        with open(
-            "/home/faustino/Developments/Applications/tkdlicensemanager/.cursor/debug-025755.log",
-            "a",
-            encoding="utf-8",
-        ) as stream:
-            stream.write(
-                json.dumps(
-                    {
-                        "sessionId": "025755",
-                        "runId": run_id,
-                        "hypothesisId": hypothesis_id,
-                        "location": location,
-                        "message": message,
-                        "data": data,
-                        "timestamp": int(time.time() * 1000),
-                    }
-                )
-                + "\n"
-            )
-    except Exception:
-        pass
 
 
 class MemberViewSet(viewsets.ModelViewSet):
@@ -265,43 +238,8 @@ class MemberViewSet(viewsets.ModelViewSet):
             clear_member_profile_picture(member, clear_consent_attestation=True)
             return Response(status=status.HTTP_204_NO_CONTENT)
 
-        # region agent log
-        _agent_debug_log(
-            run_id="initial-photo-save",
-            hypothesis_id="H3",
-            location="backend/members/views.py:profile_picture:beforeSerializer",
-            message="profile-picture POST reached backend",
-            data={
-                "member_id": member.id,
-                "user_id": request.user.id if request.user and request.user.is_authenticated else None,
-                "user_role": getattr(request.user, "role", None),
-                "has_processed_image": "processed_image" in request.data,
-                "has_original_image": "original_image" in request.data,
-            },
-        )
-        # endregion
         serializer = MemberProfilePictureUploadSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        # region agent log
-        _agent_debug_log(
-            run_id="initial-photo-save",
-            hypothesis_id="H3",
-            location="backend/members/views.py:profile_picture:afterSerializer",
-            message="profile-picture payload validated",
-            data={
-                "member_id": member.id,
-                "processed_size": int(getattr(serializer.validated_data.get("processed_image"), "size", 0) or 0),
-                "processed_type": str(
-                    getattr(serializer.validated_data.get("processed_image"), "content_type", "") or ""
-                ),
-                "original_size": int(getattr(serializer.validated_data.get("original_image"), "size", 0) or 0),
-                "original_type": str(
-                    getattr(serializer.validated_data.get("original_image"), "content_type", "") or ""
-                ),
-                "consent_confirmed": bool(serializer.validated_data.get("photo_consent_confirmed")),
-            },
-        )
-        # endregion
 
         if member.user and not member.user.consent_given:
             return Response(
@@ -318,18 +256,6 @@ class MemberViewSet(viewsets.ModelViewSet):
                 actor=request.user if request.user.is_authenticated else None,
             )
         except DjangoValidationError as exc:
-            # region agent log
-            _agent_debug_log(
-                run_id="initial-photo-save",
-                hypothesis_id="H3",
-                location="backend/members/views.py:profile_picture:djangoValidationError",
-                message="profile-picture rejected by Django validation",
-                data={
-                    "member_id": member.id,
-                    "error": str(exc),
-                },
-            )
-            # endregion
             detail = (
                 exc.message_dict
                 if hasattr(exc, "message_dict")
@@ -338,38 +264,10 @@ class MemberViewSet(viewsets.ModelViewSet):
                 else str(exc)
             )
             raise DRFValidationError(detail) from exc
-        except Exception as exc:
-            # region agent log
-            _agent_debug_log(
-                run_id="initial-photo-save",
-                hypothesis_id="H3",
-                location="backend/members/views.py:profile_picture:unexpectedException",
-                message="profile-picture raised unexpected exception",
-                data={
-                    "member_id": member.id,
-                    "error_type": type(exc).__name__,
-                    "error": str(exc),
-                },
-            )
-            # endregion
-            raise
 
         response_serializer = MemberProfilePictureSerializer(
             updated_member, context={"request": request}
         )
-        # region agent log
-        _agent_debug_log(
-            run_id="initial-photo-save",
-            hypothesis_id="H3",
-            location="backend/members/views.py:profile_picture:success",
-            message="profile-picture saved successfully",
-            data={
-                "member_id": member.id,
-                "has_processed": bool(updated_member.profile_picture_processed),
-                "has_thumbnail": bool(updated_member.profile_picture_thumbnail),
-            },
-        )
-        # endregion
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["get"], url_path="profile-picture/download")

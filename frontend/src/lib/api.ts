@@ -56,32 +56,6 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   if (!isFormDataRequest) {
     defaultHeaders["Content-Type"] = "application/json";
   }
-  if (path.includes("/profile-picture/")) {
-    // #region agent log
-    fetch("http://127.0.0.1:7242/ingest/8fff0ab0-a0ae-4efd-a694-181dff4f138a", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "025755",
-      },
-      body: JSON.stringify({
-        sessionId: "025755",
-        runId: "initial-photo-save",
-        hypothesisId: "H4",
-        location: "frontend/src/lib/api.ts:apiRequest:beforeFetch",
-        message: "profile-picture request dispatch",
-        data: {
-          path,
-          requestUrl,
-          method: options.method || "GET",
-          hasToken: Boolean(token),
-          isFormDataRequest,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-  }
   const response = await fetch(requestUrl, {
     ...options,
     headers: {
@@ -94,33 +68,6 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     const contentType = response.headers.get("content-type");
     const message = await response.text();
     let normalizedMessage = message;
-    if (path.includes("/profile-picture/")) {
-      // #region agent log
-      fetch("http://127.0.0.1:7242/ingest/8fff0ab0-a0ae-4efd-a694-181dff4f138a", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Debug-Session-Id": "025755",
-        },
-        body: JSON.stringify({
-          sessionId: "025755",
-          runId: "initial-photo-save",
-          hypothesisId: "H2",
-          location: "frontend/src/lib/api.ts:apiRequest:nonOk",
-          message: "profile-picture request failed",
-          data: {
-            path,
-            requestUrl,
-            status: response.status,
-            contentType,
-            responseUrl: response.url,
-            messagePreview: message.slice(0, 300),
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
-    }
     if (contentType?.includes("text/html")) {
       normalizedMessage = "Request failed. Please try again.";
     }
