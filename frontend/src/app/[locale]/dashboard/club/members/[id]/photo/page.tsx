@@ -95,6 +95,30 @@ export default function ClubMemberPhotoPage() {
             isPageEditor
             onCancelEditor={() => router.push(backHref)}
             onSave={async (input) => {
+              // #region agent log
+              fetch("http://127.0.0.1:7242/ingest/8fff0ab0-a0ae-4efd-a694-181dff4f138a", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-Debug-Session-Id": "025755",
+                },
+                body: JSON.stringify({
+                  sessionId: "025755",
+                  runId: "initial-photo-save",
+                  hypothesisId: "H1",
+                  location: "frontend/src/app/[locale]/dashboard/club/members/[id]/photo/page.tsx:onSave:beforeUpload",
+                  message: "photo page invoking uploadMemberProfilePicture",
+                  data: {
+                    memberId: member.id,
+                    processedSize: input.processedImage.size,
+                    processedType: input.processedImage.type,
+                    originalSize: input.originalImage?.size ?? null,
+                    originalType: input.originalImage?.type ?? null,
+                  },
+                  timestamp: Date.now(),
+                }),
+              }).catch(() => {});
+              // #endregion
               await uploadMemberProfilePicture(member.id, {
                 processedImage: input.processedImage,
                 originalImage: input.originalImage,

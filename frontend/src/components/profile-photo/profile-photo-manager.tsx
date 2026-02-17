@@ -326,6 +326,32 @@ export function ProfilePhotoManager({
       const processedOutput =
         previewFile ||
         (await renderPrintReadyImage(workingImageUrl, croppedAreaPixels, backgroundColor));
+      // #region agent log
+      fetch("http://127.0.0.1:7242/ingest/8fff0ab0-a0ae-4efd-a694-181dff4f138a", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Debug-Session-Id": "025755",
+        },
+        body: JSON.stringify({
+          sessionId: "025755",
+          runId: "initial-photo-save",
+          hypothesisId: "H1",
+          location: "frontend/src/components/profile-photo/profile-photo-manager.tsx:handleSave:beforeOnSave",
+          message: "photo save payload prepared",
+          data: {
+            hasOriginalFile: Boolean(originalFile),
+            hasPreviewFile: Boolean(previewFile),
+            processedType: processedOutput.type,
+            processedSize: processedOutput.size,
+            originalType: originalFile.type,
+            originalSize: originalFile.size,
+            consentConfirmed,
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
       await onSave({
         processedImage: processedOutput,
         originalImage: originalFile,
@@ -347,6 +373,26 @@ export function ProfilePhotoManager({
         closeEditor();
       }
     } catch (error) {
+      // #region agent log
+      fetch("http://127.0.0.1:7242/ingest/8fff0ab0-a0ae-4efd-a694-181dff4f138a", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Debug-Session-Id": "025755",
+        },
+        body: JSON.stringify({
+          sessionId: "025755",
+          runId: "initial-photo-save",
+          hypothesisId: "H1",
+          location: "frontend/src/components/profile-photo/profile-photo-manager.tsx:handleSave:catch",
+          message: "photo save failed in manager",
+          data: {
+            errorMessage: error instanceof Error ? error.message : String(error),
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
       setErrorMessage(
         error instanceof Error ? error.message : labels.removeBackgroundUnsupported
       );
