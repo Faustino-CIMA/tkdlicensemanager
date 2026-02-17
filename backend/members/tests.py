@@ -497,6 +497,42 @@ class MemberApiTests(TestCase):
         self.assertEqual(get_response.status_code, status.HTTP_200_OK)
         self.assertTrue(get_response.data["has_profile_picture"])
 
+    def test_profile_picture_upload_tolerates_optional_storage_failures(self):
+        from django.db.models.fields.files import FieldFile
+
+        self.member_user.give_consent()
+        self.client.force_authenticate(user=self.member_user)
+
+        original_save = FieldFile.save
+
+        def flaky_save(field_file, name, content, save=True):
+            if field_file.field.name in {
+                "profile_picture_original",
+                "profile_picture_thumbnail",
+            }:
+                raise OSError("simulated optional storage failure")
+            return original_save(field_file, name, content, save=save)
+
+        with patch.object(FieldFile, "save", autospec=True, side_effect=flaky_save):
+            response = self.client.post(
+                f"/api/members/{self.member.id}/profile-picture/",
+                {
+                    "processed_image": self._make_test_image("processed.jpg"),
+                    "original_image": self._make_test_image("original.jpg"),
+                    "photo_edit_metadata": json.dumps({"source": "tests"}),
+                    "photo_consent_confirmed": "true",
+                },
+                format="multipart",
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.member.refresh_from_db()
+        self.assertTrue(bool(self.member.profile_picture_processed))
+        self.assertFalse(bool(self.member.profile_picture_original))
+        self.assertFalse(bool(self.member.profile_picture_thumbnail))
+        self.assertTrue(self.member.photo_edit_metadata.get("original_storage_skipped"))
+        self.assertTrue(self.member.photo_edit_metadata.get("thumbnail_storage_skipped"))
+
     def test_profile_picture_upload_requires_checkbox_consent(self):
         self.member_user.give_consent()
         self.client.force_authenticate(user=self.member_user)

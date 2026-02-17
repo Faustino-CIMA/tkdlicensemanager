@@ -137,6 +137,18 @@ def _to_original_content_file(original_image) -> ContentFile:
     return ContentFile(file_bytes, name=generated_name)
 
 
+def _save_jpeg_with_optimize_fallback(
+    image: Image.Image, target_stream: BytesIO, *, quality: int
+) -> None:
+    try:
+        image.save(target_stream, format="JPEG", quality=quality, optimize=True)
+    except OSError:
+        # Some encoders/images can fail when optimize=True; retry without optimization.
+        target_stream.seek(0)
+        target_stream.truncate(0)
+        image.save(target_stream, format="JPEG", quality=quality, optimize=False)
+
+
 def _render_processed_outputs(processed_image) -> tuple[ContentFile, ContentFile, dict[str, int]]:
     image = _open_processed_image(processed_image)
     width, height = image.size
@@ -156,7 +168,7 @@ def _render_processed_outputs(processed_image) -> tuple[ContentFile, ContentFile
         image = image.convert("RGB")
 
     processed_stream = BytesIO()
-    image.save(processed_stream, format="JPEG", quality=92, optimize=True)
+    _save_jpeg_with_optimize_fallback(image, processed_stream, quality=92)
     processed_stream.seek(0)
     processed_content = ContentFile(
         processed_stream.getvalue(), name=f"{uuid4().hex}.jpg"
@@ -169,7 +181,7 @@ def _render_processed_outputs(processed_image) -> tuple[ContentFile, ContentFile
         centering=(0.5, 0.5),
     )
     thumbnail_stream = BytesIO()
-    thumbnail.save(thumbnail_stream, format="JPEG", quality=88, optimize=True)
+    _save_jpeg_with_optimize_fallback(thumbnail, thumbnail_stream, quality=88)
     thumbnail_stream.seek(0)
     thumbnail_content = ContentFile(
         thumbnail_stream.getvalue(), name=f"{uuid4().hex}.jpg"
@@ -209,11 +221,14 @@ def process_member_profile_picture(
             field_label="original_image",
         )
 
-    processed_content, thumbnail_content, processed_details = _render_processed_outputs(
-        processed_image
-    )
-    original_source = original_image or processed_image
-    original_content = _to_original_content_file(original_source)
+    try:
+        processed_content, thumbnail_content, processed_details = _render_processed_outputs(
+            processed_image
+        )
+        original_source = original_image or processed_image
+        original_content = _to_original_content_file(original_source)
+    except OSError as exc:
+        raise ValidationError(_("Unable to process uploaded image data.")) from exc
 
     metadata = {
         **(photo_edit_metadata or {}),
@@ -222,19 +237,45 @@ def process_member_profile_picture(
 
     with transaction.atomic():
         if member.profile_picture_original:
-            member.profile_picture_original.delete(save=False)
+            try:
+                member.profile_picture_original.delete(save=False)
+            except OSError:
+                pass
         if member.profile_picture_processed:
-            member.profile_picture_processed.delete(save=False)
+            try:
+                member.profile_picture_processed.delete(save=False)
+            except OSError:
+                pass
         if member.profile_picture_thumbnail:
-            member.profile_picture_thumbnail.delete(save=False)
+            try:
+                member.profile_picture_thumbnail.delete(save=False)
+            except OSError:
+                pass
 
-        member.profile_picture_original.save(original_content.name, original_content, save=False)
-        member.profile_picture_processed.save(
-            processed_content.name, processed_content, save=False
-        )
-        member.profile_picture_thumbnail.save(
-            thumbnail_content.name, thumbnail_content, save=False
-        )
+        # Processed image is required for the feature to work.
+        try:
+            member.profile_picture_processed.save(
+                processed_content.name, processed_content, save=False
+            )
+        except OSError as exc:
+            raise ValidationError(
+                _("Unable to store profile picture in server media storage.")
+            ) from exc
+
+        # Original and thumbnail are best-effort enhancements.
+        try:
+            member.profile_picture_original.save(original_content.name, original_content, save=False)
+        except OSError:
+            member.profile_picture_original = None
+            metadata["original_storage_skipped"] = True
+        try:
+            member.profile_picture_thumbnail.save(
+                thumbnail_content.name, thumbnail_content, save=False
+            )
+        except OSError:
+            member.profile_picture_thumbnail = None
+            metadata["thumbnail_storage_skipped"] = True
+
         member.photo_edit_metadata = metadata
         member.photo_consent_attested_at = timezone.now()
         member.photo_consent_attested_by = actor if actor and actor.is_authenticated else None
