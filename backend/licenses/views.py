@@ -61,7 +61,7 @@ from .serializers import (
 from .pdf_utils import render_invoice_pdf
 from .policy import validate_member_license_order
 from .services import apply_payment_and_activate
-from .tasks import activate_order_from_stripe, process_stripe_webhook_event
+from .tasks import process_stripe_webhook_event
 from .payconiq import create_payment, get_status
 
 
@@ -1241,11 +1241,12 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
                 order=order,
                 club=club,
                 member=None,
-                status=Invoice.Status.DRAFT,
+                status=Invoice.Status.ISSUED,
                 currency=price.currency,
                 subtotal=subtotal,
                 tax_total=tax_total,
                 total=total,
+                issued_at=timezone.now(),
             )
 
             FinanceAuditLog.objects.create(

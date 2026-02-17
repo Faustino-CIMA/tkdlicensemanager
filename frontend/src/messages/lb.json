@@ -307,6 +307,7 @@
     "backToInvoices": "Zréck op Rechnungen",
     "invoiceStatusDraft": "Brouillon",
     "invoiceStatusIssued": "Ausgestallt",
+    "invoiceStatusDue": "Fälleg",
     "invoiceStatusPaid": "Bezuelt",
     "invoiceStatusVoid": "Annuléiert",
     "viewMemberAction": "Uweisen",

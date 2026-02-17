@@ -28,6 +28,8 @@ import {
   getLicensePrices,
 } from "@/lib/ltf-finance-api";
 
+const AUTO_REFRESH_INTERVAL_MS = 10000;
+
 function getGroupYear(value: string) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
@@ -62,9 +64,12 @@ export default function LtfFinanceOrdersPage() {
   const expandedClubStorageKey = "ltf_finance_orders_expanded_clubs";
   const expandedYearStorageKey = "ltf_finance_orders_expanded_years";
 
-  const loadOrders = useCallback(async () => {
-    setIsLoading(true);
-    setErrorMessage(null);
+  const loadOrders = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
+    if (!silent) {
+      setIsLoading(true);
+      setErrorMessage(null);
+    }
     try {
       const [ordersResponse, pricesResponse, clubsResponse, licenseTypesResponse] = await Promise.all([
         getFinanceOrders(),
@@ -77,14 +82,37 @@ export default function LtfFinanceOrdersPage() {
       setClubs(clubsResponse);
       setLicenseTypes(licenseTypesResponse);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : t("ordersLoadError"));
+      if (!silent) {
+        setErrorMessage(error instanceof Error ? error.message : t("ordersLoadError"));
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) {
+        setIsLoading(false);
+      }
     }
   }, [t]);
 
   useEffect(() => {
-    loadOrders();
+    void loadOrders();
+  }, [loadOrders]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const refreshInBackground = () => {
+      if (document.visibilityState === "visible") {
+        void loadOrders({ silent: true });
+      }
+    };
+    const intervalId = window.setInterval(refreshInBackground, AUTO_REFRESH_INTERVAL_MS);
+    window.addEventListener("focus", refreshInBackground);
+    document.addEventListener("visibilitychange", refreshInBackground);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshInBackground);
+      document.removeEventListener("visibilitychange", refreshInBackground);
+    };
   }, [loadOrders]);
 
   const clubNameById = useMemo(() => {

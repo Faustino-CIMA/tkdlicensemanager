@@ -100,7 +100,7 @@ export default function ClubInvoiceDetailPage() {
       case "draft":
         return { label: t("invoiceStatusDraft"), tone: "neutral" as const };
       case "issued":
-        return { label: t("invoiceStatusIssued"), tone: "warning" as const };
+        return { label: t("invoiceStatusDue"), tone: "warning" as const };
       case "paid":
         return { label: t("invoiceStatusPaid"), tone: "success" as const };
       case "void":

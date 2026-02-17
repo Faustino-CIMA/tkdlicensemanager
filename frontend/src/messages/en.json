@@ -307,6 +307,7 @@
     "backToInvoices": "Back to invoices",
     "invoiceStatusDraft": "Draft",
     "invoiceStatusIssued": "Issued",
+    "invoiceStatusDue": "Due",
     "invoiceStatusPaid": "Paid",
     "invoiceStatusVoid": "Void",
     "viewMemberAction": "View",

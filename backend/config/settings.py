@@ -284,9 +284,9 @@ CELERY_BEAT_SCHEDULE = {
         "task": "licenses.tasks.activate_eligible_paid_licenses",
         "schedule": 60 * 60,
     },
-    "reconcile-pending-stripe-orders-every-10-minutes": {
+    "reconcile-pending-stripe-orders-every-minute": {
         "task": "licenses.tasks.reconcile_pending_stripe_orders",
-        "schedule": 60 * 10,
+        "schedule": 60,
     },
 }
 

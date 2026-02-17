@@ -528,6 +528,9 @@ class OrderApiTests(TestCase):
         self.assertEqual(response.data["status"], Order.Status.PENDING)
         self.assertIsNotNone(response.data.get("invoice"))
         order_id = response.data["id"]
+        order = Order.objects.select_related("invoice").get(id=order_id)
+        self.assertEqual(order.invoice.status, Invoice.Status.ISSUED)
+        self.assertIsNotNone(order.invoice.issued_at)
         self.assertTrue(
             FinanceAuditLog.objects.filter(order_id=order_id, action="order.created").exists()
         )
@@ -927,6 +930,9 @@ class LicenseOrderingPolicyTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        order = Order.objects.select_related("invoice").get(id=response.data["id"])
+        self.assertEqual(order.invoice.status, Invoice.Status.ISSUED)
+        self.assertIsNotNone(order.invoice.issued_at)
         created_license = License.objects.filter(
             club=self.club, member=self.member, year=next_year
         ).first()
@@ -975,6 +981,8 @@ class LicenseOrderingPolicyTests(TestCase):
         order = Order.objects.get(id=response.data["id"])
         self.assertEqual(order.subtotal, Decimal("0.00"))
         self.assertEqual(order.total, Decimal("0.00"))
+        self.assertEqual(order.invoice.status, Invoice.Status.ISSUED)
+        self.assertIsNotNone(order.invoice.issued_at)
 
 
 class LicenseActivationRulesTests(TestCase):

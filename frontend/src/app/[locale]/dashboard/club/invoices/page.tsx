@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 
@@ -21,6 +21,8 @@ import {
 import { FinanceInvoice, FinanceOrder, createClubCheckoutSession, getClubInvoices, getClubOrders } from "@/lib/club-finance-api";
 import { openInvoicePdf } from "@/lib/invoice-pdf";
 
+const AUTO_REFRESH_INTERVAL_MS = 10000;
+
 export default function ClubAdminInvoicesPage() {
   const t = useTranslations("ClubAdmin");
   const common = useTranslations("Common");
@@ -39,26 +41,55 @@ export default function ClubAdminInvoicesPage() {
 
   const pageSizeOptions = ["25", "50", "100", "150", "200", "all"];
 
-  const loadData = async () => {
-    setIsLoading(true);
-    setErrorMessage(null);
-    try {
-      const [invoiceResponse, ordersResponse] = await Promise.all([
-        getClubInvoices(selectedClubId),
-        getClubOrders(selectedClubId),
-      ]);
-      setInvoices(invoiceResponse);
-      setOrders(ordersResponse);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : t("invoicesLoadError"));
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const loadData = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? false;
+      if (!silent) {
+        setIsLoading(true);
+        setErrorMessage(null);
+      }
+      try {
+        const [invoiceResponse, ordersResponse] = await Promise.all([
+          getClubInvoices(selectedClubId),
+          getClubOrders(selectedClubId),
+        ]);
+        setInvoices(invoiceResponse);
+        setOrders(ordersResponse);
+      } catch (error) {
+        if (!silent) {
+          setErrorMessage(error instanceof Error ? error.message : t("invoicesLoadError"));
+        }
+      } finally {
+        if (!silent) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [selectedClubId, t]
+  );
 
   useEffect(() => {
-    loadData();
-  }, [selectedClubId]);
+    void loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const refreshInBackground = () => {
+      if (document.visibilityState === "visible") {
+        void loadData({ silent: true });
+      }
+    };
+    const intervalId = window.setInterval(refreshInBackground, AUTO_REFRESH_INTERVAL_MS);
+    window.addEventListener("focus", refreshInBackground);
+    document.addEventListener("visibilitychange", refreshInBackground);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshInBackground);
+      document.removeEventListener("visibilitychange", refreshInBackground);
+    };
+  }, [loadData]);
 
   const handlePayNow = async (invoice: FinanceInvoice) => {
     if (!invoice.order) {
@@ -94,7 +125,7 @@ export default function ClubAdminInvoicesPage() {
       case "draft":
         return { label: common("statusDraft"), tone: "neutral" as const };
       case "issued":
-        return { label: common("statusIssued"), tone: "warning" as const };
+        return { label: t("invoiceStatusDue"), tone: "warning" as const };
       case "paid":
         return { label: common("statusPaid"), tone: "success" as const };
       case "void":
@@ -115,12 +146,15 @@ export default function ClubAdminInvoicesPage() {
     return map;
   }, [orders]);
 
-  const getInvoiceQuantity = (invoice: FinanceInvoice) => {
-    if (!invoice.order) {
-      return "-";
-    }
-    return orderQuantityById.get(invoice.order) ?? 0;
-  };
+  const getInvoiceQuantity = useCallback(
+    (invoice: FinanceInvoice) => {
+      if (!invoice.order) {
+        return "-";
+      }
+      return orderQuantityById.get(invoice.order) ?? 0;
+    },
+    [orderQuantityById]
+  );
 
   const searchedInvoices = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -139,7 +173,7 @@ export default function ClubAdminInvoicesPage() {
         totalText.includes(normalizedQuery)
       );
     });
-  }, [invoices, searchQuery, orderQuantityById]);
+  }, [invoices, searchQuery, getInvoiceQuantity]);
 
   const resolvedPageSize =
     pageSize === "all" ? Math.max(searchedInvoices.length, 1) : Number(pageSize);

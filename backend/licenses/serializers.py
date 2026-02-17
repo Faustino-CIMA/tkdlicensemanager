@@ -204,11 +204,12 @@ class OrderCreateSerializer(serializers.Serializer):
                 order=order,
                 club=club,
                 member=member,
-                status=Invoice.Status.DRAFT,
+                status=Invoice.Status.ISSUED,
                 currency=currency,
                 subtotal=subtotal,
                 tax_total=tax_total,
                 total=total,
+                issued_at=timezone.now(),
             )
 
             FinanceAuditLog.objects.create(

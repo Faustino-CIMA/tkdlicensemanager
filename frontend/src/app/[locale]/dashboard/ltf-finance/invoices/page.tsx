@@ -28,6 +28,8 @@ import {
 } from "@/lib/ltf-finance-api";
 import { openInvoicePdf } from "@/lib/invoice-pdf";
 
+const AUTO_REFRESH_INTERVAL_MS = 10000;
+
 function getGroupYear(value: string | null, fallback: string) {
   const candidate = value ?? fallback;
   const parsed = new Date(candidate);
@@ -63,9 +65,12 @@ export default function LtfFinanceInvoicesPage() {
   const expandedClubStorageKey = "ltf_finance_invoices_expanded_clubs";
   const expandedYearStorageKey = "ltf_finance_invoices_expanded_years";
 
-  const loadInvoices = useCallback(async () => {
-    setIsLoading(true);
-    setErrorMessage(null);
+  const loadInvoices = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
+    if (!silent) {
+      setIsLoading(true);
+      setErrorMessage(null);
+    }
     try {
       const [invoiceResponse, orderResponse, clubResponse] = await Promise.all([
         getFinanceInvoices(),
@@ -76,14 +81,37 @@ export default function LtfFinanceInvoicesPage() {
       setOrders(orderResponse);
       setClubs(clubResponse);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : t("invoicesLoadError"));
+      if (!silent) {
+        setErrorMessage(error instanceof Error ? error.message : t("invoicesLoadError"));
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) {
+        setIsLoading(false);
+      }
     }
   }, [t]);
 
   useEffect(() => {
-    loadInvoices();
+    void loadInvoices();
+  }, [loadInvoices]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const refreshInBackground = () => {
+      if (document.visibilityState === "visible") {
+        void loadInvoices({ silent: true });
+      }
+    };
+    const intervalId = window.setInterval(refreshInBackground, AUTO_REFRESH_INTERVAL_MS);
+    window.addEventListener("focus", refreshInBackground);
+    document.addEventListener("visibilitychange", refreshInBackground);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshInBackground);
+      document.removeEventListener("visibilitychange", refreshInBackground);
+    };
   }, [loadInvoices]);
 
   const clubNameById = useMemo(() => {

@@ -14,6 +14,8 @@ import {
   getLtfFinanceOverview,
 } from "@/lib/ltf-finance-api";
 
+const AUTO_REFRESH_INTERVAL_MS = 10000;
+
 function getSeverityClasses(severity: "info" | "warning" | "critical") {
   if (severity === "critical") {
     return "border-red-200 bg-red-50 text-red-700";
@@ -42,24 +44,28 @@ export default function LtfFinanceDashboardPage() {
   const [lastRefreshAt, setLastRefreshAt] = useState<string | null>(null);
 
   const loadOverview = useCallback(
-    async (options?: { silent?: boolean }) => {
-      const silent = options?.silent ?? false;
-      if (silent) {
+    async (options?: { mode?: "initial" | "manual" | "background" }) => {
+      const mode = options?.mode ?? "initial";
+      if (mode === "manual") {
         setIsRefreshing(true);
-      } else {
+      } else if (mode === "initial") {
         setIsLoading(true);
       }
-      setErrorMessage(null);
+      if (mode !== "background") {
+        setErrorMessage(null);
+      }
       try {
         const response = await getLtfFinanceOverview();
         setOverview(response);
         setLastRefreshAt(response.meta.generated_at || new Date().toISOString());
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : t("overviewLoadError"));
+        if (mode !== "background") {
+          setErrorMessage(error instanceof Error ? error.message : t("overviewLoadError"));
+        }
       } finally {
-        if (silent) {
+        if (mode === "manual") {
           setIsRefreshing(false);
-        } else {
+        } else if (mode === "initial") {
           setIsLoading(false);
         }
       }
@@ -68,7 +74,26 @@ export default function LtfFinanceDashboardPage() {
   );
 
   useEffect(() => {
-    loadOverview();
+    void loadOverview({ mode: "initial" });
+  }, [loadOverview]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const refreshInBackground = () => {
+      if (document.visibilityState === "visible") {
+        void loadOverview({ mode: "background" });
+      }
+    };
+    const intervalId = window.setInterval(refreshInBackground, AUTO_REFRESH_INTERVAL_MS);
+    window.addEventListener("focus", refreshInBackground);
+    document.addEventListener("visibilitychange", refreshInBackground);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshInBackground);
+      document.removeEventListener("visibilitychange", refreshInBackground);
+    };
   }, [loadOverview]);
 
   const queueWithFindings = useMemo(
@@ -110,7 +135,7 @@ export default function LtfFinanceDashboardPage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => loadOverview({ silent: true })}
+              onClick={() => void loadOverview({ mode: "manual" })}
               disabled={isRefreshing}
             >
               {isRefreshing ? t("refreshingAction") : t("refreshAction")}

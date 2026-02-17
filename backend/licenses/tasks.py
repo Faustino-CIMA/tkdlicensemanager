@@ -86,7 +86,8 @@ def process_stripe_webhook_event(event_payload: dict) -> None:
     order = Order.objects.filter(id=order_id_int).select_related("member__user").first()
     if not order:
         return
-    activate_order_from_stripe.delay(order_id_int, stripe_data)
+    # Process immediately inside this worker task to avoid a second queue hop.
+    activate_order_from_stripe(order_id_int, stripe_data)
 
 
 @shared_task

@@ -309,7 +309,7 @@ export default function ClubAdminOverviewPage() {
       if (invoice.status === "draft") {
         statusLabel = common("statusDraft");
       } else if (invoice.status === "issued") {
-        statusLabel = common("statusIssued");
+        statusLabel = t("invoiceStatusDue");
       } else if (invoice.status === "paid") {
         statusLabel = common("statusPaid");
       } else if (invoice.status === "void") {
@@ -440,7 +440,7 @@ export default function ClubAdminOverviewPage() {
                   {t("invoiceStatusDraft")}: <span className="font-semibold">{invoicesByStatus.draft}</span>
                 </p>
                 <p>
-                  {t("invoiceStatusIssued")}: <span className="font-semibold">{invoicesByStatus.issued}</span>
+                  {t("invoiceStatusDue")}: <span className="font-semibold">{invoicesByStatus.issued}</span>
                 </p>
                 <p>
                   {t("invoiceStatusPaid")}: <span className="font-semibold">{invoicesByStatus.paid}</span>
