@@ -69,7 +69,13 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     const message = await response.text();
     let normalizedMessage = message;
     if (contentType?.includes("text/html")) {
-      normalizedMessage = "Request failed. Please try again.";
+      if (response.status === 413) {
+        normalizedMessage = "Upload is too large. Please choose a smaller image.";
+      } else if (response.status >= 500) {
+        normalizedMessage = `Server error (${response.status}). Please try again.`;
+      } else {
+        normalizedMessage = `Request failed (${response.status}). Please try again.`;
+      }
     }
     if (contentType?.includes("application/json") && message) {
       try {

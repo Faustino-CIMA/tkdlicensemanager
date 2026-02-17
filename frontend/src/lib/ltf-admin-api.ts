@@ -60,6 +60,8 @@ export type MemberProfilePictureUploadInput = {
   photoConsentConfirmed: boolean;
 };
 
+const MAX_PROFILE_PHOTO_REQUEST_BYTES = 8 * 1024 * 1024;
+
 export type License = {
   id: number;
   member: number;
@@ -376,7 +378,13 @@ export function uploadMemberProfilePicture(
 ) {
   const formData = new FormData();
   formData.append("processed_image", input.processedImage);
-  if (input.originalImage) {
+  const processedSize = Number(input.processedImage.size || 0);
+  const originalSize = Number(input.originalImage?.size || 0);
+  // Keep multipart payload comfortably below common proxy limits.
+  if (
+    input.originalImage &&
+    processedSize + originalSize <= MAX_PROFILE_PHOTO_REQUEST_BYTES
+  ) {
     formData.append("original_image", input.originalImage);
   }
   formData.append("photo_consent_confirmed", String(Boolean(input.photoConsentConfirmed)));

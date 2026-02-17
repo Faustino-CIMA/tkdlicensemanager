@@ -57,4 +57,30 @@ describe("club-admin profile picture api", () => {
     expect(headers["Authorization"]).toBe("Token test-token");
     expect(headers["Content-Type"]).toBeUndefined();
   });
+
+  it("omits original image when multipart payload is too large", async () => {
+    const processedFile = new File(["processed"], "processed.jpg", {
+      type: "image/jpeg",
+    });
+    const largeOriginalFile = new File([new Uint8Array(9 * 1024 * 1024)], "original.heic", {
+      type: "image/heic",
+    });
+
+    await uploadMemberProfilePicture(12, {
+      processedImage: processedFile,
+      originalImage: largeOriginalFile,
+      photoEditMetadata: { source: "jest" },
+      photoConsentConfirmed: true,
+    });
+
+    const [, fetchOptions] = (global.fetch as jest.Mock).mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
+    expect(fetchOptions.body).toBeInstanceOf(FormData);
+    const body = fetchOptions.body as FormData;
+    expect(body.get("processed_image")).toBe(processedFile);
+    expect(body.get("original_image")).toBeNull();
+    expect(body.get("photo_consent_confirmed")).toBe("true");
+  });
 });
