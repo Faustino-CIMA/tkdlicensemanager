@@ -96,6 +96,14 @@ export type ClubOrderIneligibleLicenseType = {
   name: string;
   code: string;
   reason_counts: ClubOrderEligibilityReasonCount[];
+  ineligible_members: ClubOrderIneligibleMember[];
+};
+
+export type ClubOrderIneligibleMember = {
+  member_id: number;
+  member_name: string;
+  reason_code: string;
+  message: string;
 };
 
 export type ClubOrderEligibilityResponse = {

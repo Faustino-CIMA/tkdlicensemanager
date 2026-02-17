@@ -1036,6 +1036,18 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
         for license_type in LicenseType.objects.select_related("policy").all().order_by("name"):
             active_price = LicensePrice.get_active_price(license_type=license_type, as_of=today)
             if not active_price:
+                ineligible_members = [
+                    {
+                        "member_id": member.id,
+                        "member_name": f"{member.first_name} {member.last_name}".strip(),
+                        "reason_code": "no_active_price",
+                        "message": (
+                            f"No active license price configured for license type "
+                            f"'{license_type.name}'."
+                        ),
+                    }
+                    for member in member_list
+                ]
                 ineligible_license_types.append(
                     {
                         "id": license_type.id,
@@ -1051,11 +1063,13 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
                                 ),
                             }
                         ],
+                        "ineligible_members": ineligible_members,
                     }
                 )
                 continue
 
             reason_counts = defaultdict(int)
+            ineligible_members = []
             for member in member_list:
                 try:
                     validate_member_license_order(
@@ -1068,6 +1082,14 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
                     detail_text = _flatten_validation_detail(exc.detail)
                     reason_code = _map_order_eligibility_reason_code(detail_text)
                     reason_counts[(reason_code, detail_text)] += 1
+                    ineligible_members.append(
+                        {
+                            "member_id": member.id,
+                            "member_name": f"{member.first_name} {member.last_name}".strip(),
+                            "reason_code": reason_code,
+                            "message": detail_text,
+                        }
+                    )
 
             if reason_counts:
                 sorted_reasons = sorted(
@@ -1077,12 +1099,21 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
                     ),
                     key=lambda item: (-item["count"], item["message"]),
                 )
+                sorted_members = sorted(
+                    ineligible_members,
+                    key=lambda item: (
+                        item["member_name"].lower(),
+                        item["member_id"],
+                        item["reason_code"],
+                    ),
+                )
                 ineligible_license_types.append(
                     {
                         "id": license_type.id,
                         "name": license_type.name,
                         "code": license_type.code,
                         "reason_counts": sorted_reasons,
+                        "ineligible_members": sorted_members,
                     }
                 )
                 continue

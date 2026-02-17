@@ -834,6 +834,12 @@ class LicenseOrderingPolicyTests(TestCase):
         )
         reason_codes = {reason["code"] for reason in ineligible["reason_counts"]}
         self.assertIn("current_year_disabled", reason_codes)
+        self.assertIn("ineligible_members", ineligible)
+        self.assertEqual(len(ineligible["ineligible_members"]), 1)
+        self.assertEqual(ineligible["ineligible_members"][0]["member_id"], self.member.id)
+        self.assertEqual(
+            ineligible["ineligible_members"][0]["reason_code"], "current_year_disabled"
+        )
 
     def test_club_eligibility_flags_license_type_without_active_price(self):
         missing_price_type = LicenseType.objects.create(
@@ -862,6 +868,38 @@ class LicenseOrderingPolicyTests(TestCase):
         )
         reason_codes = {reason["code"] for reason in ineligible["reason_counts"]}
         self.assertIn("no_active_price", reason_codes)
+        self.assertIn("ineligible_members", ineligible)
+        self.assertEqual(len(ineligible["ineligible_members"]), 1)
+        self.assertEqual(ineligible["ineligible_members"][0]["member_id"], self.member.id)
+        self.assertEqual(ineligible["ineligible_members"][0]["reason_code"], "no_active_price")
+
+    def test_club_eligibility_exposes_duplicate_member_details(self):
+        existing_license = License.objects.create(
+            member=self.member,
+            club=self.club,
+            license_type=self.license_type,
+            year=timezone.localdate().year,
+            status=License.Status.ACTIVE,
+        )
+        self.assertIsNotNone(existing_license.id)
+
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            "/api/club-orders/eligibility/",
+            self._club_eligibility_payload(year=timezone.localdate().year),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ineligible = next(
+            item for item in response.data["ineligible_license_types"] if item["id"] == self.license_type.id
+        )
+        duplicate_members = [
+            item
+            for item in ineligible["ineligible_members"]
+            if item["reason_code"] == "duplicate_pending_or_active"
+        ]
+        self.assertEqual(len(duplicate_members), 1)
+        self.assertEqual(duplicate_members[0]["member_id"], self.member.id)
 
     def test_club_batch_allows_next_year_when_preorder_enabled(self):
         self.policy.allow_current_year_order = False
