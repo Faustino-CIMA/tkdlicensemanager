@@ -277,6 +277,14 @@ class ClubOrderBatchSerializer(serializers.Serializer):
     )
 
 
+class ClubOrderEligibilitySerializer(serializers.Serializer):
+    club = serializers.PrimaryKeyRelatedField(queryset=Club.objects.all())
+    member_ids = serializers.ListField(
+        child=serializers.IntegerField(), min_length=1, allow_empty=False
+    )
+    year = serializers.IntegerField(min_value=2000, max_value=2100)
+
+
 class ConfirmPaymentSerializer(serializers.Serializer):
     stripe_payment_intent_id = serializers.CharField(max_length=255, required=False)
     stripe_checkout_session_id = serializers.CharField(max_length=255, required=False)

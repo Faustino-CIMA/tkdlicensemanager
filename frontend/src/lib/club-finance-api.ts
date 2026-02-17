@@ -68,8 +68,55 @@ type ClubOrderBatchInput = {
   tax_total?: string;
 };
 
+type ClubOrderEligibilityInput = {
+  club: number;
+  member_ids: number[];
+  year: number;
+};
+
+export type ClubOrderEligibilityReasonCount = {
+  code: string;
+  count: number;
+  message: string;
+};
+
+export type ClubOrderEligibleLicenseType = {
+  id: number;
+  name: string;
+  code: string;
+  active_price: {
+    amount: string;
+    currency: string;
+    effective_from: string;
+  };
+};
+
+export type ClubOrderIneligibleLicenseType = {
+  id: number;
+  name: string;
+  code: string;
+  reason_counts: ClubOrderEligibilityReasonCount[];
+};
+
+export type ClubOrderEligibilityResponse = {
+  summary: {
+    selected_member_count: number;
+    eligible_license_type_count: number;
+    ineligible_license_type_count: number;
+  };
+  eligible_license_types: ClubOrderEligibleLicenseType[];
+  ineligible_license_types: ClubOrderIneligibleLicenseType[];
+};
+
 export function createClubOrdersBatch(input: ClubOrderBatchInput) {
   return apiRequest<FinanceOrder>("/api/club-orders/batch/", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function getClubOrderEligibility(input: ClubOrderEligibilityInput) {
+  return apiRequest<ClubOrderEligibilityResponse>("/api/club-orders/eligibility/", {
     method: "POST",
     body: JSON.stringify(input),
   });

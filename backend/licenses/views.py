@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import timedelta
 from decimal import Decimal
 
@@ -41,6 +42,7 @@ from .models import (
 from .history import log_license_created, log_license_status_change
 from .serializers import (
     ActivateLicensesSerializer,
+    ClubOrderEligibilitySerializer,
     CheckoutSessionSerializer,
     CheckoutSessionRequestSerializer,
     ConfirmPaymentSerializer,
@@ -99,6 +101,33 @@ def _overview_meta(role):
 
 def _overview_link(label_key, path):
     return {"label_key": label_key, "path": path}
+
+
+def _flatten_validation_detail(detail) -> str:
+    if isinstance(detail, list):
+        return "; ".join(str(item) for item in detail)
+    if isinstance(detail, dict):
+        return "; ".join(f"{key}: {value}" for key, value in detail.items())
+    return str(detail)
+
+
+def _map_order_eligibility_reason_code(detail_text: str) -> str:
+    normalized = detail_text.lower()
+    if "no active license price configured" in normalized:
+        return "no_active_price"
+    if "ordering current-year licenses is disabled" in normalized:
+        return "current_year_disabled"
+    if "pre-ordering next-year licenses is disabled" in normalized:
+        return "next_year_disabled"
+    if "window is closed" in normalized:
+        return "window_closed"
+    if "only current-year and next-year license orders are allowed" in normalized:
+        return "invalid_target_year"
+    if "already has a pending or active" in normalized:
+        return "duplicate_pending_or_active"
+    if "invalid policy" in normalized:
+        return "invalid_policy_configuration"
+    return "not_eligible"
 
 
 class LicenseViewSet(viewsets.ModelViewSet):
@@ -983,9 +1012,117 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
     def get_serializer_class(self):
         if self.action == "batch":
             return ClubOrderBatchSerializer
+        if self.action == "eligibility":
+            return ClubOrderEligibilitySerializer
         if self.action == "create_checkout_session":
             return CheckoutSessionSerializer
         return OrderSerializer
+
+    @extend_schema(request=ClubOrderEligibilitySerializer, responses={200: None})
+    @action(detail=False, methods=["post"], url_path="eligibility")
+    def eligibility(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        club = serializer.validated_data["club"]
+        member_ids = serializer.validated_data["member_ids"]
+        year = serializer.validated_data["year"]
+
+        if not club.admins.filter(id=request.user.id).exists():
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        members = Member.objects.filter(id__in=member_ids, club=club)
+        if members.count() != len(set(member_ids)):
+            return Response(
+                {"detail": "One or more members are invalid for this club."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        member_list = list(members)
+        selected_member_count = len(member_list)
+        today = timezone.localdate()
+
+        eligible_license_types = []
+        ineligible_license_types = []
+
+        for license_type in LicenseType.objects.select_related("policy").all().order_by("name"):
+            active_price = LicensePrice.get_active_price(license_type=license_type, as_of=today)
+            if not active_price:
+                ineligible_license_types.append(
+                    {
+                        "id": license_type.id,
+                        "name": license_type.name,
+                        "code": license_type.code,
+                        "reason_counts": [
+                            {
+                                "code": "no_active_price",
+                                "count": selected_member_count,
+                                "message": (
+                                    f"No active license price configured for license type "
+                                    f"'{license_type.name}'."
+                                ),
+                            }
+                        ],
+                    }
+                )
+                continue
+
+            reason_counts = defaultdict(int)
+            for member in member_list:
+                try:
+                    validate_member_license_order(
+                        member=member,
+                        license_type=license_type,
+                        target_year=year,
+                        order_date=today,
+                    )
+                except serializers.ValidationError as exc:
+                    detail_text = _flatten_validation_detail(exc.detail)
+                    reason_code = _map_order_eligibility_reason_code(detail_text)
+                    reason_counts[(reason_code, detail_text)] += 1
+
+            if reason_counts:
+                sorted_reasons = sorted(
+                    (
+                        {"code": code, "count": count, "message": message}
+                        for (code, message), count in reason_counts.items()
+                    ),
+                    key=lambda item: (-item["count"], item["message"]),
+                )
+                ineligible_license_types.append(
+                    {
+                        "id": license_type.id,
+                        "name": license_type.name,
+                        "code": license_type.code,
+                        "reason_counts": sorted_reasons,
+                    }
+                )
+                continue
+
+            eligible_license_types.append(
+                {
+                    "id": license_type.id,
+                    "name": license_type.name,
+                    "code": license_type.code,
+                    "active_price": {
+                        "amount": f"{active_price.amount:.2f}",
+                        "currency": active_price.currency,
+                        "effective_from": active_price.effective_from.isoformat(),
+                    },
+                }
+            )
+
+        return Response(
+            {
+                "summary": {
+                    "selected_member_count": selected_member_count,
+                    "eligible_license_type_count": len(eligible_license_types),
+                    "ineligible_license_type_count": len(ineligible_license_types),
+                },
+                "eligible_license_types": eligible_license_types,
+                "ineligible_license_types": ineligible_license_types,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(request=ClubOrderBatchSerializer, responses=OrderSerializer)
     @action(detail=False, methods=["post"], url_path="batch")

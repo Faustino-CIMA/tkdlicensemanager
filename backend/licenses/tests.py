@@ -723,6 +723,13 @@ class LicenseOrderingPolicyTests(TestCase):
             "tax_total": "0.00",
         }
 
+    def _club_eligibility_payload(self, year: int):
+        return {
+            "club": self.club.id,
+            "member_ids": [self.member.id],
+            "year": year,
+        }
+
     def test_club_batch_rejects_when_current_year_window_disabled(self):
         self.policy.allow_current_year_order = False
         self.policy.save(update_fields=["allow_current_year_order", "updated_at"])
@@ -733,6 +740,65 @@ class LicenseOrderingPolicyTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_club_eligibility_returns_filtered_license_types(self):
+        self.policy.allow_current_year_order = False
+        self.policy.save(update_fields=["allow_current_year_order", "updated_at"])
+
+        eligible_type = LicenseType.objects.create(name="Window Open", code="window-open")
+        LicensePrice.objects.create(
+            license_type=eligible_type,
+            amount=Decimal("20.00"),
+            currency="EUR",
+            effective_from=timezone.localdate(),
+            created_by=self.ltf_finance,
+        )
+
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            "/api/club-orders/eligibility/",
+            self._club_eligibility_payload(year=timezone.localdate().year),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        eligible_ids = {item["id"] for item in response.data["eligible_license_types"]}
+        self.assertIn(eligible_type.id, eligible_ids)
+        self.assertNotIn(self.license_type.id, eligible_ids)
+
+        ineligible = next(
+            item for item in response.data["ineligible_license_types"] if item["id"] == self.license_type.id
+        )
+        reason_codes = {reason["code"] for reason in ineligible["reason_counts"]}
+        self.assertIn("current_year_disabled", reason_codes)
+
+    def test_club_eligibility_flags_license_type_without_active_price(self):
+        missing_price_type = LicenseType.objects.create(
+            name="Future Price Type",
+            code="future-price-type",
+        )
+        LicensePrice.objects.create(
+            license_type=missing_price_type,
+            amount=Decimal("99.00"),
+            currency="EUR",
+            effective_from=timezone.localdate() + timedelta(days=30),
+            created_by=self.ltf_finance,
+        )
+
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            "/api/club-orders/eligibility/",
+            self._club_eligibility_payload(year=timezone.localdate().year),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ineligible = next(
+            item
+            for item in response.data["ineligible_license_types"]
+            if item["id"] == missing_price_type.id
+        )
+        reason_codes = {reason["code"] for reason in ineligible["reason_counts"]}
+        self.assertIn("no_active_price", reason_codes)
 
     def test_club_batch_allows_next_year_when_preorder_enabled(self):
         self.policy.allow_current_year_order = False

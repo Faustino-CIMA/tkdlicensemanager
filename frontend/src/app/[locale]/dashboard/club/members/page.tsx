@@ -14,11 +14,9 @@ import { EntityTable } from "@/components/club-admin/entity-table";
 import { useClubSelection } from "@/components/club-selection-provider";
 import {
   Club,
-  LicenseType,
   Member,
   createMember,
   getClubs,
-  getLicenseTypes,
   getMembers,
   updateMember,
 } from "@/lib/club-admin-api";
@@ -34,7 +32,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createClubOrdersBatch } from "@/lib/club-finance-api";
+import {
+  ClubOrderEligibleLicenseType,
+  ClubOrderIneligibleLicenseType,
+  createClubOrdersBatch,
+  getClubOrderEligibility,
+} from "@/lib/club-finance-api";
 
 const LICENSE_ROLE_VALUES = [
   "athlete",
@@ -73,7 +76,13 @@ export default function ClubAdminMembersPage() {
   const { selectedClubId, setSelectedClubId } = useClubSelection();
   const [clubs, setClubs] = useState<Club[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
-  const [licenseTypes, setLicenseTypes] = useState<LicenseType[]>([]);
+  const [eligibleOrderLicenseTypes, setEligibleOrderLicenseTypes] = useState<
+    ClubOrderEligibleLicenseType[]
+  >([]);
+  const [ineligibleOrderLicenseTypes, setIneligibleOrderLicenseTypes] = useState<
+    ClubOrderIneligibleLicenseType[]
+  >([]);
+  const [isOrderEligibilityLoading, setIsOrderEligibilityLoading] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [selectedOrderLicenseTypeId, setSelectedOrderLicenseTypeId] = useState("");
@@ -92,6 +101,7 @@ export default function ClubAdminMembersPage() {
   const [statusFilterHydrated, setStatusFilterHydrated] = useState(false);
   const [statusUpdatingIds, setStatusUpdatingIds] = useState<number[]>([]);
   const [currentRole, setCurrentRole] = useState<string | null>(null);
+  const orderEligibilityRequestIdRef = useRef(0);
 
   const pageSizeOptions = ["25", "50", "100", "150", "200", "all"];
 
@@ -122,21 +132,9 @@ export default function ClubAdminMembersPage() {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const [clubsResponse, membersResponse, licenseTypesResponse] = await Promise.all([
-        getClubs(),
-        getMembers(),
-        getLicenseTypes(),
-      ]);
+      const [clubsResponse, membersResponse] = await Promise.all([getClubs(), getMembers()]);
       setClubs(clubsResponse);
       setMembers(membersResponse);
-      setLicenseTypes(licenseTypesResponse);
-      if (licenseTypesResponse.length > 0) {
-        setSelectedOrderLicenseTypeId((previous) =>
-          previous || String(licenseTypesResponse[0].id)
-        );
-      } else {
-        setSelectedOrderLicenseTypeId("");
-      }
       if (clubsResponse.length > 0 && !selectedClubId) {
         const firstClubId = clubsResponse[0].id;
         setSelectedClubId(firstClubId);
@@ -475,6 +473,59 @@ export default function ClubAdminMembersPage() {
     router.push(`/${locale}/dashboard/club/members/batch-delete`);
   };
 
+  const loadOrderEligibility = useCallback(
+    async (yearValue: number) => {
+      if (!selectedClubId || selectedIds.length === 0 || !Number.isInteger(yearValue)) {
+        setEligibleOrderLicenseTypes([]);
+        setIneligibleOrderLicenseTypes([]);
+        setSelectedOrderLicenseTypeId("");
+        return;
+      }
+
+      const requestId = orderEligibilityRequestIdRef.current + 1;
+      orderEligibilityRequestIdRef.current = requestId;
+      setIsOrderEligibilityLoading(true);
+
+      try {
+        const response = await getClubOrderEligibility({
+          club: selectedClubId,
+          member_ids: selectedIds,
+          year: yearValue,
+        });
+        if (requestId !== orderEligibilityRequestIdRef.current) {
+          return;
+        }
+
+        setEligibleOrderLicenseTypes(response.eligible_license_types);
+        setIneligibleOrderLicenseTypes(response.ineligible_license_types);
+        setSelectedOrderLicenseTypeId((previous) => {
+          if (
+            previous &&
+            response.eligible_license_types.some((licenseType) => String(licenseType.id) === previous)
+          ) {
+            return previous;
+          }
+          return response.eligible_license_types.length > 0
+            ? String(response.eligible_license_types[0].id)
+            : "";
+        });
+      } catch (error) {
+        if (requestId !== orderEligibilityRequestIdRef.current) {
+          return;
+        }
+        setEligibleOrderLicenseTypes([]);
+        setIneligibleOrderLicenseTypes([]);
+        setSelectedOrderLicenseTypeId("");
+        setErrorMessage(error instanceof Error ? error.message : t("orderLicenseError"));
+      } finally {
+        if (requestId === orderEligibilityRequestIdRef.current) {
+          setIsOrderEligibilityLoading(false);
+        }
+      }
+    },
+    [selectedClubId, selectedIds, t]
+  );
+
   const handleBatchOrder = async () => {
     if (!canManageMembers) {
       return;
@@ -489,6 +540,10 @@ export default function ClubAdminMembersPage() {
     const parsedYear = Number(orderYear);
     if (!Number.isInteger(parsedYear)) {
       setErrorMessage(t("orderYearRequiredError"));
+      return;
+    }
+    if (eligibleOrderLicenseTypes.length === 0) {
+      setErrorMessage(t("orderEligibilityNoOptions"));
       return;
     }
     setErrorMessage(null);
@@ -521,11 +576,22 @@ export default function ClubAdminMembersPage() {
     }
     const currentYear = new Date().getFullYear();
     setOrderYear(String(currentYear));
-    if (!selectedOrderLicenseTypeId && licenseTypes.length > 0) {
-      setSelectedOrderLicenseTypeId(String(licenseTypes[0].id));
-    }
+    setSelectedOrderLicenseTypeId("");
+    setEligibleOrderLicenseTypes([]);
+    setIneligibleOrderLicenseTypes([]);
     setIsOrderModalOpen(true);
   };
+
+  useEffect(() => {
+    if (!isOrderModalOpen) {
+      return;
+    }
+    const parsedYear = Number(orderYear);
+    if (!Number.isInteger(parsedYear)) {
+      return;
+    }
+    loadOrderEligibility(parsedYear);
+  }, [isOrderModalOpen, orderYear, selectedIds, selectedClubId, loadOrderEligibility]);
 
   const toggleMemberStatus = async (member: Member) => {
     if (!canManageMembers) {
@@ -620,12 +686,7 @@ export default function ClubAdminMembersPage() {
                 </Button>
                 <Button
                   variant="secondary"
-                  disabled={
-                    selectedIds.length === 0 ||
-                    !selectedClubId ||
-                    isOrdering ||
-                    licenseTypes.length === 0
-                  }
+                  disabled={selectedIds.length === 0 || !selectedClubId || isOrdering}
                   onClick={openOrderModal}
                 >
                   {isOrdering
@@ -1000,24 +1061,6 @@ export default function ClubAdminMembersPage() {
       >
         <div className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("licenseTypeLabel")}</label>
-            <Select
-              value={selectedOrderLicenseTypeId}
-              onValueChange={setSelectedOrderLicenseTypeId}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={t("selectLicenseTypePlaceholder")} />
-              </SelectTrigger>
-              <SelectContent>
-                {licenseTypes.map((licenseType) => (
-                  <SelectItem key={licenseType.id} value={String(licenseType.id)}>
-                    {licenseType.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
             <label className="text-sm font-medium text-zinc-700">{t("yearLabel")}</label>
             <Select value={orderYear} onValueChange={setOrderYear}>
               <SelectTrigger>
@@ -1032,11 +1075,61 @@ export default function ClubAdminMembersPage() {
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-zinc-700">{t("licenseTypeLabel")}</label>
+            <Select
+              value={selectedOrderLicenseTypeId}
+              onValueChange={setSelectedOrderLicenseTypeId}
+            >
+              <SelectTrigger
+                disabled={isOrderEligibilityLoading || eligibleOrderLicenseTypes.length === 0}
+              >
+                <SelectValue placeholder={t("selectLicenseTypePlaceholder")} />
+              </SelectTrigger>
+              <SelectContent>
+                {eligibleOrderLicenseTypes.map((licenseType) => (
+                  <SelectItem key={licenseType.id} value={String(licenseType.id)}>
+                    {licenseType.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {isOrderEligibilityLoading ? (
+            <p className="text-sm text-zinc-600">{t("orderEligibilityLoading")}</p>
+          ) : eligibleOrderLicenseTypes.length === 0 ? (
+            <p className="text-sm text-amber-700">{t("orderEligibilityNoOptions")}</p>
+          ) : null}
+
+          {!isOrderEligibilityLoading && ineligibleOrderLicenseTypes.length > 0 ? (
+            <div className="space-y-1 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-zinc-600">
+                {t("orderEligibilityUnavailableTitle")}
+              </p>
+              <ul className="space-y-1 text-xs text-zinc-600">
+                {ineligibleOrderLicenseTypes.map((licenseType) => (
+                  <li key={licenseType.id}>
+                    <span className="font-medium text-zinc-800">{licenseType.name}:</span>{" "}
+                    {licenseType.reason_counts
+                      .map((reason) => `${reason.message} (${reason.count})`)
+                      .join(" • ")}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           <div className="flex items-center gap-3">
             <Button
               onClick={handleBatchOrder}
               disabled={
-                isOrdering || !selectedOrderLicenseTypeId || !orderYear || selectedIds.length === 0
+                isOrdering ||
+                isOrderEligibilityLoading ||
+                !selectedOrderLicenseTypeId ||
+                !orderYear ||
+                selectedIds.length === 0 ||
+                eligibleOrderLicenseTypes.length === 0
               }
             >
               {isOrdering
