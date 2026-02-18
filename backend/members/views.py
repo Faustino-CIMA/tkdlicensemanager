@@ -1,3 +1,4 @@
+import mimetypes
 from pathlib import Path
 
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -273,21 +274,67 @@ class MemberViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="profile-picture/download")
     def download_profile_picture(self, request, *args, **kwargs):
         member = self.get_object()
-        profile_image = member.profile_picture_processed or member.profile_picture_original
-        if not profile_image:
-            return Response(
-                {"detail": "Profile picture not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+        return self._stream_member_image_file(
+            member=member,
+            image_field=member.profile_picture_processed or member.profile_picture_original,
+            not_found_detail="Profile picture not found.",
+            missing_detail="Profile picture file is missing.",
+            fallback_name=f"member-{member.id}-profile.jpg",
+            as_attachment=True,
+        )
+
+    @action(detail=True, methods=["get"], url_path="profile-picture/processed")
+    def profile_picture_processed(self, request, *args, **kwargs):
+        member = self.get_object()
+        return self._stream_member_image_file(
+            member=member,
+            image_field=member.profile_picture_processed or member.profile_picture_original,
+            not_found_detail="Profile picture not found.",
+            missing_detail="Profile picture file is missing.",
+            fallback_name=f"member-{member.id}-profile.jpg",
+            as_attachment=False,
+        )
+
+    @action(detail=True, methods=["get"], url_path="profile-picture/thumbnail")
+    def profile_picture_thumbnail(self, request, *args, **kwargs):
+        member = self.get_object()
+        return self._stream_member_image_file(
+            member=member,
+            image_field=(
+                member.profile_picture_thumbnail
+                or member.profile_picture_processed
+                or member.profile_picture_original
+            ),
+            not_found_detail="Profile picture thumbnail not found.",
+            missing_detail="Profile picture thumbnail file is missing.",
+            fallback_name=f"member-{member.id}-profile-thumb.jpg",
+            as_attachment=False,
+        )
+
+    def _stream_member_image_file(
+        self,
+        *,
+        member: Member,
+        image_field,
+        not_found_detail: str,
+        missing_detail: str,
+        fallback_name: str,
+        as_attachment: bool,
+    ):
+        if not image_field:
+            return Response({"detail": not_found_detail}, status=status.HTTP_404_NOT_FOUND)
 
         try:
-            profile_image.open("rb")
+            image_field.open("rb")
         except FileNotFoundError:
-            return Response(
-                {"detail": "Profile picture file is missing."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            return Response({"detail": missing_detail}, status=status.HTTP_404_NOT_FOUND)
 
-        download_name = Path(profile_image.name).name or f"member-{member.id}-profile.jpg"
-        return FileResponse(profile_image, as_attachment=True, filename=download_name)
+        response_name = Path(str(image_field.name or "")).name or fallback_name
+        content_type = mimetypes.guess_type(response_name)[0] or "application/octet-stream"
+        return FileResponse(
+            image_field,
+            as_attachment=as_attachment,
+            filename=response_name,
+            content_type=content_type,
+        )
 

@@ -497,6 +497,17 @@ class MemberApiTests(TestCase):
         self.assertEqual(get_response.status_code, status.HTTP_200_OK)
         self.assertTrue(get_response.data["has_profile_picture"])
 
+        detail_response = self.client.get(f"/api/members/{self.member.id}/")
+        self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
+        self.assertIn(
+            f"/api/members/{self.member.id}/profile-picture/processed/",
+            str(detail_response.data["profile_picture_url"]),
+        )
+        self.assertIn(
+            f"/api/members/{self.member.id}/profile-picture/thumbnail/",
+            str(detail_response.data["profile_picture_thumbnail_url"]),
+        )
+
     def test_profile_picture_upload_tolerates_optional_storage_failures(self):
         from django.db.models.fields.files import FieldFile
 
@@ -623,6 +634,38 @@ class MemberApiTests(TestCase):
         )
         self.assertEqual(download_response.status_code, status.HTTP_200_OK)
         self.assertIn("attachment", download_response.get("Content-Disposition", ""))
+
+    def test_profile_picture_processed_and_thumbnail_endpoints_return_files(self):
+        self.member_user.give_consent()
+        self.client.force_authenticate(user=self.member_user)
+        upload_response = self.client.post(
+            f"/api/members/{self.member.id}/profile-picture/",
+            {
+                "processed_image": self._make_test_image("processed.jpg"),
+                "photo_consent_confirmed": "true",
+            },
+            format="multipart",
+        )
+        self.assertEqual(upload_response.status_code, status.HTTP_201_CREATED)
+
+        processed_response = self.client.get(
+            f"/api/members/{self.member.id}/profile-picture/processed/"
+        )
+        self.assertEqual(processed_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(
+            str(processed_response.get("Content-Type", "")).startswith("image/")
+        )
+        self.assertNotIn(
+            "attachment", str(processed_response.get("Content-Disposition", "")).lower()
+        )
+
+        thumbnail_response = self.client.get(
+            f"/api/members/{self.member.id}/profile-picture/thumbnail/"
+        )
+        self.assertEqual(thumbnail_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(
+            str(thumbnail_response.get("Content-Type", "")).startswith("image/")
+        )
 
 
 class GradePromotionModelTests(TestCase):

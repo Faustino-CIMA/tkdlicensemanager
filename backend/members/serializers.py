@@ -143,17 +143,21 @@ class MemberSerializer(serializers.ModelSerializer):
 
     def get_profile_picture_url(self, obj: Member):
         request = self.context.get("request")
-        if not obj.profile_picture_processed:
+        if not (obj.profile_picture_processed or obj.profile_picture_original):
             return None
-        url = obj.profile_picture_processed.url
-        return request.build_absolute_uri(url) if request else url
+        path = f"/api/members/{obj.id}/profile-picture/processed/"
+        return request.build_absolute_uri(path) if request else path
 
     def get_profile_picture_thumbnail_url(self, obj: Member):
         request = self.context.get("request")
-        if not obj.profile_picture_thumbnail:
+        if not (
+            obj.profile_picture_thumbnail
+            or obj.profile_picture_processed
+            or obj.profile_picture_original
+        ):
             return None
-        url = obj.profile_picture_thumbnail.url
-        return request.build_absolute_uri(url) if request else url
+        path = f"/api/members/{obj.id}/profile-picture/thumbnail/"
+        return request.build_absolute_uri(path) if request else path
 
 
 class GradePromotionHistorySerializer(serializers.ModelSerializer):
@@ -256,22 +260,28 @@ class MemberProfilePictureSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
-    def _build_url(self, file_field):
-        if not file_field:
+    def _build_api_url(self, obj: Member, endpoint: str):
+        has_any_photo = bool(
+            obj.profile_picture_original
+            or obj.profile_picture_processed
+            or obj.profile_picture_thumbnail
+        )
+        if not has_any_photo:
             return None
         request = self.context.get("request")
-        file_url = file_field.url
-        return request.build_absolute_uri(file_url) if request else file_url
+        path = f"/api/members/{obj.id}/profile-picture/{endpoint}/"
+        return request.build_absolute_uri(path) if request else path
 
     def get_has_profile_picture(self, obj: Member):
         return bool(obj.profile_picture_processed or obj.profile_picture_original)
 
     def get_profile_picture_original_url(self, obj: Member):
-        return self._build_url(obj.profile_picture_original)
+        # Keep "original" URL as a downloadable API endpoint.
+        return self._build_api_url(obj, "download")
 
     def get_profile_picture_processed_url(self, obj: Member):
-        return self._build_url(obj.profile_picture_processed)
+        return self._build_api_url(obj, "processed")
 
     def get_profile_picture_thumbnail_url(self, obj: Member):
-        return self._build_url(obj.profile_picture_thumbnail)
+        return self._build_api_url(obj, "thumbnail")
 
