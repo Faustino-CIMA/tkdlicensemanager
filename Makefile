@@ -1,4 +1,4 @@
-.PHONY: test test-backend test-quick test-quick-local test-licenses test-accounts test-members migrate makemigrations healthcheck healthcheck-backend healthcheck-worker
+.PHONY: test test-backend test-quick test-quick-local test-licenses test-accounts test-members migrate makemigrations healthcheck healthcheck-backend healthcheck-worker migration-guard pre-push-check
 
 COMPOSE ?= docker compose
 
@@ -35,3 +35,8 @@ migrate:
 
 makemigrations:
 	python backend/manage.py makemigrations
+
+migration-guard:
+	bash scripts/migration-guard.sh
+
+pre-push-check: migration-guard

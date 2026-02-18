@@ -1,0 +1,63 @@
+name: Migration Guard
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  migration-guard:
+    name: Check and apply migrations
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: ltf_license_manager
+          POSTGRES_USER: ltf_user
+          POSTGRES_PASSWORD: ltf_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ltf_user -d ltf_license_manager"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DJANGO_DEBUG: "1"
+      POSTGRES_DB: ltf_license_manager
+      POSTGRES_USER: ltf_user
+      POSTGRES_PASSWORD: ltf_password
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5432"
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
+
+      - name: Ensure migration files are committed
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Apply migrations
+        run: python manage.py migrate --noinput
+
+      - name: Ensure no unapplied migrations remain
+        run: python manage.py migrate --check
+
+      - name: Run Django checks
+        run: python manage.py check
