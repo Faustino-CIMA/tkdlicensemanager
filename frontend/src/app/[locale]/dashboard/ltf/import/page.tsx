@@ -64,6 +64,7 @@ export default function LtfImportPage() {
         { key: "address_line2", label: t("addressLine2Label") },
         { key: "postal_code", label: t("postalCodeLabel") },
         { key: "locality", label: t("localityLabel") },
+        { key: "iban", label: t("ibanLabel") },
       ],
       members: [
         { key: "first_name", label: t("firstNameLabel"), required: true },

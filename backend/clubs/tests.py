@@ -1,6 +1,7 @@
-from io import BytesIO
 import json
+from io import BytesIO
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -9,7 +10,7 @@ from accounts.models import User
 from licenses.models import License, LicenseType
 from members.models import Member
 
-from .models import Club, FederationProfile
+from .models import BrandingAsset, Club, FederationProfile
 
 
 class ClubApiTests(TestCase):
@@ -115,6 +116,95 @@ class ClubApiTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("postal_code", response.data)
 
+    def _logo_file(self, name: str = "logo.png") -> SimpleUploadedFile:
+        return SimpleUploadedFile(
+            name,
+            (
+                b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+                b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0bIDATx\x9cc``\x00\x00"
+                b"\x00\x03\x00\x01h&Y\r\x00\x00\x00\x00IEND\xaeB`\x82"
+            ),
+            content_type="image/png",
+        )
+
+    def test_ltf_admin_can_manage_club_logos(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        create_response = self.client.post(
+            f"/api/clubs/{self.club.id}/logos/",
+            {
+                "file": self._logo_file(),
+                "usage_type": "general",
+                "label": "Main logo",
+                "is_selected": True,
+            },
+            format="multipart",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        logo_id = create_response.data["id"]
+
+        list_response = self.client.get(f"/api/clubs/{self.club.id}/logos/")
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(list_response.data["logos"]), 1)
+
+        patch_response = self.client.patch(
+            f"/api/clubs/{self.club.id}/logos/{logo_id}/",
+            {"usage_type": "invoice", "is_selected": True},
+            format="json",
+        )
+        self.assertEqual(patch_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(patch_response.data["usage_type"], "invoice")
+
+        content_response = self.client.get(
+            f"/api/clubs/{self.club.id}/logos/{logo_id}/content/"
+        )
+        self.assertEqual(content_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(
+            str(content_response.get("Content-Type", "")).startswith("image/")
+        )
+
+        delete_response = self.client.delete(
+            f"/api/clubs/{self.club.id}/logos/{logo_id}/"
+        )
+        self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_non_ltf_admin_cannot_modify_club_logos(self):
+        self.client.force_authenticate(user=self.club_admin)
+        create_response = self.client.post(
+            f"/api/clubs/{self.club.id}/logos/",
+            {
+                "file": self._logo_file(),
+                "usage_type": "general",
+            },
+            format="multipart",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_update_club_iban_sets_bank_name(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.patch(
+            f"/api/clubs/{self.club.id}/",
+            {
+                "iban": "LU28 0019 4006 4475 0000",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.club.refresh_from_db()
+        self.assertEqual(self.club.iban, "LU280019400644750000")
+        self.assertEqual(self.club.bank_name, "POST Luxembourg")
+
+    def test_update_club_rejects_invalid_iban(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.patch(
+            f"/api/clubs/{self.club.id}/",
+            {
+                "iban": "NOT_VALID",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("iban", response.data)
+
 
 class ClubImportTests(TestCase):
     def setUp(self):
@@ -162,8 +252,8 @@ class ClubImportTests(TestCase):
     def test_confirm_creates_clubs_with_structured_address_columns(self):
         self.client.force_authenticate(user=self.ltf_admin)
         csv_data = (
-            "name,address_line1,address_line2,postal_code,locality\n"
-            "Club C,14 Rue de Test,Hall B,2345,Esch\n"
+            "name,address_line1,address_line2,postal_code,locality,iban\n"
+            "Club C,14 Rue de Test,Hall B,2345,Esch,LU280019400644750000\n"
         )
         file_obj = BytesIO(csv_data.encode("utf-8"))
         file_obj.name = "clubs_structured.csv"
@@ -173,6 +263,7 @@ class ClubImportTests(TestCase):
             "address_line2": "address_line2",
             "postal_code": "postal_code",
             "locality": "locality",
+            "iban": "iban",
         }
         response = self.client.post(
             "/api/imports/clubs/confirm/",
@@ -185,6 +276,8 @@ class ClubImportTests(TestCase):
         self.assertEqual(created.address_line2, "Hall B")
         self.assertEqual(created.postal_code, "2345")
         self.assertEqual(created.locality, "Esch")
+        self.assertEqual(created.iban, "LU280019400644750000")
+        self.assertEqual(created.bank_name, "POST Luxembourg")
 
 
 class ClubAdminManagementTests(TestCase):
@@ -330,7 +423,253 @@ class FederationProfileApiTests(TestCase):
         self.assertEqual(profile.name, "LTF Federation")
         self.assertEqual(profile.postal_code, "1111")
 
+    def test_ltf_admin_patch_iban_sets_bank_name(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.patch(
+            "/api/federation-profile/",
+            {"iban": "LU28 0019 4006 4475 0000"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        profile = FederationProfile.objects.get(pk=1)
+        self.assertEqual(profile.iban, "LU280019400644750000")
+        self.assertEqual(profile.bank_name, "POST Luxembourg")
+
+    def test_ltf_admin_patch_rejects_invalid_iban(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.patch(
+            "/api/federation-profile/",
+            {"iban": "BAD_IBAN"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("iban", response.data)
+
     def test_club_admin_cannot_read_federation_profile(self):
         self.client.force_authenticate(user=self.club_admin)
         response = self.client.get("/api/federation-profile/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def _logo_file(self, name: str = "federation-logo.png") -> SimpleUploadedFile:
+        return SimpleUploadedFile(
+            name,
+            (
+                b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+                b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0bIDATx\x9cc``\x00\x00"
+                b"\x00\x03\x00\x01h&Y\r\x00\x00\x00\x00IEND\xaeB`\x82"
+            ),
+            content_type="image/png",
+        )
+
+    def test_ltf_admin_can_patch_federation_iban_and_derives_bank_name(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.patch(
+            "/api/federation-profile/",
+            {
+                "iban": "LU280019400644750000",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["bank_name"], "POST Luxembourg")
+
+    def test_ltf_admin_patch_federation_rejects_invalid_iban(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.patch(
+            "/api/federation-profile/",
+            {"iban": "LU000000000000000000"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("iban", response.data)
+
+    def test_ltf_admin_can_manage_federation_logos(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        create_response = self.client.post(
+            "/api/federation-profile/logos/",
+            {
+                "file": self._logo_file(),
+                "usage_type": "invoice",
+                "label": "Invoice logo",
+                "is_selected": True,
+            },
+            format="multipart",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        logo_id = create_response.data["id"]
+
+        list_response = self.client.get("/api/federation-profile/logos/")
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(list_response.data["logos"]), 1)
+
+        patch_response = self.client.patch(
+            f"/api/federation-profile/logos/{logo_id}/",
+            {"label": "Invoice logo v2", "is_selected": True},
+            format="json",
+        )
+        self.assertEqual(patch_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(patch_response.data["label"], "Invoice logo v2")
+
+        content_response = self.client.get(
+            f"/api/federation-profile/logos/{logo_id}/content/"
+        )
+        self.assertEqual(content_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(
+            str(content_response.get("Content-Type", "")).startswith("image/")
+        )
+
+        delete_response = self.client.delete(
+            f"/api/federation-profile/logos/{logo_id}/"
+        )
+        self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_ltf_finance_can_read_but_cannot_modify_federation_logos(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        create_response = self.client.post(
+            "/api/federation-profile/logos/",
+            {
+                "file": self._logo_file(),
+                "usage_type": "general",
+            },
+            format="multipart",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+
+        self.client.force_authenticate(user=self.ltf_finance)
+        list_response = self.client.get("/api/federation-profile/logos/")
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        logo_id = list_response.data["logos"][0]["id"]
+
+        patch_response = self.client.patch(
+            f"/api/federation-profile/logos/{logo_id}/",
+            {"is_selected": True},
+            format="json",
+        )
+        self.assertEqual(patch_response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class BrandingAssetApiTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.ltf_admin = User.objects.create_user(
+            username="brand-ltf-admin",
+            password="pass12345",
+            role=User.Roles.LTF_ADMIN,
+        )
+        self.ltf_finance = User.objects.create_user(
+            username="brand-ltf-finance",
+            password="pass12345",
+            role=User.Roles.LTF_FINANCE,
+        )
+        self.club_admin = User.objects.create_user(
+            username="brand-club-admin",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+        )
+        self.club = Club.objects.create(
+            name="Brand Club",
+            city="Luxembourg",
+            address="1 Brand Street",
+            created_by=self.ltf_admin,
+        )
+        self.club.admins.add(self.club_admin)
+
+    def _make_logo(self, name: str = "logo.png") -> SimpleUploadedFile:
+        return SimpleUploadedFile(name, b"fake-image-bytes", content_type="image/png")
+
+    def test_ltf_admin_can_upload_and_select_club_logos(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        first_response = self.client.post(
+            f"/api/clubs/{self.club.id}/logos/",
+            {"file": self._make_logo("first.png"), "usage_type": "invoice"},
+            format="multipart",
+        )
+        self.assertEqual(first_response.status_code, status.HTTP_201_CREATED)
+        first_logo_id = first_response.data["id"]
+        self.assertTrue(first_response.data["is_selected"])
+
+        second_response = self.client.post(
+            f"/api/clubs/{self.club.id}/logos/",
+            {
+                "file": self._make_logo("second.png"),
+                "usage_type": "invoice",
+                "is_selected": True,
+            },
+            format="multipart",
+        )
+        self.assertEqual(second_response.status_code, status.HTTP_201_CREATED)
+        second_logo_id = second_response.data["id"]
+
+        first_logo = BrandingAsset.objects.get(id=first_logo_id)
+        second_logo = BrandingAsset.objects.get(id=second_logo_id)
+        self.assertFalse(first_logo.is_selected)
+        self.assertTrue(second_logo.is_selected)
+
+        list_response = self.client.get(f"/api/clubs/{self.club.id}/logos/")
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(list_response.data["logos"]), 2)
+
+        content_response = self.client.get(
+            f"/api/clubs/{self.club.id}/logos/{second_logo_id}/content/"
+        )
+        self.assertEqual(content_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(
+            str(content_response.get("Content-Type", "")).startswith("image/")
+        )
+
+    def test_non_ltf_admin_cannot_modify_club_logos(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            f"/api/clubs/{self.club.id}/logos/",
+            {"file": self._make_logo()},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_ltf_admin_can_manage_federation_logos(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        create_response = self.client.post(
+            "/api/federation-profile/logos/",
+            {"file": self._make_logo("fed.png"), "usage_type": "general"},
+            format="multipart",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        logo_id = create_response.data["id"]
+
+        patch_response = self.client.patch(
+            f"/api/federation-profile/logos/{logo_id}/",
+            {"is_selected": True, "label": "Primary federation logo"},
+            format="json",
+        )
+        self.assertEqual(patch_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(patch_response.data["is_selected"])
+        self.assertEqual(patch_response.data["label"], "Primary federation logo")
+
+        list_response = self.client.get("/api/federation-profile/logos/")
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(list_response.data["logos"]), 1)
+
+        content_response = self.client.get(
+            f"/api/federation-profile/logos/{logo_id}/content/"
+        )
+        self.assertEqual(content_response.status_code, status.HTTP_200_OK)
+
+        delete_response = self.client.delete(f"/api/federation-profile/logos/{logo_id}/")
+        self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_ltf_finance_can_read_but_not_modify_federation_logos(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        self.client.post(
+            "/api/federation-profile/logos/",
+            {"file": self._make_logo("fed.png"), "usage_type": "general"},
+            format="multipart",
+        )
+        self.client.force_authenticate(user=self.ltf_finance)
+        get_response = self.client.get("/api/federation-profile/logos/")
+        self.assertEqual(get_response.status_code, status.HTTP_200_OK)
+        post_response = self.client.post(
+            "/api/federation-profile/logos/",
+            {"file": self._make_logo("forbidden.png")},
+            format="multipart",
+        )
+        self.assertEqual(post_response.status_code, status.HTTP_403_FORBIDDEN)

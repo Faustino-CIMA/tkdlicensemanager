@@ -8,6 +8,7 @@ from rest_framework import permissions, response, status, views
 from rest_framework.parsers import MultiPartParser
 
 from accounts.permissions import IsClubAdmin, IsLtfAdmin, IsLtfAdminOrClubAdmin
+from clubs.banking import derive_bank_name_from_iban, is_valid_iban, normalize_iban
 from clubs.models import Club
 from members.models import Member
 
@@ -112,15 +113,21 @@ def parse_club_address_fields(row_data, mapping, errors):
         or row_data.get(mapping.get("city", ""), "").strip()
     )
     postal_code = row_data.get(mapping.get("postal_code", ""), "").strip()
+    iban_raw = row_data.get(mapping.get("iban", ""), "").strip()
+    iban = normalize_iban(iban_raw)
 
     if postal_code and not re.fullmatch(r"\d{4}", postal_code):
         errors.append("postal_code must be 4 digits for Luxembourg")
+    if iban and not is_valid_iban(iban):
+        errors.append("iban must be a valid IBAN")
 
     return {
         "address_line1": address_line1,
         "address_line2": address_line2,
         "postal_code": postal_code,
         "locality": locality,
+        "iban": iban,
+        "bank_name": derive_bank_name_from_iban(iban),
     }
 
 
@@ -207,6 +214,8 @@ class ClubImportPreviewView(views.APIView):
                         "address_line2": address_fields["address_line2"],
                         "postal_code": address_fields["postal_code"],
                         "locality": address_fields["locality"],
+                        "iban": address_fields["iban"],
+                        "bank_name": address_fields["bank_name"],
                         # Legacy aliases for backward-compatible previews.
                         "city": address_fields["locality"],
                         "address": address_fields["address_line1"],
@@ -281,6 +290,8 @@ class ClubImportConfirmView(views.APIView):
                     address_line2=address_fields["address_line2"],
                     postal_code=address_fields["postal_code"],
                     locality=address_fields["locality"],
+                    iban=address_fields["iban"],
+                    bank_name=address_fields["bank_name"],
                     created_by=request.user,
                 )
                 created += 1

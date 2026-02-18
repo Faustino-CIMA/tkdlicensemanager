@@ -11,6 +11,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { deriveBankNameFromIban, isValidIban } from "@/lib/iban";
 import { createClub } from "@/lib/ltf-admin-api";
 
 const clubSchema = z.object({
@@ -19,6 +20,10 @@ const clubSchema = z.object({
   address_line2: z.string().optional(),
   postal_code: z.string().optional(),
   locality: z.string().optional(),
+  iban: z
+    .string()
+    .optional()
+    .refine((value) => !value || isValidIban(value), "Enter a valid IBAN."),
 });
 
 type ClubFormValues = z.infer<typeof clubSchema>;
@@ -33,6 +38,7 @@ export default function LtfAdminCreateClubPage() {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<ClubFormValues>({
     resolver: zodResolver(clubSchema),
@@ -42,8 +48,11 @@ export default function LtfAdminCreateClubPage() {
       address_line2: "",
       postal_code: "",
       locality: "",
+      iban: "",
     },
   });
+  const watchedIban = watch("iban");
+  const derivedBankName = deriveBankNameFromIban(watchedIban);
 
   const onSubmit = async (values: ClubFormValues) => {
     setErrorMessage(null);
@@ -51,6 +60,7 @@ export default function LtfAdminCreateClubPage() {
       ...values,
       address: values.address_line1 ?? "",
       city: values.locality ?? "",
+      iban: values.iban ?? "",
     };
     try {
       await createClub(payload);
@@ -95,6 +105,17 @@ export default function LtfAdminCreateClubPage() {
             <div className="space-y-2">
               <label className="text-sm font-medium text-zinc-700">{t("localityLabel")}</label>
               <Input placeholder="Luxembourg" {...register("locality")} />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-zinc-700">{t("ibanLabel")}</label>
+              <Input placeholder="LU28 0019 4006 4475 0000" {...register("iban")} />
+              {errors.iban ? <p className="text-sm text-red-600">{errors.iban.message}</p> : null}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-zinc-700">{t("bankNameLabel")}</label>
+              <Input value={derivedBankName || "-"} readOnly />
             </div>
 
             <div className="flex items-center gap-3 md:col-span-2">

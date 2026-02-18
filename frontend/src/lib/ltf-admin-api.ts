@@ -10,6 +10,8 @@ export type Club = {
   address_line2: string;
   postal_code: string;
   locality: string;
+  iban: string;
+  bank_name: string;
   max_admins: number;
   created_by: number;
   admins: number[];
@@ -130,6 +132,7 @@ export type ClubInput = {
   address_line2?: string;
   postal_code?: string;
   locality?: string;
+  iban?: string;
 };
 
 export type MemberInput = {
@@ -163,8 +166,39 @@ export type FederationProfile = {
   address_line2: string;
   postal_code: string;
   locality: string;
+  iban: string;
+  bank_name: string;
   created_at: string;
   updated_at: string;
+};
+
+export type LogoUsageType = "general" | "invoice" | "print" | "digital";
+
+export type BrandingLogo = {
+  id: number;
+  scope_type: "club" | "federation";
+  asset_type: "logo" | "document";
+  usage_type: LogoUsageType;
+  label: string;
+  is_selected: boolean;
+  file_name: string;
+  file_size: number;
+  content_url: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BrandingLogoUploadInput = {
+  file: File;
+  usage_type?: LogoUsageType;
+  label?: string;
+  is_selected?: boolean;
+};
+
+export type BrandingLogoUpdateInput = {
+  usage_type?: LogoUsageType;
+  label?: string;
+  is_selected?: boolean;
 };
 
 export type LicenseInput = {
@@ -257,6 +291,69 @@ export function updateFederationProfile(input: Partial<FederationProfile>) {
   return apiRequest<FederationProfile>("/api/federation-profile/", {
     method: "PATCH",
     body: JSON.stringify(input),
+  });
+}
+
+function buildLogoFormData(input: BrandingLogoUploadInput): FormData {
+  const formData = new FormData();
+  formData.append("file", input.file);
+  if (input.usage_type) {
+    formData.append("usage_type", input.usage_type);
+  }
+  if (input.label) {
+    formData.append("label", input.label);
+  }
+  if (typeof input.is_selected === "boolean") {
+    formData.append("is_selected", String(input.is_selected));
+  }
+  return formData;
+}
+
+export function getClubLogos(clubId: number) {
+  return apiRequest<{ logos: BrandingLogo[] }>(`/api/clubs/${clubId}/logos/`);
+}
+
+export function uploadClubLogo(clubId: number, input: BrandingLogoUploadInput) {
+  return apiRequest<BrandingLogo>(`/api/clubs/${clubId}/logos/`, {
+    method: "POST",
+    body: buildLogoFormData(input),
+  });
+}
+
+export function updateClubLogo(clubId: number, logoId: number, input: BrandingLogoUpdateInput) {
+  return apiRequest<BrandingLogo>(`/api/clubs/${clubId}/logos/${logoId}/`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteClubLogo(clubId: number, logoId: number) {
+  return apiRequest<void>(`/api/clubs/${clubId}/logos/${logoId}/`, {
+    method: "DELETE",
+  });
+}
+
+export function getFederationLogos() {
+  return apiRequest<{ logos: BrandingLogo[] }>("/api/federation-profile/logos/");
+}
+
+export function uploadFederationLogo(input: BrandingLogoUploadInput) {
+  return apiRequest<BrandingLogo>("/api/federation-profile/logos/", {
+    method: "POST",
+    body: buildLogoFormData(input),
+  });
+}
+
+export function updateFederationLogo(logoId: number, input: BrandingLogoUpdateInput) {
+  return apiRequest<BrandingLogo>(`/api/federation-profile/logos/${logoId}/`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteFederationLogo(logoId: number) {
+  return apiRequest<void>(`/api/federation-profile/logos/${logoId}/`, {
+    method: "DELETE",
   });
 }
 

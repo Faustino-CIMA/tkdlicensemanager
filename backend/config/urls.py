@@ -26,7 +26,13 @@ from imports.views import (
     MemberImportConfirmView,
     MemberImportPreviewView,
 )
-from clubs.views import ClubViewSet, FederationProfileView
+from clubs.views import (
+    ClubViewSet,
+    FederationProfileLogoContentView,
+    FederationProfileLogoDetailView,
+    FederationProfileLogoListView,
+    FederationProfileView,
+)
 from licenses.views import (
     ClubInvoiceViewSet,
     ClubOrderViewSet,
@@ -97,6 +103,21 @@ urlpatterns = [
     path("api/imports/members/preview/", MemberImportPreviewView.as_view(), name="import-members-preview"),
     path("api/imports/members/confirm/", MemberImportConfirmView.as_view(), name="import-members-confirm"),
     path("api/federation-profile/", FederationProfileView.as_view(), name="federation-profile"),
+    path(
+        "api/federation-profile/logos/",
+        FederationProfileLogoListView.as_view(),
+        name="federation-profile-logos",
+    ),
+    path(
+        "api/federation-profile/logos/<int:logo_id>/",
+        FederationProfileLogoDetailView.as_view(),
+        name="federation-profile-logo-detail",
+    ),
+    path(
+        "api/federation-profile/logos/<int:logo_id>/content/",
+        FederationProfileLogoContentView.as_view(),
+        name="federation-profile-logo-content",
+    ),
     path("api/health/", health_check, name="health-check"),
     path("api/dashboard/overview/ltf-admin/", LtfAdminOverviewView.as_view(), name="overview-ltf-admin"),
     path(
