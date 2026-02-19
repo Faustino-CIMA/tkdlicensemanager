@@ -102,7 +102,7 @@ export default function LtfFinanceOrderDetailPage() {
     if (!order) {
       return [];
     }
-    return order.items.map((item) => ({
+    return (order.items ?? []).map((item) => ({
       id: item.id,
       memberName: item.license.member
         ? `${memberById[item.license.member]?.first_name ?? ""} ${
@@ -122,7 +122,7 @@ export default function LtfFinanceOrderDetailPage() {
     if (!order) {
       return 0;
     }
-    return order.items.reduce((sum, item) => sum + item.quantity, 0);
+    return (order.items ?? []).reduce((sum, item) => sum + item.quantity, 0);
   }, [order]);
 
   const columns = [

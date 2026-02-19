@@ -15,8 +15,8 @@ import {
   Member,
   deleteLicense,
   getClubs,
-  getLicenses,
-  getMembers,
+  getLicensesList,
+  getMembersList,
 } from "@/lib/ltf-admin-api";
 
 const BATCH_DELETE_STORAGE_KEY = "ltf_licenses_batch_delete_ids";
@@ -25,6 +25,15 @@ type DeleteResult = {
   deleted: number;
   failed: number;
   failedItems: string[];
+};
+
+type PreviewRow = {
+  id: number;
+  memberLabel: string;
+  clubLabel: string;
+  yearLabel: string;
+  statusLabel: string;
+  statusTone: "success" | "danger" | "warning";
 };
 
 function parseSelectedIds(): number[] {
@@ -77,7 +86,7 @@ export default function LtfLicenseBatchDeletePage() {
     [selectedLicenses]
   );
 
-  const previewRows = useMemo(
+  const previewRows = useMemo<PreviewRow[]>(
     () =>
       selectedLicenses.map((license) => {
         const member = memberById.get(license.member);
@@ -116,9 +125,10 @@ export default function LtfLicenseBatchDeletePage() {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const [licensesResponse, membersResponse, clubsResponse] = await Promise.all([
-        getLicenses(),
-        getMembers(),
+      const licensesResponse = await getLicensesList({ ids: selectedIds });
+      const memberIds = Array.from(new Set(licensesResponse.map((license) => license.member)));
+      const [membersResponse, clubsResponse] = await Promise.all([
+        memberIds.length > 0 ? getMembersList({ ids: memberIds }) : Promise.resolve<Member[]>([]),
         getClubs(),
       ]);
       setLicenses(licensesResponse);
@@ -271,7 +281,7 @@ export default function LtfLicenseBatchDeletePage() {
                 {
                   key: "statusLabel",
                   header: t("statusLabel"),
-                  render: (row: (typeof previewRows)[number]) => (
+                  render: (row: PreviewRow) => (
                     <StatusBadge label={row.statusLabel} tone={row.statusTone} />
                   ),
                 },

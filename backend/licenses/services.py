@@ -25,7 +25,10 @@ def apply_payment_and_activate(
     updated_invoice = False
     activated_any = False
     order_status_before = order.status
-    invoice_snapshot = Invoice.objects.filter(order=order).first()
+    try:
+        invoice_snapshot = order.invoice
+    except Invoice.DoesNotExist:
+        invoice_snapshot = None
     invoice_status_before = invoice_snapshot.status if invoice_snapshot else None
     license_status_before = {}
     activated_licenses = []
@@ -56,7 +59,7 @@ def apply_payment_and_activate(
             order.save(update_fields=order_update_fields)
             updated_order = True
 
-        invoice = invoice_snapshot or Invoice.objects.filter(order=order).first()
+        invoice = invoice_snapshot
         if invoice:
             invoice_update_fields = []
             stripe_invoice_id = stripe_data.get("stripe_invoice_id")
@@ -80,7 +83,32 @@ def apply_payment_and_activate(
                 updated_invoice = True
 
         activated_license_ids = []
-        for item in order.items.select_related("license").all():
+        prefetched_cache = getattr(order, "_prefetched_objects_cache", {})
+        order_items_queryset = order.items.all()
+        if "items" not in prefetched_cache:
+            order_items_queryset = order_items_queryset.select_related("license")
+        order_items = list(order_items_queryset)
+        candidate_licenses = [
+            item.license
+            for item in order_items
+            if item.license.status != License.Status.ACTIVE
+        ]
+        candidate_license_ids = [license.id for license in candidate_licenses]
+        candidate_member_ids = {license.member_id for license in candidate_licenses}
+        member_ids_with_other_active_license = (
+            set(
+                License.objects.filter(
+                    member_id__in=candidate_member_ids,
+                    status=License.Status.ACTIVE,
+                )
+                .exclude(id__in=candidate_license_ids)
+                .values_list("member_id", flat=True)
+            )
+            if candidate_member_ids
+            else set()
+        )
+
+        for item in order_items:
             license_record = item.license
             license_status_before[license_record.id] = license_record.status
             if license_record.status != License.Status.ACTIVE:
@@ -90,11 +118,7 @@ def apply_payment_and_activate(
                 if license_record.end_date < today:
                     outside_validity_license_ids.append(license_record.id)
                     continue
-                has_conflict = License.objects.filter(
-                    member=license_record.member,
-                    status=License.Status.ACTIVE,
-                ).exclude(id=license_record.id).exists()
-                if has_conflict:
+                if license_record.member_id in member_ids_with_other_active_license:
                     conflict_license_ids.append(license_record.id)
                     continue
                 license_record.status = License.Status.ACTIVE
@@ -103,10 +127,12 @@ def apply_payment_and_activate(
                     license_record.save(update_fields=["status", "issued_at", "updated_at"])
                 except IntegrityError:
                     conflict_license_ids.append(license_record.id)
+                    member_ids_with_other_active_license.add(license_record.member_id)
                     continue
                 activated_any = True
                 activated_license_ids.append(license_record.id)
                 activated_licenses.append((license_record, license_status_before[license_record.id]))
+                member_ids_with_other_active_license.add(license_record.member_id)
 
         created_payment = None
 

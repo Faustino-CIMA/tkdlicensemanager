@@ -12,7 +12,7 @@ import { useClubSelection } from "@/components/club-selection-provider";
 import {
   Member,
   getClubs,
-  getMembers,
+  getMembersPage,
   updateMember,
 } from "@/lib/club-admin-api";
 import { apiRequest } from "@/lib/api";
@@ -42,10 +42,12 @@ export default function ClubAdminMembersPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const lastSelectedMemberIdRef = useRef<number | null>(null);
+  const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"active" | "inactive" | "all">("active");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("25");
+  const [totalCount, setTotalCount] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [selectionHydrated, setSelectionHydrated] = useState(false);
@@ -53,14 +55,25 @@ export default function ClubAdminMembersPage() {
   const [statusUpdatingIds, setStatusUpdatingIds] = useState<number[]>([]);
   const [currentRole, setCurrentRole] = useState<string | null>(null);
 
-  const pageSizeOptions = ["10", "25", "50", "100", "150", "200", "all"];
+  const pageSizeOptions = ["10", "25", "50", "100", "150", "200"];
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const [clubsResponse, membersResponse] = await Promise.all([getClubs(), getMembers()]);
-      setMembers(membersResponse);
+      const [clubsResponse, membersResponse] = await Promise.all([
+        getClubs(),
+        getMembersPage({
+          page: currentPage,
+          pageSize: Number(pageSize),
+          q: searchQuery || undefined,
+          clubId: selectedClubId ?? undefined,
+          isActive:
+            statusFilter === "all" ? undefined : statusFilter === "active",
+        }),
+      ]);
+      setMembers(membersResponse.results);
+      setTotalCount(membersResponse.count);
       if (clubsResponse.length > 0 && !selectedClubId) {
         const firstClubId = clubsResponse[0].id;
         setSelectedClubId(firstClubId);
@@ -70,11 +83,20 @@ export default function ClubAdminMembersPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedClubId, setSelectedClubId]);
+  }, [currentPage, pageSize, searchQuery, selectedClubId, setSelectedClubId, statusFilter]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setSearchQuery(searchInput.trim());
+    }, 250);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [searchInput]);
 
   useEffect(() => {
     let isMounted = true;
@@ -98,12 +120,6 @@ export default function ClubAdminMembersPage() {
 
   const canManageMembers = currentRole === "club_admin";
 
-  const filteredMembers = useMemo(() => {
-    if (!selectedClubId) {
-      return members;
-    }
-    return members.filter((member) => member.club === selectedClubId);
-  }, [members, selectedClubId]);
   const selectedIdsStorageKey = useMemo(
     () => `club_members_selected_ids:${selectedClubId ?? "all"}`,
     [selectedClubId]
@@ -113,43 +129,20 @@ export default function ClubAdminMembersPage() {
     [selectedClubId]
   );
 
-  const searchedMembers = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return filteredMembers;
-    }
-    return filteredMembers.filter((member) => {
-      const fullName = `${member.first_name} ${member.last_name}`.toLowerCase();
-      return fullName.includes(normalizedQuery);
-    });
-  }, [filteredMembers, searchQuery]);
-  const statusFilteredMembers = useMemo(() => {
-    if (statusFilter === "all") {
-      return searchedMembers;
-    }
-    const showActive = statusFilter === "active";
-    return searchedMembers.filter((member) => member.is_active === showActive);
-  }, [searchedMembers, statusFilter]);
   const statusCounts = useMemo(() => {
-    const activeCount = searchedMembers.filter((member) => member.is_active).length;
+    const activeCount = members.filter((member) => member.is_active).length;
     return {
-      all: searchedMembers.length,
+      all: totalCount,
       active: activeCount,
-      inactive: searchedMembers.length - activeCount,
+      inactive: members.length - activeCount,
     };
-  }, [searchedMembers]);
+  }, [members, totalCount]);
   const statusUpdatingSet = useMemo(
     () => new Set(statusUpdatingIds),
     [statusUpdatingIds]
   );
 
-  const resolvedPageSize =
-    pageSize === "all" ? Math.max(statusFilteredMembers.length, 1) : Number(pageSize);
-  const totalPages = Math.max(1, Math.ceil(statusFilteredMembers.length / resolvedPageSize));
-  const pagedMembers = useMemo(() => {
-    const startIndex = (currentPage - 1) * resolvedPageSize;
-    return statusFilteredMembers.slice(startIndex, startIndex + resolvedPageSize);
-  }, [currentPage, resolvedPageSize, statusFilteredMembers]);
+  const totalPages = Math.max(1, Math.ceil(totalCount / Number(pageSize)));
 
   useEffect(() => {
     setCurrentPage(1);
@@ -227,7 +220,7 @@ export default function ClubAdminMembersPage() {
     if (isLoading) {
       return;
     }
-    const validIds = new Set(filteredMembers.map((member) => member.id));
+    const validIds = new Set(members.map((member) => member.id));
     setSelectedIds((previous) => {
       const next = previous.filter((id) => validIds.has(id));
       if (next.length !== previous.length) {
@@ -235,11 +228,11 @@ export default function ClubAdminMembersPage() {
       }
       return next.length === previous.length ? previous : next;
     });
-  }, [filteredMembers, isLoading]);
+  }, [members, isLoading]);
 
   const allFilteredIds = useMemo(
-    () => statusFilteredMembers.map((member) => member.id),
-    [statusFilteredMembers]
+    () => members.map((member) => member.id),
+    [members]
   );
   const selectedVisibleCount = useMemo(
     () => allFilteredIds.filter((id) => selectedIds.includes(id)).length,
@@ -282,7 +275,7 @@ export default function ClubAdminMembersPage() {
       let appliedRangeSelection = false;
 
       if (hasRangeModifier && lastSelectedMemberIdRef.current !== null) {
-        const orderedIds = statusFilteredMembers.map((member) => member.id);
+        const orderedIds = members.map((member) => member.id);
         const anchorIndex = orderedIds.indexOf(lastSelectedMemberIdRef.current);
         const targetIndex = orderedIds.indexOf(id);
         if (anchorIndex !== -1 && targetIndex !== -1) {
@@ -406,8 +399,8 @@ export default function ClubAdminMembersPage() {
             <Input
               className="w-full max-w-xs"
               placeholder={t("searchMembersPlaceholder")}
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
             />
             <Select value={pageSize} onValueChange={setPageSize}>
               <SelectTrigger className="w-[150px]">
@@ -528,7 +521,7 @@ export default function ClubAdminMembersPage() {
 
         {isLoading ? (
           <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
-        ) : statusFilteredMembers.length === 0 ? (
+        ) : members.length === 0 ? (
           <EmptyState title={t("noResultsTitle")} description={t("noMembersResultsSubtitle")} />
         ) : (
           <EntityTable
@@ -650,7 +643,7 @@ export default function ClubAdminMembersPage() {
                 ),
               },
             ]}
-            rows={pagedMembers}
+            rows={members}
             onRowClick={(member) => router.push(`/${locale}/dashboard/club/members/${member.id}`)}
           />
         )}

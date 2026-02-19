@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 
 import { EmptyState } from "@/components/club-admin/empty-state";
@@ -15,7 +15,7 @@ import {
   getLtfFinanceOverview,
 } from "@/lib/ltf-finance-api";
 
-const AUTO_REFRESH_INTERVAL_MS = 10000;
+const AUTO_REFRESH_INTERVAL_MS = 30000;
 
 function getSeverityClasses(severity: "info" | "warning" | "critical") {
   if (severity === "critical") {
@@ -35,10 +35,18 @@ export default function LtfFinanceDashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefreshAt, setLastRefreshAt] = useState<string | null>(null);
+  const isRequestInFlightRef = useRef(false);
+  const requestAbortRef = useRef<AbortController | null>(null);
 
   const loadOverview = useCallback(
     async (options?: { mode?: "initial" | "manual" | "background" }) => {
       const mode = options?.mode ?? "initial";
+      if (isRequestInFlightRef.current) {
+        return;
+      }
+      const controller = new AbortController();
+      isRequestInFlightRef.current = true;
+      requestAbortRef.current = controller;
       if (mode === "manual") {
         setIsRefreshing(true);
       } else if (mode === "initial") {
@@ -48,14 +56,21 @@ export default function LtfFinanceDashboardPage() {
         setErrorMessage(null);
       }
       try {
-        const response = await getLtfFinanceOverview();
+        const response = await getLtfFinanceOverview({ signal: controller.signal });
         setOverview(response);
         setLastRefreshAt(response.meta.generated_at || new Date().toISOString());
       } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
         if (mode !== "background") {
           setErrorMessage(error instanceof Error ? error.message : t("overviewLoadError"));
         }
       } finally {
+        if (requestAbortRef.current === controller) {
+          requestAbortRef.current = null;
+        }
+        isRequestInFlightRef.current = false;
         if (mode === "manual") {
           setIsRefreshing(false);
         } else if (mode === "initial") {
@@ -69,6 +84,12 @@ export default function LtfFinanceDashboardPage() {
   useEffect(() => {
     void loadOverview({ mode: "initial" });
   }, [loadOverview]);
+
+  useEffect(() => {
+    return () => {
+      requestAbortRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {

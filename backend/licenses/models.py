@@ -83,6 +83,12 @@ class LicensePrice(models.Model):
 
     class Meta:
         ordering = ["-effective_from", "-created_at"]
+        indexes = [
+            models.Index(
+                fields=["license_type", "-effective_from", "-created_at"],
+                name="licprice_type_eff_created_idx",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.license_type.name}: {self.amount} {self.currency} ({self.effective_from})"
@@ -129,6 +135,15 @@ class License(models.Model):
     history = HistoricalRecords()
 
     class Meta:
+        indexes = [
+            models.Index(fields=["member", "year"], name="lic_member_year_idx"),
+            models.Index(fields=["club", "year", "status"], name="lic_club_year_st_idx"),
+            models.Index(fields=["status", "end_date"], name="lic_status_end_idx"),
+            models.Index(
+                fields=["member", "license_type", "year", "status"],
+                name="lic_m_ty_yr_st_idx",
+            ),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["member"],
@@ -251,6 +266,13 @@ class Order(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["status", "-updated_at"], name="ord_status_upd_idx"),
+            models.Index(fields=["club", "-created_at"], name="ord_club_created_idx"),
+            models.Index(fields=["member", "-created_at"], name="ord_member_created_idx"),
+        ]
+
     def __str__(self) -> str:
         return str(self.order_number)
 
@@ -302,6 +324,16 @@ class Invoice(models.Model):
     paid_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["status", "-issued_at"], name="inv_status_issued_idx"),
+            models.Index(
+                fields=["club", "status", "-issued_at"],
+                name="inv_club_status_iss_idx",
+            ),
+            models.Index(fields=["-paid_at"], name="inv_paid_at_idx"),
+        ]
 
     def __str__(self) -> str:
         return str(self.invoice_number)
@@ -364,6 +396,15 @@ class Payment(models.Model):
 
     class Meta:
         ordering = ["-paid_at", "-created_at"]
+        indexes = [
+            models.Index(fields=["status", "-created_at"], name="pay_status_created_idx"),
+            models.Index(fields=["invoice", "-created_at"], name="pay_invoice_created_idx"),
+            models.Index(fields=["order", "-created_at"], name="pay_order_created_idx"),
+            models.Index(
+                fields=["provider", "status", "-created_at"],
+                name="pay_provider_status_idx",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.invoice} - {self.amount} {self.currency}"
@@ -396,6 +437,15 @@ class FinanceAuditLog(models.Model):
         Invoice, on_delete=models.SET_NULL, null=True, blank=True, related_name="audit_logs"
     )
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["-created_at"], name="finlog_created_idx"),
+            models.Index(
+                fields=["action", "-created_at"],
+                name="finlog_action_created_idx",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.action} - {self.created_at:%Y-%m-%d}"

@@ -50,8 +50,8 @@ export function ClubSelectionProvider({ children }: { children: React.ReactNode 
       try {
         const response = await getClubs();
         setClubs(response);
-        if (!selectedClubId && response.length > 0) {
-          setSelectedClubId(response[0].id);
+        if (response.length > 0) {
+          setSelectedClubId((previous) => previous ?? response[0].id);
         }
       } catch {
         setClubs([]);
@@ -60,7 +60,7 @@ export function ClubSelectionProvider({ children }: { children: React.ReactNode 
       }
     };
     loadClubs();
-  }, [isDashboardRoute, selectedClubId]);
+  }, [isDashboardRoute]);
 
   useEffect(() => {
     if (typeof window === "undefined") {

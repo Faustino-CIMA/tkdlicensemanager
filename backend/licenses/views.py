@@ -1,10 +1,12 @@
 from collections import defaultdict
-from datetime import timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.cache import cache
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Exists, OuterRef, Q, Sum
+from django.db.models.functions import Coalesce
 from django.db.models.deletion import ProtectedError
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
@@ -23,6 +25,7 @@ from accounts.permissions import (
     IsLtfFinance,
     IsLtfFinanceOrLtfAdmin,
 )
+from config.pagination import OptionalPaginationListMixin
 
 from clubs.models import Club
 from members.models import Member
@@ -46,6 +49,7 @@ from .serializers import (
     CheckoutSessionRequestSerializer,
     ConfirmPaymentSerializer,
     FinanceAuditLogSerializer,
+    InvoiceListSerializer,
     InvoiceSerializer,
     LicensePriceSerializer,
     LicenseSerializer,
@@ -53,13 +57,14 @@ from .serializers import (
     LicenseTypeSerializer,
     ClubOrderBatchSerializer,
     OrderCreateSerializer,
+    OrderListSerializer,
     OrderSerializer,
     PaymentSerializer,
     PayconiqCreateSerializer,
     PayconiqPaymentSerializer,
 )
 from .pdf_utils import render_invoice_pdf
-from .policy import validate_member_license_order
+from .policy import get_or_create_license_type_policy, validate_member_license_order
 from .services import apply_payment_and_activate
 from .tasks import process_stripe_webhook_event
 from .payconiq import create_payment, get_status
@@ -140,7 +145,22 @@ def _map_payconiq_payment_status(payconiq_status: str | None) -> tuple[str, bool
     return Payment.Status.PENDING, False
 
 
-class LicenseViewSet(viewsets.ModelViewSet):
+def _parse_csv_ints(raw_value: str | None) -> list[int]:
+    if not raw_value:
+        return []
+    values: list[int] = []
+    for token in raw_value.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            values.append(int(token))
+        except ValueError:
+            continue
+    return values
+
+
+class LicenseViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
     serializer_class = LicenseSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -155,15 +175,71 @@ class LicenseViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if not user or not user.is_authenticated:
             return License.objects.none()
+
         if user.role == "ltf_admin":
-            return License.objects.select_related("member", "club", "license_type").all()
-        if user.role in ["club_admin", "coach"]:
-            return License.objects.select_related("member", "club", "license_type").filter(
+            queryset = License.objects.select_related("member", "club", "license_type").all()
+        elif user.role in ["club_admin", "coach"]:
+            queryset = License.objects.select_related("member", "club", "license_type").filter(
                 club__admins=user
             )
-        return License.objects.select_related("member", "club", "license_type").filter(
-            member__user=user
-        )
+        else:
+            queryset = License.objects.select_related("member", "club", "license_type").filter(
+                member__user=user
+            )
+
+        club_id = self.request.query_params.get("club_id")
+        if club_id:
+            queryset = queryset.filter(club_id=club_id)
+
+        member_id = self.request.query_params.get("member_id")
+        if member_id:
+            queryset = queryset.filter(member_id=member_id)
+
+        member_ids = _parse_csv_ints(self.request.query_params.get("member_ids"))
+        if member_ids:
+            queryset = queryset.filter(member_id__in=member_ids)
+        elif self.request.query_params.get("member_ids", "").strip():
+            queryset = queryset.none()
+
+        ids = _parse_csv_ints(self.request.query_params.get("ids"))
+        if ids:
+            queryset = queryset.filter(id__in=ids)
+        elif self.request.query_params.get("ids", "").strip():
+            queryset = queryset.none()
+
+        license_type_ids = _parse_csv_ints(self.request.query_params.get("license_type_ids"))
+        if license_type_ids:
+            queryset = queryset.filter(license_type_id__in=license_type_ids)
+        elif self.request.query_params.get("license_type_ids", "").strip():
+            queryset = queryset.none()
+
+        year_param = self.request.query_params.get("year")
+        if year_param:
+            try:
+                queryset = queryset.filter(year=int(year_param))
+            except (TypeError, ValueError):
+                queryset = queryset.none()
+
+        status_param = self.request.query_params.get("status")
+        if status_param:
+            statuses = [value.strip() for value in status_param.split(",") if value.strip()]
+            queryset = queryset.filter(status__in=statuses)
+
+        search_value = self.request.query_params.get("q", "").strip()
+        if search_value:
+            search_filter = (
+                Q(member__first_name__icontains=search_value)
+                | Q(member__last_name__icontains=search_value)
+                | Q(member__ltf_licenseid__icontains=search_value)
+                | Q(license_type__name__icontains=search_value)
+                | Q(license_type__code__icontains=search_value)
+                | Q(status__icontains=search_value)
+            )
+            if search_value.isdigit():
+                search_filter = search_filter | Q(year=int(search_value))
+            queryset = queryset.filter(search_filter)
+
+        return queryset.order_by("-year", "-created_at")
 
     def perform_create(self, serializer):
         license_record = serializer.save()
@@ -225,9 +301,18 @@ class LicenseTypeViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-class OrderViewSet(viewsets.ModelViewSet):
+class OrderViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
     serializer_class = OrderSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def _base_queryset(self):
+        queryset = (
+            Order.objects.select_related("club", "member", "invoice")
+            .annotate(item_quantity=Coalesce(Sum("items__quantity"), 0))
+        )
+        if self.action != "list":
+            queryset = queryset.prefetch_related("items__license")
+        return queryset
 
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
@@ -236,17 +321,45 @@ class OrderViewSet(viewsets.ModelViewSet):
         if not user or not user.is_authenticated:
             return Order.objects.none()
         if user.role == "ltf_finance":
-            return (
-                Order.objects.select_related("club", "member", "invoice")
-                .prefetch_related("items__license")
-                .all()
-            )
+            queryset = self._base_queryset()
+
+            club_id = self.request.query_params.get("club_id")
+            if club_id:
+                queryset = queryset.filter(club_id=club_id)
+
+            member_id = self.request.query_params.get("member_id")
+            if member_id:
+                queryset = queryset.filter(member_id=member_id)
+
+            status_param = self.request.query_params.get("status")
+            if status_param:
+                statuses = [value.strip() for value in status_param.split(",") if value.strip()]
+                queryset = queryset.filter(status__in=statuses)
+
+            year_param = self.request.query_params.get("year")
+            if year_param:
+                try:
+                    queryset = queryset.filter(created_at__year=int(year_param))
+                except (TypeError, ValueError):
+                    queryset = queryset.none()
+
+            ids = _parse_csv_ints(self.request.query_params.get("ids"))
+            if ids:
+                queryset = queryset.filter(id__in=ids)
+
+            search_value = self.request.query_params.get("q", "").strip()
+            if search_value:
+                queryset = queryset.filter(
+                    Q(order_number__icontains=search_value)
+                    | Q(club__name__icontains=search_value)
+                    | Q(member__first_name__icontains=search_value)
+                    | Q(member__last_name__icontains=search_value)
+                    | Q(currency__icontains=search_value)
+                )
+            return queryset.order_by("-created_at")
         if user.role == "ltf_admin" and self.action in ["confirm_payment", "activate_licenses"]:
-            return (
-                Order.objects.select_related("club", "member", "invoice")
-                .prefetch_related("items__license")
-                .all()
-            )
+            queryset = self._base_queryset()
+            return queryset.order_by("-created_at")
         return Order.objects.none()
 
     def get_permissions(self):
@@ -255,6 +368,8 @@ class OrderViewSet(viewsets.ModelViewSet):
         return [IsLtfFinance()]
 
     def get_serializer_class(self):
+        if self.action == "list":
+            return OrderListSerializer
         if self.action in ["create", "batch"]:
             return OrderCreateSerializer
         if self.action == "create_checkout_session":
@@ -498,7 +613,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         )
 
 
-class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
+class InvoiceViewSet(OptionalPaginationListMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = InvoiceSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -509,14 +624,60 @@ class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
         if not user or not user.is_authenticated:
             return Invoice.objects.none()
         if user.role == "ltf_finance":
-            return Invoice.objects.select_related("club", "member", "order").all()
+            queryset = (
+                Invoice.objects.select_related("club", "member", "order")
+                .annotate(item_quantity=Coalesce(Sum("order__items__quantity"), 0))
+                .all()
+            )
+
+            club_id = self.request.query_params.get("club_id")
+            if club_id:
+                queryset = queryset.filter(club_id=club_id)
+
+            member_id = self.request.query_params.get("member_id")
+            if member_id:
+                queryset = queryset.filter(member_id=member_id)
+
+            year_param = self.request.query_params.get("year")
+            if year_param:
+                try:
+                    queryset = queryset.filter(created_at__year=int(year_param))
+                except (TypeError, ValueError):
+                    queryset = queryset.none()
+
+            status_param = self.request.query_params.get("status")
+            if status_param:
+                statuses = [value.strip() for value in status_param.split(",") if value.strip()]
+                queryset = queryset.filter(status__in=statuses)
+
+            ids = _parse_csv_ints(self.request.query_params.get("ids"))
+            if ids:
+                queryset = queryset.filter(id__in=ids)
+
+            search_value = self.request.query_params.get("q", "").strip()
+            if search_value:
+                queryset = queryset.filter(
+                    Q(invoice_number__icontains=search_value)
+                    | Q(status__icontains=search_value)
+                    | Q(club__name__icontains=search_value)
+                    | Q(member__first_name__icontains=search_value)
+                    | Q(member__last_name__icontains=search_value)
+                    | Q(order__order_number__icontains=search_value)
+                    | Q(currency__icontains=search_value)
+                )
+            return queryset.order_by("-created_at")
         return Invoice.objects.none()
 
     def get_permissions(self):
         return [IsLtfFinance()]
 
+    def get_serializer_class(self):
+        if self.action == "list":
+            return InvoiceListSerializer
+        return InvoiceSerializer
 
-class PaymentViewSet(viewsets.ReadOnlyModelViewSet):
+
+class PaymentViewSet(OptionalPaginationListMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = PaymentSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -529,19 +690,52 @@ class PaymentViewSet(viewsets.ReadOnlyModelViewSet):
         if user.role != "ltf_finance":
             return Payment.objects.none()
         queryset = Payment.objects.select_related("invoice", "order", "created_by").all()
+
+        club_id = self.request.query_params.get("club_id")
+        if club_id:
+            queryset = queryset.filter(order__club_id=club_id)
+
         invoice_id = self.request.query_params.get("invoice_id")
         if invoice_id:
             queryset = queryset.filter(invoice_id=invoice_id)
         order_id = self.request.query_params.get("order_id")
         if order_id:
             queryset = queryset.filter(order_id=order_id)
-        return queryset
+
+        year_param = self.request.query_params.get("year")
+        if year_param:
+            try:
+                queryset = queryset.filter(created_at__year=int(year_param))
+            except (TypeError, ValueError):
+                queryset = queryset.none()
+
+        status_param = self.request.query_params.get("status")
+        if status_param:
+            statuses = [value.strip() for value in status_param.split(",") if value.strip()]
+            queryset = queryset.filter(status__in=statuses)
+
+        ids = _parse_csv_ints(self.request.query_params.get("ids"))
+        if ids:
+            queryset = queryset.filter(id__in=ids)
+
+        search_value = self.request.query_params.get("q", "").strip()
+        if search_value:
+            queryset = queryset.filter(
+                Q(reference__icontains=search_value)
+                | Q(status__icontains=search_value)
+                | Q(method__icontains=search_value)
+                | Q(provider__icontains=search_value)
+                | Q(invoice__invoice_number__icontains=search_value)
+                | Q(order__order_number__icontains=search_value)
+                | Q(order__club__name__icontains=search_value)
+            )
+        return queryset.order_by("-created_at")
 
     def get_permissions(self):
         return [IsLtfFinance()]
 
 
-class FinanceAuditLogViewSet(viewsets.ReadOnlyModelViewSet):
+class FinanceAuditLogViewSet(OptionalPaginationListMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = FinanceAuditLogSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -552,7 +746,7 @@ class FinanceAuditLogViewSet(viewsets.ReadOnlyModelViewSet):
         if not user or not user.is_authenticated:
             return FinanceAuditLog.objects.none()
         if user.role == "ltf_finance":
-            return (
+            queryset = (
                 FinanceAuditLog.objects.select_related(
                     "actor",
                     "club",
@@ -564,6 +758,13 @@ class FinanceAuditLogViewSet(viewsets.ReadOnlyModelViewSet):
                 .all()
                 .order_by("-created_at")
             )
+            search_value = self.request.query_params.get("q", "").strip()
+            if search_value:
+                queryset = queryset.filter(
+                    Q(action__icontains=search_value)
+                    | Q(message__icontains=search_value)
+                )
+            return queryset
         return FinanceAuditLog.objects.none()
 
     def get_permissions(self):
@@ -574,6 +775,11 @@ class LtfAdminOverviewView(APIView):
     permission_classes = [IsLtfAdmin]
 
     def get(self, request):
+        cache_key = "dashboard:overview:ltf_admin:v1"
+        cached_payload = cache.get(cache_key)
+        if cached_payload is not None:
+            return Response(cached_payload, status=status.HTTP_200_OK)
+
         today = timezone.localdate()
         active_members_queryset = Member.objects.filter(is_active=True)
         licenses_queryset = License.objects.all()
@@ -688,6 +894,11 @@ class LtfAdminOverviewView(APIView):
                 "licenses": _overview_link("LtfAdmin.navLicenses", "/dashboard/ltf/licenses"),
             },
         }
+        cache.set(
+            cache_key,
+            payload,
+            timeout=settings.DASHBOARD_OVERVIEW_CACHE_TTL_SECONDS,
+        )
         return Response(payload, status=status.HTTP_200_OK)
 
 
@@ -695,8 +906,20 @@ class LtfFinanceOverviewView(APIView):
     permission_classes = [IsLtfFinance]
 
     def get(self, request):
+        cache_key = "dashboard:overview:ltf_finance:v1"
+        cached_payload = cache.get(cache_key)
+        if cached_payload is not None:
+            return Response(cached_payload, status=status.HTTP_200_OK)
+
         today = timezone.localdate()
         month_start, month_end = _month_bounds(today)
+        now = timezone.now()
+        overdue_cutoff = now - timedelta(days=7)
+        thirty_days_ago = now - timedelta(days=30)
+        month_start_dt = timezone.make_aware(datetime.combine(month_start, time.min))
+        next_month_start_dt = timezone.make_aware(
+            datetime.combine(month_end + timedelta(days=1), time.min)
+        )
 
         order_counts = Order.objects.aggregate(
             draft=Count("id", filter=Q(status=Order.Status.DRAFT)),
@@ -713,8 +936,8 @@ class LtfFinanceOverviewView(APIView):
         )
 
         issued_invoices_overdue_7d = Invoice.objects.filter(status=Invoice.Status.ISSUED).filter(
-            Q(issued_at__date__lte=today - timedelta(days=7))
-            | Q(issued_at__isnull=True, created_at__date__lte=today - timedelta(days=7))
+            Q(issued_at__lte=overdue_cutoff)
+            | Q(issued_at__isnull=True, created_at__lte=overdue_cutoff)
         )
         paid_orders_with_pending_licenses = (
             Order.objects.filter(
@@ -726,7 +949,7 @@ class LtfFinanceOverviewView(APIView):
         )
         failed_or_cancelled_payments_30d = Payment.objects.filter(
             status__in=[Payment.Status.FAILED, Payment.Status.CANCELLED],
-            created_at__date__gte=today - timedelta(days=30),
+            created_at__gte=thirty_days_ago,
         ).count()
 
         active_priced_type_ids = set(
@@ -743,8 +966,8 @@ class LtfFinanceOverviewView(APIView):
         )["total"]
         collected_this_month_amount = Payment.objects.filter(
             status=Payment.Status.PAID,
-            paid_at__date__gte=month_start,
-            paid_at__date__lte=month_end,
+            paid_at__gte=month_start_dt,
+            paid_at__lt=next_month_start_dt,
         ).aggregate(total=Sum("amount"))["total"]
 
         currency = (
@@ -855,6 +1078,11 @@ class LtfFinanceOverviewView(APIView):
                 "audit_log": _overview_link("LtfFinance.navAuditLog", "/dashboard/ltf-finance/audit-log"),
             },
         }
+        cache.set(
+            cache_key,
+            payload,
+            timeout=settings.DASHBOARD_OVERVIEW_CACHE_TTL_SECONDS,
+        )
         return Response(payload, status=status.HTTP_200_OK)
 
 
@@ -973,9 +1201,19 @@ class PayconiqPaymentViewSet(viewsets.GenericViewSet):
         return Response(PayconiqPaymentSerializer(payment).data, status=status.HTTP_200_OK)
 
 
-class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
+class ClubOrderViewSet(OptionalPaginationListMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = OrderSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def _base_queryset(self):
+        queryset = (
+            Order.objects.select_related("club", "member", "invoice")
+            .annotate(item_quantity=Coalesce(Sum("items__quantity"), 0))
+            .filter(club__admins=self.request.user)
+        )
+        if self.action != "list":
+            queryset = queryset.prefetch_related("items__license")
+        return queryset
 
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
@@ -985,20 +1223,48 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
             return Order.objects.none()
         if user.role != "club_admin":
             return Order.objects.none()
-        queryset = (
-            Order.objects.select_related("club", "member", "invoice")
-            .prefetch_related("items__license")
-            .filter(club__admins=user)
-        )
+        queryset = self._base_queryset()
         club_id = self.request.query_params.get("club_id")
         if club_id:
             queryset = queryset.filter(club_id=club_id)
-        return queryset
+
+        member_id = self.request.query_params.get("member_id")
+        if member_id:
+            queryset = queryset.filter(member_id=member_id)
+
+        year_param = self.request.query_params.get("year")
+        if year_param:
+            try:
+                queryset = queryset.filter(created_at__year=int(year_param))
+            except (TypeError, ValueError):
+                queryset = queryset.none()
+
+        status_param = self.request.query_params.get("status")
+        if status_param:
+            statuses = [value.strip() for value in status_param.split(",") if value.strip()]
+            queryset = queryset.filter(status__in=statuses)
+
+        ids = _parse_csv_ints(self.request.query_params.get("ids"))
+        if ids:
+            queryset = queryset.filter(id__in=ids)
+
+        search_value = self.request.query_params.get("q", "").strip()
+        if search_value:
+            queryset = queryset.filter(
+                Q(order_number__icontains=search_value)
+                | Q(club__name__icontains=search_value)
+                | Q(member__first_name__icontains=search_value)
+                | Q(member__last_name__icontains=search_value)
+                | Q(currency__icontains=search_value)
+            )
+        return queryset.order_by("-created_at")
 
     def get_permissions(self):
         return [IsClubAdmin()]
 
     def get_serializer_class(self):
+        if self.action == "list":
+            return OrderListSerializer
         if self.action == "batch":
             return ClubOrderBatchSerializer
         if self.action == "eligibility":
@@ -1019,22 +1285,53 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
         if not club.admins.filter(id=request.user.id).exists():
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
 
-        members = Member.objects.filter(id__in=member_ids, club=club)
-        if members.count() != len(set(member_ids)):
+        members = list(
+            Member.objects.filter(id__in=member_ids, club=club).only(
+                "id", "first_name", "last_name"
+            )
+        )
+        if len(members) != len(set(member_ids)):
             return Response(
                 {"detail": "One or more members are invalid for this club."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        member_list = list(members)
-        selected_member_count = len(member_list)
+        selected_member_count = len(members)
         today = timezone.localdate()
+        member_ids_set = {member.id for member in members}
+
+        license_types = list(LicenseType.objects.select_related("policy").all().order_by("name"))
+        license_type_ids = [license_type.id for license_type in license_types]
+        active_prices_qs = LicensePrice.objects.filter(
+            license_type_id__in=license_type_ids, effective_from__lte=today
+        ).order_by("license_type_id", "-effective_from", "-created_at")
+        active_price_by_type_id: dict[int, LicensePrice] = {}
+        for price in active_prices_qs:
+            if price.license_type_id not in active_price_by_type_id:
+                active_price_by_type_id[price.license_type_id] = price
+
+        duplicate_pairs = (
+            License.objects.filter(
+                member_id__in=member_ids_set,
+                license_type_id__in=license_type_ids,
+                year=year,
+                status__in=[License.Status.PENDING, License.Status.ACTIVE],
+            )
+            .values_list("license_type_id", "member_id")
+            .distinct()
+        )
+        duplicate_member_ids_by_type: dict[int, set[int]] = defaultdict(set)
+        for license_type_id, member_id in duplicate_pairs:
+            duplicate_member_ids_by_type[int(license_type_id)].add(int(member_id))
 
         eligible_license_types = []
         ineligible_license_types = []
 
-        for license_type in LicenseType.objects.select_related("policy").all().order_by("name"):
-            active_price = LicensePrice.get_active_price(license_type=license_type, as_of=today)
+        for license_type in license_types:
+            policy = getattr(license_type, "policy", None) or get_or_create_license_type_policy(
+                license_type
+            )
+            active_price = active_price_by_type_id.get(license_type.id)
             if not active_price:
                 ineligible_members = [
                     {
@@ -1046,7 +1343,7 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
                             f"'{license_type.name}'."
                         ),
                     }
-                    for member in member_list
+                    for member in members
                 ]
                 ineligible_license_types.append(
                     {
@@ -1070,13 +1367,16 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
 
             reason_counts = defaultdict(int)
             ineligible_members = []
-            for member in member_list:
+            duplicate_member_ids = duplicate_member_ids_by_type.get(license_type.id, set())
+            for member in members:
                 try:
                     validate_member_license_order(
                         member=member,
                         license_type=license_type,
                         target_year=year,
                         order_date=today,
+                        policy=policy,
+                        duplicate_exists=member.id in duplicate_member_ids,
                     )
                 except serializers.ValidationError as exc:
                     detail_text = _flatten_validation_detail(exc.detail)
@@ -1159,12 +1459,27 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
         if not club.admins.filter(id=request.user.id).exists():
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
 
-        members = Member.objects.filter(id__in=member_ids, club=club)
-        if members.count() != len(set(member_ids)):
+        members = list(
+            Member.objects.filter(id__in=member_ids, club=club).only(
+                "id", "first_name", "last_name"
+            )
+        )
+        if len(members) != len(set(member_ids)):
             return Response(
                 {"detail": "One or more members are invalid for this club."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        member_ids_set = {member.id for member in members}
+        policy = get_or_create_license_type_policy(license_type)
+        duplicate_member_ids = set(
+            License.objects.filter(
+                member_id__in=member_ids_set,
+                license_type=license_type,
+                year=year,
+                status__in=[License.Status.PENDING, License.Status.ACTIVE],
+            ).values_list("member_id", flat=True)
+        )
 
         policy_errors = []
         for member in members:
@@ -1173,6 +1488,8 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
                     member=member,
                     license_type=license_type,
                     target_year=year,
+                    policy=policy,
+                    duplicate_exists=member.id in duplicate_member_ids,
                 )
             except serializers.ValidationError as exc:
                 if isinstance(exc.detail, list):
@@ -1204,7 +1521,7 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        member_count = members.count()
+        member_count = len(members)
         subtotal = price.amount * quantity * member_count
         total = subtotal + tax_total
         actor = request.user if request.user.is_authenticated else None
@@ -1220,22 +1537,35 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
                 total=total,
             )
 
-            created_license_ids = []
-            for member in members:
-                license_record = License.objects.create(
+            period_start = date(year, 1, 1)
+            period_end = date(year, 12, 31)
+            pending_licenses = [
+                License(
                     member=member,
                     club=club,
                     license_type=license_type,
                     year=year,
+                    start_date=period_start,
+                    end_date=period_end,
                     status=License.Status.PENDING,
                 )
-                created_license_ids.append(license_record.id)
-                OrderItem.objects.create(
-                    order=order,
-                    license=license_record,
-                    price_snapshot=price.amount,
-                    quantity=quantity,
-                )
+                for member in members
+            ]
+            created_licenses = License.objects.bulk_create(pending_licenses)
+            OrderItem.objects.bulk_create(
+                [
+                    OrderItem(
+                        order=order,
+                        license=license_record,
+                        price_snapshot=price.amount,
+                        quantity=quantity,
+                    )
+                    for license_record in created_licenses
+                ]
+            )
+            created_license_ids = [
+                license_record.id for license_record in created_licenses if license_record.id is not None
+            ]
 
             invoice = Invoice.objects.create(
                 order=order,
@@ -1398,7 +1728,10 @@ class ClubOrderViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class LicensePriceViewSet(
-    mixins.CreateModelMixin, mixins.ListModelMixin, viewsets.GenericViewSet
+    OptionalPaginationListMixin,
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet,
 ):
     serializer_class = LicensePriceSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -1422,7 +1755,7 @@ class LicensePriceViewSet(
         serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
 
 
-class ClubInvoiceViewSet(viewsets.ReadOnlyModelViewSet):
+class ClubInvoiceViewSet(OptionalPaginationListMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = InvoiceSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -1434,16 +1767,55 @@ class ClubInvoiceViewSet(viewsets.ReadOnlyModelViewSet):
             return Invoice.objects.none()
         if user.role != "club_admin":
             return Invoice.objects.none()
-        queryset = Invoice.objects.select_related("club", "member", "order").filter(
-            club__admins=user
+        queryset = (
+            Invoice.objects.select_related("club", "member", "order")
+            .annotate(item_quantity=Coalesce(Sum("order__items__quantity"), 0))
+            .filter(club__admins=user)
         )
         club_id = self.request.query_params.get("club_id")
         if club_id:
             queryset = queryset.filter(club_id=club_id)
-        return queryset
+
+        member_id = self.request.query_params.get("member_id")
+        if member_id:
+            queryset = queryset.filter(member_id=member_id)
+
+        year_param = self.request.query_params.get("year")
+        if year_param:
+            try:
+                queryset = queryset.filter(created_at__year=int(year_param))
+            except (TypeError, ValueError):
+                queryset = queryset.none()
+
+        status_param = self.request.query_params.get("status")
+        if status_param:
+            statuses = [value.strip() for value in status_param.split(",") if value.strip()]
+            queryset = queryset.filter(status__in=statuses)
+
+        ids = _parse_csv_ints(self.request.query_params.get("ids"))
+        if ids:
+            queryset = queryset.filter(id__in=ids)
+
+        search_value = self.request.query_params.get("q", "").strip()
+        if search_value:
+            queryset = queryset.filter(
+                Q(invoice_number__icontains=search_value)
+                | Q(status__icontains=search_value)
+                | Q(club__name__icontains=search_value)
+                | Q(member__first_name__icontains=search_value)
+                | Q(member__last_name__icontains=search_value)
+                | Q(order__order_number__icontains=search_value)
+                | Q(currency__icontains=search_value)
+            )
+        return queryset.order_by("-created_at")
 
     def get_permissions(self):
         return [IsClubAdmin()]
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return InvoiceListSerializer
+        return InvoiceSerializer
 
 
 class InvoicePdfView(APIView):

@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight } from "lucide-react";
@@ -24,12 +24,12 @@ import {
   LicensePrice,
   getFinanceClubs,
   getFinanceLicenseTypes,
-  getFinanceOrders,
+  getFinanceOrdersPage,
   getLicensePrices,
 } from "@/lib/ltf-finance-api";
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/date-display";
 
-const AUTO_REFRESH_INTERVAL_MS = 10000;
+const AUTO_REFRESH_INTERVAL_MS = 30000;
 
 function getGroupYear(value: string) {
   const parsed = new Date(value);
@@ -51,51 +51,99 @@ export default function LtfFinanceOrdersPage() {
   const [orders, setOrders] = useState<FinanceOrder[]>([]);
   const [clubs, setClubs] = useState<Club[]>([]);
   const [licenseTypes, setLicenseTypes] = useState<FinanceLicenseType[]>([]);
+  const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("25");
+  const [totalOrderCount, setTotalOrderCount] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [prices, setPrices] = useState<LicensePrice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedClubIds, setExpandedClubIds] = useState<number[]>([]);
   const [expandedYearKeys, setExpandedYearKeys] = useState<string[]>([]);
   const [expandedStateHydrated, setExpandedStateHydrated] = useState(false);
+  const isRefreshingRef = useRef(false);
+  const requestAbortRef = useRef<AbortController | null>(null);
 
-  const pageSizeOptions = ["10", "25", "50", "100", "150", "200", "all"];
+  const pageSizeOptions = ["10", "25", "50", "100", "150", "200"];
   const expandedClubStorageKey = "ltf_finance_orders_expanded_clubs";
   const expandedYearStorageKey = "ltf_finance_orders_expanded_years";
 
-  const loadOrders = useCallback(async (options?: { silent?: boolean }) => {
+  const loadOrders = useCallback(async (options?: { silent?: boolean; includeStatic?: boolean }) => {
     const silent = options?.silent ?? false;
+    const includeStatic = options?.includeStatic ?? true;
+    if (isRefreshingRef.current) {
+      return;
+    }
+    const controller = new AbortController();
+    isRefreshingRef.current = true;
+    requestAbortRef.current = controller;
     if (!silent) {
       setIsLoading(true);
       setErrorMessage(null);
     }
     try {
-      const [ordersResponse, pricesResponse, clubsResponse, licenseTypesResponse] = await Promise.all([
-        getFinanceOrders(),
-        getLicensePrices(),
-        getFinanceClubs(),
-        getFinanceLicenseTypes(),
-      ]);
-      setOrders(ordersResponse);
-      setPrices(pricesResponse);
-      setClubs(clubsResponse);
-      setLicenseTypes(licenseTypesResponse);
+      const ordersPromise = getFinanceOrdersPage(
+        {
+          page: currentPage,
+          pageSize: Number(pageSize),
+          q: searchQuery || undefined,
+        },
+        { signal: controller.signal }
+      );
+      if (includeStatic) {
+        const [ordersResponse, pricesResponse, clubsResponse, licenseTypesResponse] = await Promise.all([
+          ordersPromise,
+          getLicensePrices(undefined, { signal: controller.signal }),
+          getFinanceClubs({ signal: controller.signal }),
+          getFinanceLicenseTypes({ signal: controller.signal }),
+        ]);
+        setOrders(ordersResponse.results);
+        setTotalOrderCount(ordersResponse.count);
+        setPrices(pricesResponse);
+        setClubs(clubsResponse);
+        setLicenseTypes(licenseTypesResponse);
+      } else {
+        const ordersResponse = await ordersPromise;
+        setOrders(ordersResponse.results);
+        setTotalOrderCount(ordersResponse.count);
+      }
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
       if (!silent) {
         setErrorMessage(error instanceof Error ? error.message : t("ordersLoadError"));
       }
     } finally {
+      if (requestAbortRef.current === controller) {
+        requestAbortRef.current = null;
+      }
+      isRefreshingRef.current = false;
       if (!silent) {
         setIsLoading(false);
       }
     }
-  }, [t]);
+  }, [currentPage, pageSize, searchQuery, t]);
 
   useEffect(() => {
     void loadOrders();
   }, [loadOrders]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setSearchQuery(searchInput.trim());
+    }, 250);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [searchInput]);
+
+  useEffect(() => {
+    return () => {
+      requestAbortRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -103,7 +151,7 @@ export default function LtfFinanceOrdersPage() {
     }
     const refreshInBackground = () => {
       if (document.visibilityState === "visible") {
-        void loadOrders({ silent: true });
+        void loadOrders({ silent: true, includeStatic: false });
       }
     };
     const intervalId = window.setInterval(refreshInBackground, AUTO_REFRESH_INTERVAL_MS);
@@ -124,7 +172,10 @@ export default function LtfFinanceOrdersPage() {
   }, [clubs]);
 
   const getOrderQuantity = (order: FinanceOrder) => {
-    return order.items.reduce((sum, item) => sum + item.quantity, 0);
+    if (typeof order.item_quantity === "number") {
+      return order.item_quantity;
+    }
+    return order.items?.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
   };
 
   const getOrderStatusMeta = useCallback((status: string) => {
@@ -143,25 +194,8 @@ export default function LtfFinanceOrdersPage() {
   }, [t]);
 
   const searchedOrders = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return orders;
-    }
-    return orders.filter((order) => {
-      const orderNumber = order.order_number.toLowerCase();
-      const statusText = getOrderStatusMeta(order.status).label.toLowerCase();
-      const clubText = (clubNameById[order.club] ?? String(order.club)).toLowerCase();
-      const quantityText = String(getOrderQuantity(order));
-      const totalText = `${order.total} ${order.currency}`.toLowerCase();
-      return (
-        orderNumber.includes(normalizedQuery) ||
-        statusText.includes(normalizedQuery) ||
-        clubText.includes(normalizedQuery) ||
-        quantityText.includes(normalizedQuery) ||
-        totalText.includes(normalizedQuery)
-      );
-    });
-  }, [orders, searchQuery, clubNameById, getOrderStatusMeta]);
+    return orders;
+  }, [orders]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -283,13 +317,13 @@ export default function LtfFinanceOrdersPage() {
       .sort((left, right) => left.clubName.localeCompare(right.clubName));
   }, [clubNameById, searchedOrders, getOrderStatusMeta]);
 
-  const resolvedPageSize =
-    pageSize === "all" ? Math.max(groupedClubRows.length, 1) : Number(pageSize);
-  const totalPages = Math.max(1, Math.ceil(groupedClubRows.length / resolvedPageSize));
-  const pagedClubRows = useMemo(() => {
-    const startIndex = (currentPage - 1) * resolvedPageSize;
-    return groupedClubRows.slice(startIndex, startIndex + resolvedPageSize);
-  }, [currentPage, groupedClubRows, resolvedPageSize]);
+  const totalPages = Math.max(1, Math.ceil(totalOrderCount / Number(pageSize)));
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   useEffect(() => {
     const validClubIds = new Set(groupedClubRows.map((clubGroup) => clubGroup.clubId));
@@ -418,8 +452,8 @@ export default function LtfFinanceOrdersPage() {
         <Input
           className="w-full max-w-sm"
           placeholder={t("searchOrdersPlaceholder")}
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
+          value={searchInput}
+          onChange={(event) => setSearchInput(event.target.value)}
         />
         <div className="flex items-center gap-3">
           <span className="text-sm text-zinc-600">{common("rowsPerPageLabel")}</span>
@@ -457,7 +491,7 @@ export default function LtfFinanceOrdersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {pagedClubRows.map((clubGroup) => {
+                {groupedClubRows.map((clubGroup) => {
                   const clubExpanded = expandedClubSet.has(clubGroup.clubId);
                   return (
                     <Fragment key={clubGroup.clubId}>

@@ -14,10 +14,10 @@ import {
   LicenseType,
   Member,
   deleteLicense,
-  getClubs,
+  getClub,
   getLicenseTypes,
-  getLicenses,
-  getMembers,
+  getLicensesList,
+  getMembersList,
 } from "@/lib/ltf-admin-api";
 
 export default function LtfLicenseDeletePage() {
@@ -54,16 +54,21 @@ export default function LtfLicenseDeletePage() {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const [licensesResponse, membersResponse, clubsResponse, licenseTypesResponse] = await Promise.all([
-        getLicenses(),
-        getMembers(),
-        getClubs(),
+      const [licensesResponse, licenseTypesResponse] = await Promise.all([
+        getLicensesList({ ids: [licenseId] }),
         getLicenseTypes(),
       ]);
+      const matchedLicense = licensesResponse[0] ?? null;
+      const [membersResponse, clubResponse] = matchedLicense
+        ? await Promise.all([
+            getMembersList({ ids: [matchedLicense.member] }),
+            getClub(matchedLicense.club),
+          ])
+        : [[], null];
       setMembers(membersResponse);
-      setClubs(clubsResponse);
+      setClubs(clubResponse ? [clubResponse] : []);
       setLicenseTypes(licenseTypesResponse);
-      setLicense(licensesResponse.find((item) => item.id === licenseId) ?? null);
+      setLicense(matchedLicense);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : t("singleDeleteLicenseLoadError"));
     } finally {

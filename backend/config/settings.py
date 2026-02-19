@@ -149,8 +149,44 @@ DATABASES = {
         "PASSWORD": config("POSTGRES_PASSWORD", default="ltf_password"),
         "HOST": config("POSTGRES_HOST", default="db"),
         "PORT": config("POSTGRES_PORT", default=5432, cast=int),
+        "CONN_MAX_AGE": config("DJANGO_DB_CONN_MAX_AGE", cast=int, default=60),
+        "CONN_HEALTH_CHECKS": config(
+            "DJANGO_DB_CONN_HEALTH_CHECKS",
+            cast=bool,
+            default=True,
+        ),
+        "OPTIONS": {
+            "connect_timeout": config("DJANGO_DB_CONNECT_TIMEOUT", cast=int, default=5),
+        },
     }
 }
+POSTGRES_HOST = str(DATABASES["default"]["HOST"]).strip().lower()
+DJANGO_DB_USE_PGBOUNCER = config(
+    "DJANGO_DB_USE_PGBOUNCER",
+    cast=bool,
+    default=POSTGRES_HOST == "pgbouncer",
+)
+if not DJANGO_DB_USE_PGBOUNCER:
+    DATABASES["default"]["OPTIONS"]["options"] = (
+        f"-c statement_timeout="
+        f"{config('DJANGO_DB_STATEMENT_TIMEOUT_MS', cast=int, default=15000)}"
+    )
+DJANGO_CACHE_URL = config("DJANGO_CACHE_URL", default="")
+CACHES = (
+    {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": DJANGO_CACHE_URL,
+        }
+    }
+    if DJANGO_CACHE_URL
+    else {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "ltf-license-manager-local-cache",
+        }
+    }
+)
 
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -224,11 +260,26 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.UserRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
-        "anon": "100/hour",
-        "user": "1000/hour",
+        "anon": config("DRF_ANON_THROTTLE_RATE", default="100/hour"),
+        "user": config("DRF_USER_THROTTLE_RATE", default="6000/hour"),
     },
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
+API_PAGINATION_DEFAULT_PAGE_SIZE = config(
+    "API_PAGINATION_DEFAULT_PAGE_SIZE",
+    cast=int,
+    default=50,
+)
+API_PAGINATION_MAX_PAGE_SIZE = config(
+    "API_PAGINATION_MAX_PAGE_SIZE",
+    cast=int,
+    default=200,
+)
+DASHBOARD_OVERVIEW_CACHE_TTL_SECONDS = config(
+    "DASHBOARD_OVERVIEW_CACHE_TTL_SECONDS",
+    cast=int,
+    default=20,
+)
 
 
 SPECTACULAR_SETTINGS = {
@@ -296,6 +347,11 @@ CELERY_BEAT_SCHEDULE = {
 STRIPE_SECRET_KEY = config("STRIPE_SECRET_KEY", default="")
 STRIPE_WEBHOOK_SECRET = config("STRIPE_WEBHOOK_SECRET", default="")
 STRIPE_API_VERSION = config("STRIPE_API_VERSION", default="2026-01-28.clover")
+STRIPE_RECONCILE_BATCH_LIMIT = config(
+    "STRIPE_RECONCILE_BATCH_LIMIT",
+    cast=int,
+    default=100,
+)
 STRIPE_CHECKOUT_SUCCESS_URL = config(
     "STRIPE_CHECKOUT_SUCCESS_URL",
     default=f"{FRONTEND_BASE_URL}/checkout/success",

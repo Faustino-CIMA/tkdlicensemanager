@@ -10,6 +10,7 @@ import mimetypes
 from pathlib import Path
 
 from accounts.permissions import IsLtfAdmin, IsLtfFinanceOrLtfAdmin
+from config.pagination import OptionalPaginationListMixin
 from django.conf import settings
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.db import transaction
@@ -91,7 +92,7 @@ def _set_logo_selected(logo: BrandingAsset, *, selected: bool) -> None:
         logo.save(update_fields=["is_selected", "updated_at"])
 
 
-class ClubViewSet(viewsets.ModelViewSet):
+class ClubViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
     serializer_class = ClubSerializer
     permission_classes = [permissions.IsAuthenticated]
 

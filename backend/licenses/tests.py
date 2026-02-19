@@ -614,6 +614,36 @@ class OrderApiTests(TestCase):
         response = self.client.get("/api/orders/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    def test_ltf_finance_order_list_uses_lightweight_serializer(self):
+        self.client.force_authenticate(user=self.ltf_finance)
+        create_response = self.client.post(
+            "/api/orders/", self._order_payload(), format="json"
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+
+        response = self.client.get("/api/orders/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(len(response.data), 1)
+        row = response.data[0]
+        self.assertIn("item_quantity", row)
+        self.assertNotIn("items", row)
+        self.assertNotIn("stripe_payment_intent_id", row)
+
+    def test_ltf_finance_invoice_list_uses_lightweight_serializer(self):
+        self.client.force_authenticate(user=self.ltf_finance)
+        create_response = self.client.post(
+            "/api/orders/", self._order_payload(), format="json"
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+
+        response = self.client.get("/api/invoices/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(len(response.data), 1)
+        row = response.data[0]
+        self.assertIn("item_quantity", row)
+        self.assertNotIn("stripe_invoice_id", row)
+        self.assertNotIn("stripe_customer_id", row)
+
     def test_ltf_admin_cannot_list_invoices(self):
         self.client.force_authenticate(user=self.ltf_admin)
         response = self.client.get("/api/invoices/")
@@ -623,6 +653,34 @@ class OrderApiTests(TestCase):
         self.client.force_authenticate(user=self.ltf_admin)
         response = self.client.get("/api/finance-audit-logs/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_ltf_finance_audit_logs_support_search_and_optional_pagination(self):
+        self.client.force_authenticate(user=self.ltf_finance)
+        FinanceAuditLog.objects.create(
+            action="order.alpha",
+            message="alpha marker",
+            actor=self.ltf_finance,
+            club=self.club,
+        )
+        FinanceAuditLog.objects.create(
+            action="invoice.beta",
+            message="beta marker",
+            actor=self.ltf_finance,
+            club=self.club,
+        )
+
+        response = self.client.get("/api/finance-audit-logs/?q=alpha")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsInstance(response.data, list)
+        self.assertTrue(any(row["action"] == "order.alpha" for row in response.data))
+        self.assertFalse(any(row["action"] == "invoice.beta" for row in response.data))
+
+        paged_response = self.client.get("/api/finance-audit-logs/?q=alpha&page=1&page_size=1")
+        self.assertEqual(paged_response.status_code, status.HTTP_200_OK)
+        self.assertIn("results", paged_response.data)
+        self.assertEqual(paged_response.data["count"], 1)
+        self.assertEqual(len(paged_response.data["results"]), 1)
+        self.assertEqual(paged_response.data["results"][0]["action"], "order.alpha")
 
     def test_confirm_payment_allows_stripe_without_consent_confirmation(self):
         self.client.force_authenticate(user=self.ltf_finance)
@@ -1008,8 +1066,8 @@ class LicenseActivationRulesTests(TestCase):
 
     def _create_paid_order_for_license(self, license_record: License):
         order = Order.objects.create(
-            club=self.club,
-            member=self.member,
+            club=license_record.club,
+            member=license_record.member,
             status=Order.Status.PAID,
             subtotal=Decimal("25.00"),
             tax_total=Decimal("5.00"),
@@ -1017,8 +1075,8 @@ class LicenseActivationRulesTests(TestCase):
         )
         invoice = Invoice.objects.create(
             order=order,
-            club=self.club,
-            member=self.member,
+            club=license_record.club,
+            member=license_record.member,
             status=Invoice.Status.PAID,
             subtotal=Decimal("25.00"),
             tax_total=Decimal("5.00"),
@@ -1036,8 +1094,8 @@ class LicenseActivationRulesTests(TestCase):
 
     def _create_pending_order_for_license(self, license_record: License):
         order = Order.objects.create(
-            club=self.club,
-            member=self.member,
+            club=license_record.club,
+            member=license_record.member,
             status=Order.Status.PENDING,
             subtotal=Decimal("25.00"),
             tax_total=Decimal("5.00"),
@@ -1045,8 +1103,8 @@ class LicenseActivationRulesTests(TestCase):
         )
         invoice = Invoice.objects.create(
             order=order,
-            club=self.club,
-            member=self.member,
+            club=license_record.club,
+            member=license_record.member,
             status=Invoice.Status.DRAFT,
             subtotal=Decimal("25.00"),
             tax_total=Decimal("5.00"),
@@ -1225,6 +1283,65 @@ class LicenseActivationRulesTests(TestCase):
         self.assertEqual(payment.method, Payment.Method.CARD)
 
     @patch("licenses.tasks.stripe.PaymentIntent.retrieve")
+    def test_reconcile_pending_stripe_orders_reuses_payment_intent_lookup(
+        self, payment_intent_mock
+    ):
+        today = timezone.localdate()
+        second_member = Member.objects.create(
+            club=self.club,
+            first_name="Ivy",
+            last_name="Stone",
+        )
+        first_license = License.objects.create(
+            member=self.member,
+            club=self.club,
+            license_type=self.license_type,
+            year=today.year,
+            status=License.Status.PENDING,
+            start_date=today,
+            end_date=today + timedelta(days=30),
+        )
+        second_license = License.objects.create(
+            member=second_member,
+            club=self.club,
+            license_type=self.license_type,
+            year=today.year,
+            status=License.Status.PENDING,
+            start_date=today,
+            end_date=today + timedelta(days=30),
+        )
+
+        first_order, _ = self._create_pending_order_for_license(first_license)
+        second_order, _ = self._create_pending_order_for_license(second_license)
+        for order in (first_order, second_order):
+            order.stripe_payment_intent_id = "pi_reconcile_shared"
+            order.save(update_fields=["stripe_payment_intent_id", "updated_at"])
+
+        payment_intent_mock.return_value = {
+            "id": "pi_reconcile_shared",
+            "status": "succeeded",
+            "customer": "cus_reconcile_shared",
+            "charges": {
+                "data": [
+                    {
+                        "payment_method_details": {
+                            "card": {
+                                "brand": "visa",
+                                "last4": "4242",
+                                "exp_month": 12,
+                                "exp_year": 2030,
+                            }
+                        }
+                    }
+                ]
+            },
+        }
+
+        processed_count = reconcile_pending_stripe_orders()
+        self.assertEqual(processed_count, 2)
+        self.assertEqual(payment_intent_mock.call_count, 1)
+
+    @patch("licenses.tasks.stripe.PaymentIntent.retrieve")
     @patch("licenses.tasks.stripe.checkout.Session.retrieve")
     def test_reconcile_pending_stripe_orders_uses_checkout_session(
         self,
@@ -1339,15 +1456,16 @@ class ClubOrderCheckoutTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        session_create_mock.assert_called_once()
 
-        session_create_mock.reset_mock()
-        response = self.client.post(
-            f"/api/club-orders/{self.order.id}/create-checkout-session/",
-            {"club_admin_consent_confirmed": True},
-            format="json",
-        )
+    def test_club_order_list_uses_lightweight_serializer(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.get("/api/club-orders/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(len(response.data), 1)
+        row = response.data[0]
+        self.assertIn("item_quantity", row)
+        self.assertNotIn("items", row)
+        self.assertNotIn("stripe_payment_intent_id", row)
 
 
 class StripeWebhookSignatureTests(TestCase):

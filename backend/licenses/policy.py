@@ -35,10 +35,12 @@ def validate_member_license_order(
     license_type: LicenseType,
     target_year: int,
     order_date: date | None = None,
+    policy: LicenseTypePolicy | None = None,
+    duplicate_exists: bool | None = None,
 ) -> LicenseTypePolicy:
     order_date = order_date or timezone.localdate()
     current_year = order_date.year
-    policy = get_or_create_license_type_policy(license_type)
+    policy = policy or get_or_create_license_type_policy(license_type)
 
     if target_year not in [current_year, current_year + 1]:
         raise serializers.ValidationError(
@@ -76,12 +78,13 @@ def validate_member_license_order(
                 f"Pre-order window is closed for next-year '{license_type.name}' licenses."
             )
 
-    duplicate_exists = License.objects.filter(
-        member=member,
-        license_type=license_type,
-        year=target_year,
-        status__in=[License.Status.PENDING, License.Status.ACTIVE],
-    ).exists()
+    if duplicate_exists is None:
+        duplicate_exists = License.objects.filter(
+            member=member,
+            license_type=license_type,
+            year=target_year,
+            status__in=[License.Status.PENDING, License.Status.ACTIVE],
+        ).exists()
     if duplicate_exists:
         raise serializers.ValidationError(
             f"{member.first_name} {member.last_name} already has a pending or active "

@@ -13,8 +13,8 @@ import {
   Member,
   getClubs,
   getLicenseTypes,
-  getLicenses,
-  getMembers,
+  getLicensesPage,
+  getMembersList,
 } from "@/lib/club-admin-api";
 import { formatDisplayDate } from "@/lib/date-display";
 import { Button } from "@/components/ui/button";
@@ -45,56 +45,121 @@ export default function ClubAdminLicensesPage() {
   const [licenseTypes, setLicenseTypes] = useState<LicenseType[]>([]);
   const [expandedMemberIds, setExpandedMemberIds] = useState<number[]>([]);
   const [expandedStateHydrated, setExpandedStateHydrated] = useState(false);
+  const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("25");
+  const [totalCount, setTotalCount] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const pageSizeOptions = ["10", "25", "50", "100", "150", "200", "all"];
+  const pageSizeOptions = ["10", "25", "50", "100", "150", "200"];
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const [clubsResponse, membersResponse, licensesResponse, licenseTypesResponse] =
-        await Promise.all([getClubs(), getMembers(), getLicenses(), getLicenseTypes()]);
-      setMembers(membersResponse);
-      setLicenses(licensesResponse);
-      setLicenseTypes(licenseTypesResponse);
-      if (clubsResponse.length > 0 && !selectedClubId) {
-        setSelectedClubId(clubsResponse[0].id);
+      const clubsResponse = await getClubs();
+      let effectiveClubId = selectedClubId ?? null;
+      if (clubsResponse.length > 0 && !effectiveClubId) {
+        effectiveClubId = clubsResponse[0].id;
+        setSelectedClubId(effectiveClubId);
       }
+
+      const licenseTypesPromise = getLicenseTypes();
+      if (!effectiveClubId) {
+        const licenseTypesResponse = await licenseTypesPromise;
+        setLicenseTypes(licenseTypesResponse);
+        setLicenses([]);
+        setMembers([]);
+        setTotalCount(0);
+        return;
+      }
+
+      const licensesResponse = await getLicensesPage({
+        page: currentPage,
+        pageSize: Number(pageSize),
+        clubId: effectiveClubId,
+        q: searchQuery || undefined,
+      });
+      setLicenses(licensesResponse.results);
+      setTotalCount(licensesResponse.count);
+
+      const memberIds = Array.from(new Set(licensesResponse.results.map((license) => license.member)));
+      if (memberIds.length > 0) {
+        const membersResponse = await getMembersList({
+          clubId: effectiveClubId,
+          ids: memberIds,
+        });
+        setMembers(membersResponse);
+      } else {
+        setMembers([]);
+      }
+
+      const licenseTypesResponse = await licenseTypesPromise;
+      setLicenseTypes(licenseTypesResponse);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to load licenses.");
     } finally {
       setIsLoading(false);
     }
-  }, [selectedClubId, setSelectedClubId]);
+  }, [currentPage, pageSize, searchQuery, selectedClubId, setSelectedClubId]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  const filteredLicenses = useMemo(() => {
-    if (!selectedClubId) {
-      return licenses;
-    }
-    return licenses.filter((license) => license.club === selectedClubId);
-  }, [licenses, selectedClubId]);
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setSearchQuery(searchInput.trim());
+    }, 250);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [searchInput]);
 
-  const filteredMembers = useMemo(() => {
-    if (!selectedClubId) {
-      return members;
+  const memberById = useMemo(() => {
+    return new Map(members.map((member) => [member.id, member]));
+  }, [members]);
+
+  const memberRows = useMemo(() => {
+    const grouped = new Map<number, License[]>();
+    for (const license of licenses) {
+      const existing = grouped.get(license.member);
+      if (existing) {
+        existing.push(license);
+      } else {
+        grouped.set(license.member, [license]);
+      }
     }
-    return members.filter((member) => member.club === selectedClubId);
-  }, [members, selectedClubId]);
+    const rows: MemberLicenseRow[] = [];
+    for (const [memberId, memberLicenses] of grouped.entries()) {
+      const member = memberById.get(memberId);
+      if (!member) {
+        continue;
+      }
+      const allLicenses = [...memberLicenses].sort((a, b) => b.year - a.year || b.id - a.id);
+      rows.push({
+        member,
+        allLicenses,
+        visibleLicenses: allLicenses,
+        activeCount: allLicenses.filter((license) => license.status === "active").length,
+        pendingCount: allLicenses.filter((license) => license.status === "pending").length,
+        expiredCount: allLicenses.filter((license) => license.status === "expired").length,
+      });
+    }
+    return rows.sort((left, right) => {
+      const byLastName = left.member.last_name.localeCompare(right.member.last_name);
+      if (byLastName !== 0) {
+        return byLastName;
+      }
+      return left.member.first_name.localeCompare(right.member.first_name);
+    });
+  }, [licenses, memberById]);
+
   const expandableMemberIds = useMemo(() => {
-    const memberIdSetWithLicenses = new Set(filteredLicenses.map((license) => license.member));
-    return filteredMembers
-      .filter((member) => memberIdSetWithLicenses.has(member.id))
-      .map((member) => member.id);
-  }, [filteredLicenses, filteredMembers]);
+    return memberRows.map((row) => row.member.id);
+  }, [memberRows]);
   const expandableMemberIdSet = useMemo(
     () => new Set(expandableMemberIds),
     [expandableMemberIds]
@@ -109,72 +174,7 @@ export default function ClubAdminLicensesPage() {
     [licenseTypes]
   );
 
-  const searchedMemberRows = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-    const licensesByMember = new Map<number, License[]>();
-    for (const license of filteredLicenses) {
-      const existingLicenses = licensesByMember.get(license.member);
-      if (existingLicenses) {
-        existingLicenses.push(license);
-      } else {
-        licensesByMember.set(license.member, [license]);
-      }
-    }
-    const rows: MemberLicenseRow[] = [];
-    for (const member of filteredMembers) {
-      const allLicenses = [...(licensesByMember.get(member.id) ?? [])].sort(
-        (a, b) => b.year - a.year || b.id - a.id
-      );
-      if (allLicenses.length === 0) {
-        continue;
-      }
-      const memberName = `${member.first_name} ${member.last_name}`.toLowerCase();
-      const memberEmail = member.email.toLowerCase();
-      const memberMatches =
-        normalizedQuery.length === 0 ||
-        memberName.includes(normalizedQuery) ||
-        memberEmail.includes(normalizedQuery);
-      const matchingLicenses =
-        normalizedQuery.length === 0
-          ? allLicenses
-          : allLicenses.filter((license) => {
-              const licenseTypeName =
-                licenseTypeNameById.get(license.license_type)?.toLowerCase() ?? "";
-              return (
-                String(license.year).includes(normalizedQuery) ||
-                license.status.toLowerCase().includes(normalizedQuery) ||
-                licenseTypeName.includes(normalizedQuery)
-              );
-            });
-      if (!memberMatches && matchingLicenses.length === 0) {
-        continue;
-      }
-      const visibleLicenses = memberMatches ? allLicenses : matchingLicenses;
-      rows.push({
-        member,
-        allLicenses,
-        visibleLicenses,
-        activeCount: allLicenses.filter((license) => license.status === "active").length,
-        pendingCount: allLicenses.filter((license) => license.status === "pending").length,
-        expiredCount: allLicenses.filter((license) => license.status === "expired").length,
-      });
-    }
-    return rows.sort((left, right) => {
-      const byLastName = left.member.last_name.localeCompare(right.member.last_name);
-      if (byLastName !== 0) {
-        return byLastName;
-      }
-      return left.member.first_name.localeCompare(right.member.first_name);
-    });
-  }, [filteredLicenses, filteredMembers, licenseTypeNameById, searchQuery]);
-
-  const resolvedPageSize =
-    pageSize === "all" ? Math.max(searchedMemberRows.length, 1) : Number(pageSize);
-  const totalPages = Math.max(1, Math.ceil(searchedMemberRows.length / resolvedPageSize));
-  const pagedMemberRows = useMemo(() => {
-    const startIndex = (currentPage - 1) * resolvedPageSize;
-    return searchedMemberRows.slice(startIndex, startIndex + resolvedPageSize);
-  }, [currentPage, searchedMemberRows, resolvedPageSize]);
+  const totalPages = Math.max(1, Math.ceil(totalCount / Number(pageSize)));
 
   useEffect(() => {
     setCurrentPage(1);
@@ -232,8 +232,8 @@ export default function ClubAdminLicensesPage() {
     [expandedMemberIds]
   );
   const pagedMemberIds = useMemo(
-    () => pagedMemberRows.map((row) => row.member.id),
-    [pagedMemberRows]
+    () => memberRows.map((row) => row.member.id),
+    [memberRows]
   );
   const pagedMemberIdSet = useMemo(() => new Set(pagedMemberIds), [pagedMemberIds]);
   const allPagedExpanded =
@@ -305,8 +305,8 @@ export default function ClubAdminLicensesPage() {
             <Input
               className="w-full max-w-xs"
               placeholder={t("searchLicensesPlaceholder")}
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
             />
             <Select value={pageSize} onValueChange={setPageSize}>
               <SelectTrigger className="w-[150px]">
@@ -360,7 +360,7 @@ export default function ClubAdminLicensesPage() {
 
         {isLoading ? (
           <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
-        ) : searchedMemberRows.length === 0 ? (
+        ) : memberRows.length === 0 ? (
           <EmptyState title={t("noResultsTitle")} description={t("noLicensesResultsSubtitle")} />
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-zinc-100 bg-white shadow-sm">
@@ -376,7 +376,7 @@ export default function ClubAdminLicensesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {pagedMemberRows.map((row) => {
+                {memberRows.map((row) => {
                   const isExpanded = expandedMemberSet.has(row.member.id);
                   const memberName = `${row.member.first_name} ${row.member.last_name}`;
                   return (

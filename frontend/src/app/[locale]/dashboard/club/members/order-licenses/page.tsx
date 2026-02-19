@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Club, Member, getClubs, getMembers } from "@/lib/club-admin-api";
+import { Club, Member, getClubs, getMembersList } from "@/lib/club-admin-api";
 import {
   ClubOrderEligibleLicenseType,
   ClubOrderIneligibleLicenseType,
@@ -171,10 +171,17 @@ export default function ClubMembersOrderLicensesPage() {
     setIsLoading(true);
     setErrorMessage(null);
     try {
+      const membersPromise =
+        payload.selectedIds.length > 0
+          ? getMembersList({
+              clubId: payload.selectedClubId ?? undefined,
+              ids: payload.selectedIds,
+            })
+          : Promise.resolve<Member[]>([]);
       const [me, clubsResponse, membersResponse] = await Promise.all([
         apiRequest<AuthMeResponse>("/api/auth/me/"),
         getClubs(),
-        getMembers(),
+        membersPromise,
       ]);
       setCurrentRole(me.role);
       setClubs(clubsResponse);
@@ -185,7 +192,7 @@ export default function ClubMembersOrderLicensesPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [t]);
+  }, [payload.selectedClubId, payload.selectedIds, t]);
 
   useEffect(() => {
     loadInitialData();

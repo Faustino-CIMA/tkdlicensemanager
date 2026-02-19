@@ -1,4 +1,9 @@
 import { apiRequest } from "./api";
+import { PaginatedResponse, unwrapListResponse } from "./pagination";
+
+type ApiCallOptions = {
+  signal?: AbortSignal;
+};
 
 export type FinanceOrderItem = {
   id: number;
@@ -58,10 +63,11 @@ export type FinanceInvoice = {
   subtotal: string;
   tax_total: string;
   total: string;
-  stripe_invoice_id: string | null;
-  stripe_customer_id: string | null;
+  stripe_invoice_id?: string | null;
+  stripe_customer_id?: string | null;
   issued_at: string | null;
   paid_at: string | null;
+  item_quantity?: number;
   created_at: string;
   updated_at: string;
 };
@@ -76,12 +82,13 @@ export type FinanceOrder = {
   subtotal: string;
   tax_total: string;
   total: string;
-  stripe_payment_intent_id: string | null;
-  stripe_checkout_session_id: string | null;
+  stripe_payment_intent_id?: string | null;
+  stripe_checkout_session_id?: string | null;
+  item_quantity?: number;
   created_at: string;
   updated_at: string;
-  items: FinanceOrderItem[];
-  invoice: FinanceInvoice | null;
+  items?: FinanceOrderItem[];
+  invoice?: FinanceInvoice | null;
 };
 
 export type FinanceAuditLog = {
@@ -232,23 +239,147 @@ export type LtfFinanceOverviewResponse = {
   };
 };
 
-export function getFinanceOrders() {
-  return apiRequest<FinanceOrder[]>("/api/orders/");
+export type { PaginatedResponse } from "./pagination";
+
+type FinanceOrderQueryParams = {
+  q?: string;
+  status?: string;
+  clubId?: number;
+};
+
+type FinanceOrderPageParams = FinanceOrderQueryParams & {
+  page: number;
+  pageSize: number;
+};
+
+function buildFinanceOrderQuery(params?: FinanceOrderQueryParams) {
+  const search = new URLSearchParams();
+  if (params?.q) {
+    search.set("q", params.q);
+  }
+  if (params?.status) {
+    search.set("status", params.status);
+  }
+  if (params?.clubId) {
+    search.set("club_id", String(params.clubId));
+  }
+  return search;
+}
+
+export function getFinanceOrders(options?: ApiCallOptions) {
+  return getFinanceOrdersList(undefined, options);
+}
+
+export function getFinanceOrdersList(
+  params?: FinanceOrderQueryParams,
+  options?: ApiCallOptions
+) {
+  const search = buildFinanceOrderQuery(params);
+  const suffix = search.toString();
+  return apiRequest<FinanceOrder[] | PaginatedResponse<FinanceOrder>>(
+    `/api/orders/${suffix ? `?${suffix}` : ""}`,
+    {
+      signal: options?.signal,
+    }
+  ).then((response) => unwrapListResponse(response));
+}
+
+export function getFinanceOrdersPage(
+  params: FinanceOrderPageParams,
+  options?: ApiCallOptions
+) {
+  const search = buildFinanceOrderQuery(params);
+  search.set("page", String(params.page));
+  search.set("page_size", String(params.pageSize));
+  const suffix = search.toString();
+  return apiRequest<PaginatedResponse<FinanceOrder>>(
+    `/api/orders/${suffix ? `?${suffix}` : ""}`,
+    {
+      signal: options?.signal,
+    }
+  );
 }
 
 export function getFinanceOrder(orderId: number) {
   return apiRequest<FinanceOrder>(`/api/orders/${orderId}/`);
 }
 
-export function getFinanceInvoices() {
-  return apiRequest<FinanceInvoice[]>("/api/invoices/");
+export function getFinanceInvoices(options?: ApiCallOptions) {
+  return getFinanceInvoicesList(undefined, options);
+}
+
+type FinanceInvoiceQueryParams = {
+  q?: string;
+  status?: string;
+  clubId?: number;
+};
+
+type FinanceInvoicePageParams = FinanceInvoiceQueryParams & {
+  page: number;
+  pageSize: number;
+};
+
+function buildFinanceInvoiceQuery(params?: FinanceInvoiceQueryParams) {
+  const search = new URLSearchParams();
+  if (params?.q) {
+    search.set("q", params.q);
+  }
+  if (params?.status) {
+    search.set("status", params.status);
+  }
+  if (params?.clubId) {
+    search.set("club_id", String(params.clubId));
+  }
+  return search;
+}
+
+export function getFinanceInvoicesList(
+  params?: FinanceInvoiceQueryParams,
+  options?: ApiCallOptions
+) {
+  const search = buildFinanceInvoiceQuery(params);
+  const suffix = search.toString();
+  return apiRequest<FinanceInvoice[] | PaginatedResponse<FinanceInvoice>>(
+    `/api/invoices/${suffix ? `?${suffix}` : ""}`,
+    {
+      signal: options?.signal,
+    }
+  ).then((response) => unwrapListResponse(response));
+}
+
+export function getFinanceInvoicesPage(
+  params: FinanceInvoicePageParams,
+  options?: ApiCallOptions
+) {
+  const search = buildFinanceInvoiceQuery(params);
+  search.set("page", String(params.page));
+  search.set("page_size", String(params.pageSize));
+  const suffix = search.toString();
+  return apiRequest<PaginatedResponse<FinanceInvoice>>(
+    `/api/invoices/${suffix ? `?${suffix}` : ""}`,
+    {
+      signal: options?.signal,
+    }
+  );
 }
 
 export function getFinanceInvoice(invoiceId: number) {
   return apiRequest<FinanceInvoice>(`/api/invoices/${invoiceId}/`);
 }
 
-export function getFinancePayments(params?: { invoiceId?: number; orderId?: number }) {
+type FinancePaymentQueryParams = {
+  invoiceId?: number;
+  orderId?: number;
+  status?: string;
+  q?: string;
+};
+
+type FinancePaymentPageParams = FinancePaymentQueryParams & {
+  page: number;
+  pageSize: number;
+};
+
+function buildFinancePaymentQuery(params?: FinancePaymentQueryParams) {
   const search = new URLSearchParams();
   if (params?.invoiceId) {
     search.set("invoice_id", String(params.invoiceId));
@@ -256,12 +387,49 @@ export function getFinancePayments(params?: { invoiceId?: number; orderId?: numb
   if (params?.orderId) {
     search.set("order_id", String(params.orderId));
   }
-  const suffix = search.toString();
-  return apiRequest<Payment[]>(`/api/payments/${suffix ? `?${suffix}` : ""}`);
+  if (params?.status) {
+    search.set("status", params.status);
+  }
+  if (params?.q) {
+    search.set("q", params.q);
+  }
+  return search;
 }
 
-export function getFinanceClubs() {
-  return apiRequest<Club[]>("/api/clubs/");
+export function getFinancePayments(
+  params?: FinancePaymentQueryParams,
+  options?: ApiCallOptions
+) {
+  const search = buildFinancePaymentQuery(params);
+  const suffix = search.toString();
+  return apiRequest<Payment[] | PaginatedResponse<Payment>>(
+    `/api/payments/${suffix ? `?${suffix}` : ""}`,
+    {
+      signal: options?.signal,
+    }
+  ).then((response) => unwrapListResponse(response));
+}
+
+export function getFinancePaymentsPage(
+  params: FinancePaymentPageParams,
+  options?: ApiCallOptions
+) {
+  const search = buildFinancePaymentQuery(params);
+  search.set("page", String(params.page));
+  search.set("page_size", String(params.pageSize));
+  const suffix = search.toString();
+  return apiRequest<PaginatedResponse<Payment>>(
+    `/api/payments/${suffix ? `?${suffix}` : ""}`,
+    {
+      signal: options?.signal,
+    }
+  );
+}
+
+export function getFinanceClubs(options?: ApiCallOptions) {
+  return apiRequest<Club[]>("/api/clubs/", {
+    signal: options?.signal,
+  });
 }
 
 export function getFinanceMembers() {
@@ -269,20 +437,74 @@ export function getFinanceMembers() {
 }
 
 export function getFinanceAuditLogs() {
-  return apiRequest<FinanceAuditLog[]>("/api/finance-audit-logs/");
+  return getFinanceAuditLogsList();
 }
 
-export function getLtfFinanceOverview() {
-  return apiRequest<LtfFinanceOverviewResponse>("/api/dashboard/overview/ltf-finance/");
+type FinanceAuditLogQueryParams = {
+  q?: string;
+};
+
+type FinanceAuditLogPageParams = FinanceAuditLogQueryParams & {
+  page: number;
+  pageSize: number;
+};
+
+function buildFinanceAuditLogQuery(params?: FinanceAuditLogQueryParams) {
+  const search = new URLSearchParams();
+  if (params?.q) {
+    search.set("q", params.q);
+  }
+  return search;
 }
 
-export function getLicensePrices(params?: { licenseTypeId?: number }) {
+export function getFinanceAuditLogsList(
+  params?: FinanceAuditLogQueryParams,
+  options?: ApiCallOptions
+) {
+  const search = buildFinanceAuditLogQuery(params);
+  const suffix = search.toString();
+  return apiRequest<FinanceAuditLog[] | PaginatedResponse<FinanceAuditLog>>(
+    `/api/finance-audit-logs/${suffix ? `?${suffix}` : ""}`,
+    {
+      signal: options?.signal,
+    }
+  ).then((response) => unwrapListResponse(response));
+}
+
+export function getFinanceAuditLogsPage(
+  params: FinanceAuditLogPageParams,
+  options?: ApiCallOptions
+) {
+  const search = buildFinanceAuditLogQuery(params);
+  search.set("page", String(params.page));
+  search.set("page_size", String(params.pageSize));
+  const suffix = search.toString();
+  return apiRequest<PaginatedResponse<FinanceAuditLog>>(
+    `/api/finance-audit-logs/${suffix ? `?${suffix}` : ""}`,
+    {
+      signal: options?.signal,
+    }
+  );
+}
+
+export function getLtfFinanceOverview(options?: ApiCallOptions) {
+  return apiRequest<LtfFinanceOverviewResponse>("/api/dashboard/overview/ltf-finance/", {
+    signal: options?.signal,
+  });
+}
+
+export function getLicensePrices(
+  params?: { licenseTypeId?: number },
+  options?: ApiCallOptions
+) {
   const search = new URLSearchParams();
   if (params?.licenseTypeId) {
     search.set("license_type", String(params.licenseTypeId));
   }
   const suffix = search.toString();
-  return apiRequest<LicensePrice[]>(`/api/license-prices/${suffix ? `?${suffix}` : ""}`);
+  return apiRequest<LicensePrice[]>(`/api/license-prices/${suffix ? `?${suffix}` : ""}`, {
+    signal: options?.signal,
+  });
 }
 
 export function createLicensePrice(input: {
@@ -297,8 +519,10 @@ export function createLicensePrice(input: {
   });
 }
 
-export function getFinanceLicenseTypes() {
-  return apiRequest<FinanceLicenseType[]>("/api/license-types/");
+export function getFinanceLicenseTypes(options?: ApiCallOptions) {
+  return apiRequest<FinanceLicenseType[]>("/api/license-types/", {
+    signal: options?.signal,
+  });
 }
 
 export function createFinanceLicenseType(input: {

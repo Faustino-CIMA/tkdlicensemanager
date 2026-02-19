@@ -9,7 +9,13 @@ import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { License, Member, deleteMember, getLicenses, getMembers } from "@/lib/club-admin-api";
+import {
+  License,
+  Member,
+  deleteMember,
+  getLicensesList,
+  getMembersList,
+} from "@/lib/club-admin-api";
 import { apiRequest } from "@/lib/api";
 
 const BATCH_DELETE_STORAGE_KEY = "club_members_batch_delete_payload";
@@ -25,6 +31,15 @@ type DeleteResult = {
   deleted: number;
   failed: number;
   failedItems: string[];
+};
+
+type PreviewRow = {
+  id: number;
+  memberLabel: string;
+  ltfLicenseId: string;
+  statusLabel: string;
+  statusTone: "success" | "danger";
+  cascadeLabel: string;
 };
 
 function parseBatchDeletePayload(): BatchDeletePayload {
@@ -104,7 +119,7 @@ export default function ClubMembersBatchDeletePage() {
     [licenseCountByMember, selectedMembers]
   );
 
-  const previewRows = useMemo(
+  const previewRows = useMemo<PreviewRow[]>(
     () =>
       selectedMembers.map((member) => ({
         id: member.id,
@@ -128,7 +143,18 @@ export default function ClubMembersBatchDeletePage() {
         setLicenses([]);
         return;
       }
-      const [membersResponse, licensesResponse] = await Promise.all([getMembers(), getLicenses()]);
+      const membersResponse = await getMembersList({
+        ids: selectedIds,
+        clubId: payload.selectedClubId ?? undefined,
+      });
+      const memberIds = membersResponse.map((member) => member.id);
+      const licensesResponse =
+        memberIds.length > 0
+          ? await getLicensesList({
+              clubId: payload.selectedClubId ?? undefined,
+              memberIds,
+            })
+          : [];
       setMembers(membersResponse);
       setLicenses(licensesResponse);
     } catch (error) {
@@ -137,7 +163,7 @@ export default function ClubMembersBatchDeletePage() {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedIds.length, t]);
+  }, [payload.selectedClubId, selectedIds, t]);
 
   useEffect(() => {
     loadData();
@@ -295,7 +321,7 @@ export default function ClubMembersBatchDeletePage() {
                 {
                   key: "statusLabel",
                   header: t("statusLabel"),
-                  render: (row: (typeof previewRows)[number]) => (
+                  render: (row: PreviewRow) => (
                     <StatusBadge label={row.statusLabel} tone={row.statusTone} />
                   ),
                 },

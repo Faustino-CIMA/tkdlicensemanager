@@ -1,5 +1,10 @@
 import { getToken } from "./auth";
 import { API_URL, apiRequest } from "./api";
+import { PaginatedResponse, unwrapListResponse } from "./pagination";
+
+type ApiCallOptions = {
+  signal?: AbortSignal;
+};
 
 export type Club = {
   id: number;
@@ -425,8 +430,64 @@ export function setClubMaxAdmins(clubId: number, maxAdmins: number) {
   });
 }
 
-export function getMembers() {
-  return apiRequest<Member[]>("/api/members/");
+type MemberListQueryParams = {
+  q?: string;
+  clubId?: number;
+  isActive?: boolean;
+  ids?: number[];
+};
+
+type MemberPageParams = MemberListQueryParams & {
+  page: number;
+  pageSize: number;
+};
+
+function buildMemberListQuery(params?: MemberListQueryParams) {
+  const search = new URLSearchParams();
+  if (params?.q) {
+    search.set("q", params.q);
+  }
+  if (params?.clubId) {
+    search.set("club_id", String(params.clubId));
+  }
+  if (typeof params?.isActive === "boolean") {
+    search.set("is_active", params.isActive ? "true" : "false");
+  }
+  if (params?.ids && params.ids.length > 0) {
+    search.set("ids", params.ids.join(","));
+  }
+  return search;
+}
+
+export function getMembers(options?: ApiCallOptions) {
+  return getMembersList(undefined, options);
+}
+
+export function getMembersList(
+  params?: MemberListQueryParams,
+  options?: ApiCallOptions
+) {
+  const search = buildMemberListQuery(params);
+  const suffix = search.toString();
+  return apiRequest<Member[] | PaginatedResponse<Member>>(
+    `/api/members/${suffix ? `?${suffix}` : ""}`,
+    {
+      signal: options?.signal,
+    }
+  ).then((response) => unwrapListResponse(response));
+}
+
+export function getMembersPage(
+  params: MemberPageParams,
+  options?: ApiCallOptions
+) {
+  const search = buildMemberListQuery(params);
+  search.set("page", String(params.page));
+  search.set("page_size", String(params.pageSize));
+  const suffix = search.toString();
+  return apiRequest<PaginatedResponse<Member>>(`/api/members/${suffix ? `?${suffix}` : ""}`, {
+    signal: options?.signal,
+  });
 }
 
 export function createMember(input: MemberInput) {
@@ -531,8 +592,85 @@ export function promoteMemberGrade(memberId: number, input: GradePromotionInput)
   });
 }
 
-export function getLicenses() {
-  return apiRequest<License[]>("/api/licenses/");
+type LicenseListQueryParams = {
+  q?: string;
+  status?: string;
+  year?: number;
+  memberId?: number;
+  memberIds?: number[];
+  ids?: number[];
+  clubId?: number;
+};
+
+type LicensePageParams = LicenseListQueryParams & {
+  page: number;
+  pageSize: number;
+};
+
+function buildLicenseListQuery(params?: LicenseListQueryParams) {
+  const search = new URLSearchParams();
+  if (params?.q) {
+    search.set("q", params.q);
+  }
+  if (params?.status) {
+    search.set("status", params.status);
+  }
+  if (typeof params?.year === "number") {
+    search.set("year", String(params.year));
+  }
+  if (typeof params?.memberId === "number") {
+    search.set("member_id", String(params.memberId));
+  }
+  if (params?.memberIds && params.memberIds.length > 0) {
+    search.set("member_ids", params.memberIds.join(","));
+  }
+  if (params?.ids && params.ids.length > 0) {
+    search.set("ids", params.ids.join(","));
+  }
+  if (typeof params?.clubId === "number") {
+    search.set("club_id", String(params.clubId));
+  }
+  return search;
+}
+
+export function getLicenses(options?: ApiCallOptions) {
+  return getLicensesList(undefined, options);
+}
+
+export function getLicense(id: number, options?: ApiCallOptions) {
+  return apiRequest<License>(`/api/licenses/${id}/`, {
+    signal: options?.signal,
+  });
+}
+
+export function getLicensesList(
+  params?: LicenseListQueryParams,
+  options?: ApiCallOptions
+) {
+  const search = buildLicenseListQuery(params);
+  const suffix = search.toString();
+  return apiRequest<License[] | PaginatedResponse<License>>(
+    `/api/licenses/${suffix ? `?${suffix}` : ""}`,
+    {
+      signal: options?.signal,
+    }
+  ).then((response) => unwrapListResponse(response));
+}
+
+export function getLicensesPage(
+  params: LicensePageParams,
+  options?: ApiCallOptions
+) {
+  const search = buildLicenseListQuery(params);
+  search.set("page", String(params.page));
+  search.set("page_size", String(params.pageSize));
+  const suffix = search.toString();
+  return apiRequest<PaginatedResponse<License>>(
+    `/api/licenses/${suffix ? `?${suffix}` : ""}`,
+    {
+      signal: options?.signal,
+    }
+  );
 }
 
 export function getLicenseTypes() {

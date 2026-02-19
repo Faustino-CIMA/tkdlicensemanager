@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { License, Member, deleteMember, getLicenses, getMember } from "@/lib/club-admin-api";
+import { License, Member, deleteMember, getLicensesList, getMember } from "@/lib/club-admin-api";
 import { apiRequest } from "@/lib/api";
 
 type AuthMeResponse = { role: string };
@@ -85,7 +85,7 @@ export default function ClubMemberDeletePage() {
       try {
         const [memberResponse, licensesResponse] = await Promise.all([
           getMember(memberId),
-          getLicenses(),
+          getLicensesList({ memberId }),
         ]);
         setMember(memberResponse);
         setLicenses(licensesResponse);

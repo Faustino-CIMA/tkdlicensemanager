@@ -52,6 +52,8 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 
 class InvoiceSerializer(serializers.ModelSerializer):
+    item_quantity = serializers.SerializerMethodField()
+
     class Meta:
         model = Invoice
         fields = [
@@ -69,15 +71,81 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "stripe_customer_id",
             "issued_at",
             "paid_at",
+            "item_quantity",
             "created_at",
             "updated_at",
         ]
         read_only_fields = ["invoice_number", "created_at", "updated_at"]
 
+    def get_item_quantity(self, obj: Invoice) -> int:
+        annotated_value = getattr(obj, "item_quantity", None)
+        if annotated_value is not None:
+            return int(annotated_value)
+        return 0
+
+
+class InvoiceListSerializer(serializers.ModelSerializer):
+    item_quantity = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Invoice
+        fields = [
+            "id",
+            "invoice_number",
+            "order",
+            "club",
+            "member",
+            "status",
+            "currency",
+            "subtotal",
+            "tax_total",
+            "total",
+            "issued_at",
+            "paid_at",
+            "item_quantity",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_item_quantity(self, obj: Invoice) -> int:
+        annotated_value = getattr(obj, "item_quantity", None)
+        if annotated_value is not None:
+            return int(annotated_value)
+        return 0
+
+
+class OrderListSerializer(serializers.ModelSerializer):
+    item_quantity = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Order
+        fields = [
+            "id",
+            "order_number",
+            "club",
+            "member",
+            "status",
+            "currency",
+            "subtotal",
+            "tax_total",
+            "total",
+            "item_quantity",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["order_number", "created_at", "updated_at"]
+
+    def get_item_quantity(self, obj: Order) -> int:
+        annotated_value = getattr(obj, "item_quantity", None)
+        if annotated_value is not None:
+            return int(annotated_value)
+        return sum(getattr(item, "quantity", 0) for item in obj.items.all())
+
 
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
     invoice = InvoiceSerializer(read_only=True)
+    item_quantity = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -93,12 +161,19 @@ class OrderSerializer(serializers.ModelSerializer):
             "total",
             "stripe_payment_intent_id",
             "stripe_checkout_session_id",
+            "item_quantity",
             "created_at",
             "updated_at",
             "items",
             "invoice",
         ]
         read_only_fields = ["order_number", "created_at", "updated_at"]
+
+    def get_item_quantity(self, obj: Order) -> int:
+        annotated_value = getattr(obj, "item_quantity", None)
+        if annotated_value is not None:
+            return int(annotated_value)
+        return sum(getattr(item, "quantity", 0) for item in obj.items.all())
 
 
 class OrderItemCreateSerializer(serializers.Serializer):

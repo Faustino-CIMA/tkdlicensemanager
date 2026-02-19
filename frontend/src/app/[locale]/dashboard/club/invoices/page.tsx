@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 
@@ -18,11 +18,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FinanceInvoice, FinanceOrder, createClubCheckoutSession, getClubInvoices, getClubOrders } from "@/lib/club-finance-api";
+import {
+  FinanceInvoice,
+  createClubCheckoutSession,
+  getClubInvoicesPage,
+} from "@/lib/club-finance-api";
 import { formatDisplayDateTime } from "@/lib/date-display";
 import { openInvoicePdf } from "@/lib/invoice-pdf";
 
-const AUTO_REFRESH_INTERVAL_MS = 10000;
+const AUTO_REFRESH_INTERVAL_MS = 30000;
 
 export default function ClubAdminInvoicesPage() {
   const t = useTranslations("ClubAdmin");
@@ -31,47 +35,85 @@ export default function ClubAdminInvoicesPage() {
   const router = useRouter();
   const { selectedClubId } = useClubSelection();
   const [invoices, setInvoices] = useState<FinanceInvoice[]>([]);
-  const [orders, setOrders] = useState<FinanceOrder[]>([]);
+  const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("25");
+  const [totalCount, setTotalCount] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [activeOrderId, setActiveOrderId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const isRefreshingRef = useRef(false);
+  const requestAbortRef = useRef<AbortController | null>(null);
 
-  const pageSizeOptions = ["10", "25", "50", "100", "150", "200", "all"];
+  const pageSizeOptions = ["10", "25", "50", "100", "150", "200"];
 
   const loadData = useCallback(
     async (options?: { silent?: boolean }) => {
       const silent = options?.silent ?? false;
+      if (isRefreshingRef.current) {
+        return;
+      }
+      const controller = new AbortController();
+      isRefreshingRef.current = true;
+      requestAbortRef.current = controller;
       if (!silent) {
         setIsLoading(true);
         setErrorMessage(null);
       }
       try {
-        const [invoiceResponse, ordersResponse] = await Promise.all([
-          getClubInvoices(selectedClubId),
-          getClubOrders(selectedClubId),
-        ]);
-        setInvoices(invoiceResponse);
-        setOrders(ordersResponse);
+        const invoiceResponse = await getClubInvoicesPage(
+          {
+            page: currentPage,
+            pageSize: Number(pageSize),
+            clubId: selectedClubId ?? undefined,
+            q: searchQuery || undefined,
+          },
+          {
+            signal: controller.signal,
+          }
+        );
+        setInvoices(invoiceResponse.results);
+        setTotalCount(invoiceResponse.count);
       } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
         if (!silent) {
           setErrorMessage(error instanceof Error ? error.message : t("invoicesLoadError"));
         }
       } finally {
+        if (requestAbortRef.current === controller) {
+          requestAbortRef.current = null;
+        }
+        isRefreshingRef.current = false;
         if (!silent) {
           setIsLoading(false);
         }
       }
     },
-    [selectedClubId, t]
+    [currentPage, pageSize, searchQuery, selectedClubId, t]
   );
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setSearchQuery(searchInput.trim());
+    }, 250);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [searchInput]);
+
+  useEffect(() => {
+    return () => {
+      requestAbortRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -136,57 +178,18 @@ export default function ClubAdminInvoicesPage() {
     }
   };
 
-  const orderQuantityById = useMemo(() => {
-    const map = new Map<number, number>();
-    orders.forEach((order) => {
-      map.set(
-        order.id,
-        order.items.reduce((total, item) => total + (item.quantity ?? 0), 0)
-      );
-    });
-    return map;
-  }, [orders]);
-
   const getInvoiceQuantity = useCallback(
     (invoice: FinanceInvoice) => {
-      if (!invoice.order) {
-        return "-";
-      }
-      return orderQuantityById.get(invoice.order) ?? 0;
+      return typeof invoice.item_quantity === "number" ? invoice.item_quantity : "-";
     },
-    [orderQuantityById]
+    []
   );
 
-  const searchedInvoices = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return invoices;
-    }
-    return invoices.filter((invoice) => {
-      const numberText = invoice.invoice_number.toLowerCase();
-      const statusText = invoice.status.toLowerCase();
-      const qtyText = String(getInvoiceQuantity(invoice));
-      const totalText = `${invoice.total} ${invoice.currency}`.toLowerCase();
-      return (
-        numberText.includes(normalizedQuery) ||
-        statusText.includes(normalizedQuery) ||
-        qtyText.includes(normalizedQuery) ||
-        totalText.includes(normalizedQuery)
-      );
-    });
-  }, [invoices, searchQuery, getInvoiceQuantity]);
-
-  const resolvedPageSize =
-    pageSize === "all" ? Math.max(searchedInvoices.length, 1) : Number(pageSize);
-  const totalPages = Math.max(1, Math.ceil(searchedInvoices.length / resolvedPageSize));
-  const pagedInvoices = useMemo(() => {
-    const startIndex = (currentPage - 1) * resolvedPageSize;
-    return searchedInvoices.slice(startIndex, startIndex + resolvedPageSize);
-  }, [currentPage, searchedInvoices, resolvedPageSize]);
+  const totalPages = Math.max(1, Math.ceil(totalCount / Number(pageSize)));
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, pageSize]);
+  }, [searchQuery, pageSize, selectedClubId]);
 
   const columns = [
     { key: "invoice_number", header: t("invoiceNumberLabel") },
@@ -257,8 +260,8 @@ export default function ClubAdminInvoicesPage() {
         <Input
           className="w-full max-w-sm"
           placeholder={t("searchInvoicesPlaceholder")}
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
+          value={searchInput}
+          onChange={(event) => setSearchInput(event.target.value)}
         />
         <div className="flex items-center gap-3">
           <span className="text-sm text-zinc-600">{common("rowsPerPageLabel")}</span>
@@ -279,13 +282,13 @@ export default function ClubAdminInvoicesPage() {
 
       {isLoading ? (
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
-      ) : searchedInvoices.length === 0 ? (
+      ) : invoices.length === 0 ? (
         <EmptyState title={t("noInvoicesTitle")} description={t("noInvoicesSubtitle")} />
       ) : (
         <>
           <EntityTable
             columns={columns}
-            rows={pagedInvoices}
+            rows={invoices}
             onRowClick={(row) => router.push(`/${locale}/dashboard/club/invoices/${row.id}`)}
           />
           <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-600">

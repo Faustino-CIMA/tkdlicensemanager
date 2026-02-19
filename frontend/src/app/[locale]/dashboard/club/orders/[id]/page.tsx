@@ -89,7 +89,7 @@ export default function ClubOrderDetailPage() {
     if (!order) {
       return [];
     }
-    return order.items.map((item) => {
+    return (order.items ?? []).map((item) => {
       const member = members.find((record) => record.id === item.license.member);
       const memberName = member
         ? `${member.first_name} ${member.last_name}`

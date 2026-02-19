@@ -4,6 +4,7 @@ import base64
 
 from celery import shared_task
 from django.conf import settings
+from django.core.cache import cache
 from django.db import IntegrityError
 from django.db.models import Q
 from django.template.loader import render_to_string
@@ -18,11 +19,39 @@ from .pdf_utils import build_invoice_context, render_invoice_pdf
 from .services import apply_payment_and_activate
 
 
+STRIPE_RECONCILE_BACKOFF_SECONDS = 120
+STRIPE_RECONCILE_ERROR_BACKOFF_SECONDS = 300
+
+
+def _reconcile_not_before_key(order_id: int) -> str:
+    return f"stripe:reconcile:not_before:{order_id}"
+
+
+def _set_reconcile_backoff(order_id: int, seconds: int) -> None:
+    if seconds <= 0:
+        cache.delete(_reconcile_not_before_key(order_id))
+        return
+    cache.set(
+        _reconcile_not_before_key(order_id),
+        timezone.now().timestamp() + seconds,
+        timeout=seconds,
+    )
+
+
+def _can_reconcile_now(order_id: int) -> bool:
+    not_before = cache.get(_reconcile_not_before_key(order_id))
+    if not_before is None:
+        return True
+    return timezone.now().timestamp() >= float(not_before)
+
+
 @shared_task
 def activate_order_from_stripe(order_id: int, stripe_data: dict | None = None) -> None:
     try:
-        order = Order.objects.select_related("club", "member", "member__user").get(
-            id=order_id
+        order = (
+            Order.objects.select_related("club", "member", "member__user", "invoice")
+            .prefetch_related("items__license")
+            .get(id=order_id)
         )
     except Order.DoesNotExist:
         return
@@ -91,40 +120,37 @@ def process_stripe_webhook_event(event_payload: dict) -> None:
 
 
 @shared_task
-def reconcile_pending_stripe_orders(limit: int = 100) -> int:
+def reconcile_pending_stripe_orders(limit: int | None = None) -> int:
     if not settings.STRIPE_SECRET_KEY:
         return 0
 
     stripe.api_key = settings.STRIPE_SECRET_KEY
     stripe.api_version = settings.STRIPE_API_VERSION
+    reconcile_limit = int(
+        limit if limit is not None else getattr(settings, "STRIPE_RECONCILE_BATCH_LIMIT", 100)
+    )
 
-    pending_orders = (
+    pending_orders = list(
         Order.objects.filter(status__in=[Order.Status.DRAFT, Order.Status.PENDING])
         .filter(
             Q(stripe_payment_intent_id__isnull=False)
             | Q(stripe_checkout_session_id__isnull=False)
         )
-        .exclude(stripe_payment_intent_id="")
-        .select_related("member__user")
-        .order_by("-updated_at")[:limit]
+        .exclude(stripe_payment_intent_id="", stripe_checkout_session_id="")
+        .select_related("member__user", "invoice")
+        .prefetch_related("items__license")
+        .order_by("-updated_at")[:reconcile_limit]
     )
 
-    # Include orders that only have checkout session IDs (without PI cached on order).
-    if len(pending_orders) < limit:
-        session_only_orders = (
-            Order.objects.filter(status__in=[Order.Status.DRAFT, Order.Status.PENDING])
-            .filter(stripe_checkout_session_id__isnull=False)
-            .exclude(stripe_checkout_session_id="")
-            .exclude(id__in=[order.id for order in pending_orders])
-            .select_related("member__user")
-            .order_by("-updated_at")[: max(0, limit - len(pending_orders))]
-        )
-        pending_orders = list(pending_orders) + list(session_only_orders)
-    else:
-        pending_orders = list(pending_orders)
+    checkout_session_cache: dict[str, dict] = {}
+    payment_intent_cache: dict[str, dict] = {}
 
     processed_count = 0
+    reconciled_order_ids: list[int] = []
     for order in pending_orders:
+        if not _can_reconcile_now(order.id):
+            continue
+
         stripe_data = {}
         payment_details = {}
         payment_intent_id = order.stripe_payment_intent_id or ""
@@ -132,8 +158,12 @@ def reconcile_pending_stripe_orders(limit: int = 100) -> int:
 
         try:
             if checkout_session_id:
-                session = stripe.checkout.Session.retrieve(checkout_session_id)
+                session = checkout_session_cache.get(checkout_session_id)
+                if session is None:
+                    session = stripe.checkout.Session.retrieve(checkout_session_id)
+                    checkout_session_cache[checkout_session_id] = session
                 if session.get("payment_status") != "paid":
+                    _set_reconcile_backoff(order.id, STRIPE_RECONCILE_BACKOFF_SECONDS)
                     continue
                 stripe_data["stripe_checkout_session_id"] = session.get("id")
                 stripe_data["stripe_customer_id"] = session.get("customer")
@@ -143,11 +173,15 @@ def reconcile_pending_stripe_orders(limit: int = 100) -> int:
                     stripe_data["stripe_payment_intent_id"] = session_pi
 
             if payment_intent_id:
-                payment_intent = stripe.PaymentIntent.retrieve(
-                    payment_intent_id,
-                    expand=["charges.data.payment_method_details"],
-                )
+                payment_intent = payment_intent_cache.get(payment_intent_id)
+                if payment_intent is None:
+                    payment_intent = stripe.PaymentIntent.retrieve(
+                        payment_intent_id,
+                        expand=["charges.data.payment_method_details"],
+                    )
+                    payment_intent_cache[payment_intent_id] = payment_intent
                 if payment_intent.get("status") != "succeeded":
+                    _set_reconcile_backoff(order.id, STRIPE_RECONCILE_BACKOFF_SECONDS)
                     continue
                 stripe_data["stripe_payment_intent_id"] = payment_intent.get("id")
                 stripe_data["stripe_customer_id"] = payment_intent.get("customer")
@@ -164,8 +198,10 @@ def reconcile_pending_stripe_orders(limit: int = 100) -> int:
                     }
             else:
                 # No payment intent available and no paid checkout session.
+                _set_reconcile_backoff(order.id, STRIPE_RECONCILE_BACKOFF_SECONDS)
                 continue
         except stripe.error.StripeError:  # type: ignore[attr-defined]
+            _set_reconcile_backoff(order.id, STRIPE_RECONCILE_ERROR_BACKOFF_SECONDS)
             continue
 
         updated = apply_payment_and_activate(
@@ -177,12 +213,19 @@ def reconcile_pending_stripe_orders(limit: int = 100) -> int:
         )
         if updated:
             processed_count += 1
+            reconciled_order_ids.append(order.id)
+            _set_reconcile_backoff(order.id, 0)
+        else:
+            _set_reconcile_backoff(order.id, STRIPE_RECONCILE_BACKOFF_SECONDS)
 
     if processed_count:
         FinanceAuditLog.objects.create(
             action="stripe.reconciled",
             message=f"Reconciled {processed_count} pending Stripe orders.",
-            metadata={"processed_count": processed_count},
+            metadata={
+                "processed_count": processed_count,
+                "order_ids": reconciled_order_ids,
+            },
         )
 
     return processed_count

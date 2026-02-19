@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 
 import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
@@ -15,69 +15,108 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatDisplayDateTime } from "@/lib/date-display";
-import { FinanceAuditLog, getFinanceAuditLogs } from "@/lib/ltf-finance-api";
+import {
+  FinanceAuditLog,
+  getFinanceAuditLogsList,
+  getFinanceAuditLogsPage,
+} from "@/lib/ltf-finance-api";
 
 export default function LtfFinanceAuditLogPage() {
   const t = useTranslations("LtfFinance");
   const common = useTranslations("Common");
   const [logs, setLogs] = useState<FinanceAuditLog[]>([]);
+  const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("25");
+  const [totalCount, setTotalCount] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const requestAbortRef = useRef<AbortController | null>(null);
 
   const pageSizeOptions = ["10", "25", "50", "100", "150", "200", "all"];
 
-  const loadLogs = async () => {
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setSearchQuery(searchInput.trim());
+    }, 250);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [searchInput]);
+
+  const loadLogs = useCallback(async () => {
+    requestAbortRef.current?.abort();
+    const controller = new AbortController();
+    requestAbortRef.current = controller;
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const response = await getFinanceAuditLogs();
-      setLogs(response);
+      const normalizedSearch = searchQuery || undefined;
+      if (pageSize === "all") {
+        const response = await getFinanceAuditLogsList(
+          { q: normalizedSearch },
+          { signal: controller.signal }
+        );
+        if (requestAbortRef.current !== controller) {
+          return;
+        }
+        setLogs(response);
+        setTotalCount(response.length);
+      } else {
+        const response = await getFinanceAuditLogsPage(
+          {
+            page: currentPage,
+            pageSize: Number(pageSize),
+            q: normalizedSearch,
+          },
+          { signal: controller.signal }
+        );
+        if (requestAbortRef.current !== controller) {
+          return;
+        }
+        setLogs(response.results);
+        setTotalCount(response.count);
+      }
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
       setErrorMessage(error instanceof Error ? error.message : t("auditLogLoadError"));
     } finally {
+      if (requestAbortRef.current === controller) {
+        requestAbortRef.current = null;
+      }
       setIsLoading(false);
     }
-  };
+  }, [currentPage, pageSize, searchQuery, t]);
 
   useEffect(() => {
-    loadLogs();
+    void loadLogs();
+  }, [loadLogs]);
+
+  useEffect(() => {
+    return () => {
+      requestAbortRef.current?.abort();
+    };
   }, []);
 
-  const searchedLogs = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return logs;
-    }
-    return logs.filter((log) => {
-      const actionText = log.action.toLowerCase();
-      const messageText = log.message?.toLowerCase() ?? "";
-      const actorText = log.actor ? String(log.actor) : "";
-      const clubText = log.club ? String(log.club) : "";
-      const orderText = log.order ? String(log.order) : "";
-      return (
-        actionText.includes(normalizedQuery) ||
-        messageText.includes(normalizedQuery) ||
-        actorText.includes(normalizedQuery) ||
-        clubText.includes(normalizedQuery) ||
-        orderText.includes(normalizedQuery)
-      );
-    });
-  }, [logs, searchQuery]);
-
   const resolvedPageSize =
-    pageSize === "all" ? Math.max(searchedLogs.length, 1) : Number(pageSize);
-  const totalPages = Math.max(1, Math.ceil(searchedLogs.length / resolvedPageSize));
-  const pagedLogs = useMemo(() => {
-    const startIndex = (currentPage - 1) * resolvedPageSize;
-    return searchedLogs.slice(startIndex, startIndex + resolvedPageSize);
-  }, [currentPage, searchedLogs, resolvedPageSize]);
+    pageSize === "all" ? Math.max(totalCount, 1) : Number(pageSize);
+  const totalPages =
+    pageSize === "all"
+      ? 1
+      : Math.max(1, Math.ceil(totalCount / resolvedPageSize));
 
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, pageSize]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const columns = [
     {
@@ -114,8 +153,8 @@ export default function LtfFinanceAuditLogPage() {
         <Input
           className="w-full max-w-sm"
           placeholder={t("searchAuditLogPlaceholder")}
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
+          value={searchInput}
+          onChange={(event) => setSearchInput(event.target.value)}
         />
         <div className="flex items-center gap-3">
           <span className="text-sm text-zinc-600">{common("rowsPerPageLabel")}</span>
@@ -136,11 +175,11 @@ export default function LtfFinanceAuditLogPage() {
 
       {isLoading ? (
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
-      ) : searchedLogs.length === 0 ? (
+      ) : logs.length === 0 ? (
         <EmptyState title={t("noAuditLogTitle")} description={t("noAuditLogSubtitle")} />
       ) : (
         <>
-          <EntityTable columns={columns} rows={pagedLogs} />
+          <EntityTable columns={columns} rows={logs} />
           <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-600">
             <span>{t("pageLabel", { current: currentPage, total: totalPages })}</span>
             <div className="flex gap-2">

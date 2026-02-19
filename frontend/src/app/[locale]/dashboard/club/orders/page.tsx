@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 
@@ -17,9 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Member, getMembers } from "@/lib/club-admin-api";
 import { formatDisplayDateTime } from "@/lib/date-display";
-import { FinanceOrder, getClubOrders } from "@/lib/club-finance-api";
+import { FinanceOrder, getClubOrdersPage } from "@/lib/club-finance-api";
 
 export default function ClubAdminOrdersPage() {
   const t = useTranslations("ClubAdmin");
@@ -28,35 +27,47 @@ export default function ClubAdminOrdersPage() {
   const router = useRouter();
   const { selectedClubId } = useClubSelection();
   const [orders, setOrders] = useState<FinanceOrder[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
+  const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("25");
+  const [totalCount, setTotalCount] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const pageSizeOptions = ["10", "25", "50", "100", "150", "200", "all"];
+  const pageSizeOptions = ["10", "25", "50", "100", "150", "200"];
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const [ordersResponse, membersResponse] = await Promise.all([
-        getClubOrders(selectedClubId),
-        getMembers(),
-      ]);
-      setOrders(ordersResponse);
-      setMembers(membersResponse);
+      const ordersResponse = await getClubOrdersPage({
+        page: currentPage,
+        pageSize: Number(pageSize),
+        clubId: selectedClubId ?? undefined,
+        q: searchQuery || undefined,
+      });
+      setOrders(ordersResponse.results);
+      setTotalCount(ordersResponse.count);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : t("ordersLoadError"));
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [currentPage, pageSize, searchQuery, selectedClubId, t]);
 
   useEffect(() => {
-    loadData();
-  }, [selectedClubId]);
+    void loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setSearchQuery(searchInput.trim());
+    }, 250);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [searchInput]);
 
   const getOrderStatusMeta = (status: string) => {
     switch (status) {
@@ -73,44 +84,18 @@ export default function ClubAdminOrdersPage() {
     }
   };
 
-  const getOrderQuantity = (order: FinanceOrder) =>
-    order.items.reduce((total, item) => total + (item.quantity ?? 0), 0);
-
-  const searchedOrders = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return orders;
+  const getOrderQuantity = (order: FinanceOrder) => {
+    if (typeof order.item_quantity === "number") {
+      return order.item_quantity;
     }
-    return orders.filter((order) => {
-      const orderNumber = order.order_number.toLowerCase();
-      const statusText = order.status.toLowerCase();
-      const itemMembers = order.items
-        .map((item) => members.find((member) => member.id === item.license.member))
-        .filter(Boolean)
-        .map((member) => `${member!.first_name} ${member!.last_name}`.toLowerCase());
-      const quantityText = String(getOrderQuantity(order));
-      const totalText = `${order.total} ${order.currency}`.toLowerCase();
-      return (
-        orderNumber.includes(normalizedQuery) ||
-        statusText.includes(normalizedQuery) ||
-        itemMembers.some((name) => name.includes(normalizedQuery)) ||
-        quantityText.includes(normalizedQuery) ||
-        totalText.includes(normalizedQuery)
-      );
-    });
-  }, [orders, members, searchQuery]);
+    return order.items?.reduce((total, item) => total + (item.quantity ?? 0), 0) ?? 0;
+  };
 
-  const resolvedPageSize =
-    pageSize === "all" ? Math.max(searchedOrders.length, 1) : Number(pageSize);
-  const totalPages = Math.max(1, Math.ceil(searchedOrders.length / resolvedPageSize));
-  const pagedOrders = useMemo(() => {
-    const startIndex = (currentPage - 1) * resolvedPageSize;
-    return searchedOrders.slice(startIndex, startIndex + resolvedPageSize);
-  }, [currentPage, searchedOrders, resolvedPageSize]);
+  const totalPages = Math.max(1, Math.ceil(totalCount / Number(pageSize)));
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, pageSize]);
+  }, [searchQuery, pageSize, selectedClubId]);
 
   const columns = [
     { key: "order_number", header: t("orderNumberLabel") },
@@ -141,8 +126,8 @@ export default function ClubAdminOrdersPage() {
         <Input
           className="w-full max-w-sm"
           placeholder={t("searchOrdersPlaceholder")}
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
+          value={searchInput}
+          onChange={(event) => setSearchInput(event.target.value)}
         />
         <div className="flex items-center gap-3">
           <span className="text-sm text-zinc-600">{common("rowsPerPageLabel")}</span>
@@ -163,15 +148,14 @@ export default function ClubAdminOrdersPage() {
 
       {isLoading ? (
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
-      ) : searchedOrders.length === 0 ? (
+      ) : orders.length === 0 ? (
         <EmptyState title={t("noOrdersTitle")} description={t("noOrdersSubtitle")} />
       ) : (
         <>
           <EntityTable
             columns={columns}
-            rows={pagedOrders}
+            rows={orders}
             onRowClick={(row) => {
-              const meta = getOrderStatusMeta(row.status);
               router.push(`/${locale}/dashboard/club/orders/${row.id}`);
             }}
           />

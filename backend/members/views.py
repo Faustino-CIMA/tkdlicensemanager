@@ -11,6 +11,7 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
+from config.pagination import OptionalPaginationListMixin
 from .models import GradePromotionHistory, Member
 from .serializers import (
     GradePromotionCreateSerializer,
@@ -24,7 +25,7 @@ from .services import add_grade_promotion, clear_member_profile_picture, process
 from licenses.models import LicenseHistoryEvent
 
 
-class MemberViewSet(viewsets.ModelViewSet):
+class MemberViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
     serializer_class = MemberSerializer
     permission_classes = [permissions.IsAuthenticated]
     _COACH_ALLOWED_UPDATE_FIELDS = {"belt_rank"}
@@ -49,17 +50,62 @@ class MemberViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if not user or not user.is_authenticated:
             return Member.objects.none()
+
         if user.role in ["ltf_admin", "ltf_finance"]:
-            return Member.objects.select_related("club", "user", "photo_consent_attested_by").filter(
+            queryset = Member.objects.select_related(
+                "club", "user", "photo_consent_attested_by"
+            ).filter(
                 is_active=True
             )
-        if user.role in ["club_admin", "coach"]:
-            return Member.objects.select_related("club", "user", "photo_consent_attested_by").filter(
+        elif user.role in ["club_admin", "coach"]:
+            queryset = Member.objects.select_related(
+                "club", "user", "photo_consent_attested_by"
+            ).filter(
                 club__admins=user
             )
-        return Member.objects.select_related("club", "user", "photo_consent_attested_by").filter(
-            user=user
-        )
+        else:
+            queryset = Member.objects.select_related(
+                "club", "user", "photo_consent_attested_by"
+            ).filter(user=user)
+
+        club_id = self.request.query_params.get("club_id")
+        if club_id:
+            queryset = queryset.filter(club_id=club_id)
+
+        ids_param = self.request.query_params.get("ids", "").strip()
+        if ids_param:
+            member_ids: list[int] = []
+            for value in ids_param.split(","):
+                value = value.strip()
+                if not value:
+                    continue
+                try:
+                    member_ids.append(int(value))
+                except ValueError:
+                    continue
+            if member_ids:
+                queryset = queryset.filter(id__in=member_ids)
+            else:
+                queryset = queryset.none()
+
+        is_active_param = self.request.query_params.get("is_active", "").strip().lower()
+        if is_active_param in {"1", "true", "yes"}:
+            queryset = queryset.filter(is_active=True)
+        elif is_active_param in {"0", "false", "no"}:
+            queryset = queryset.filter(is_active=False)
+
+        search_value = self.request.query_params.get("q", "").strip()
+        if search_value:
+            queryset = queryset.filter(
+                Q(first_name__icontains=search_value)
+                | Q(last_name__icontains=search_value)
+                | Q(email__icontains=search_value)
+                | Q(ltf_licenseid__icontains=search_value)
+                | Q(wt_licenseid__icontains=search_value)
+                | Q(belt_rank__icontains=search_value)
+            )
+
+        return queryset.order_by("last_name", "first_name", "id")
 
     def destroy(self, request, *args, **kwargs):
         try:

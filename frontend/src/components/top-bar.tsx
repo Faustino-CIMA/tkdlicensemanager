@@ -73,7 +73,7 @@ export function TopBar() {
     return () => {
       cancelled = true;
     };
-  }, [token, isDashboardRoute, pathname]);
+  }, [token, isDashboardRoute]);
 
   const handleAuthClick = () => {
     if (hasToken) {

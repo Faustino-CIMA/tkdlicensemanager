@@ -76,6 +76,13 @@ class Member(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        indexes = [
+            models.Index(fields=["club", "is_active"], name="member_club_active_idx"),
+            models.Index(
+                fields=["club", "last_name", "first_name"],
+                name="member_club_name_idx",
+            ),
+        ]
         constraints = [
             models.CheckConstraint(
                 check=models.Q(secondary_license_role="")

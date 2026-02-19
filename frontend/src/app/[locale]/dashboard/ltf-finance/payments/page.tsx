@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight } from "lucide-react";
@@ -21,16 +21,14 @@ import {
 import {
   Club,
   FinanceInvoice,
-  FinanceOrder,
   confirmOrderPayment,
   getFinanceClubs,
-  getFinanceInvoices,
-  getFinanceOrders,
+  getFinanceInvoicesPage,
 } from "@/lib/ltf-finance-api";
 import { formatDisplayDateTime } from "@/lib/date-display";
 import { openInvoicePdf } from "@/lib/invoice-pdf";
 
-const AUTO_REFRESH_INTERVAL_MS = 10000;
+const AUTO_REFRESH_INTERVAL_MS = 30000;
 
 function getGroupYear(value: string | null, fallback: string | null, createdAt: string) {
   const candidate = value ?? fallback ?? createdAt;
@@ -51,11 +49,12 @@ export default function LtfFinancePaymentsPage() {
   const locale = useLocale();
   const router = useRouter();
   const [invoices, setInvoices] = useState<FinanceInvoice[]>([]);
-  const [orders, setOrders] = useState<FinanceOrder[]>([]);
   const [clubs, setClubs] = useState<Club[]>([]);
+  const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("25");
+  const [totalInvoiceCount, setTotalInvoiceCount] = useState(0);
   const [statusFilter, setStatusFilter] = useState("all");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -71,8 +70,10 @@ export default function LtfFinancePaymentsPage() {
   const [expandedClubIds, setExpandedClubIds] = useState<number[]>([]);
   const [expandedYearKeys, setExpandedYearKeys] = useState<string[]>([]);
   const [expandedStateHydrated, setExpandedStateHydrated] = useState(false);
+  const isRefreshingRef = useRef(false);
+  const requestAbortRef = useRef<AbortController | null>(null);
 
-  const pageSizeOptions = ["10", "25", "50", "100", "150", "200", "all"];
+  const pageSizeOptions = ["10", "25", "50", "100", "150", "200"];
   const expandedClubStorageKey = "ltf_finance_payments_expanded_clubs";
   const expandedYearStorageKey = "ltf_finance_payments_expanded_years";
   const statusOptions = ["all", "draft", "issued", "paid", "void"];
@@ -91,35 +92,78 @@ export default function LtfFinancePaymentsPage() {
     { value: "other", label: t("paymentProviderOther") },
   ];
 
-  const loadInvoices = useCallback(async (options?: { silent?: boolean }) => {
+  const loadInvoices = useCallback(async (options?: { silent?: boolean; includeStatic?: boolean }) => {
     const silent = options?.silent ?? false;
+    const includeStatic = options?.includeStatic ?? true;
+    if (isRefreshingRef.current) {
+      return;
+    }
+    const controller = new AbortController();
+    isRefreshingRef.current = true;
+    requestAbortRef.current = controller;
     if (!silent) {
       setIsLoading(true);
       setErrorMessage(null);
     }
     try {
-      const [invoiceResponse, ordersResponse, clubsResponse] = await Promise.all([
-        getFinanceInvoices(),
-        getFinanceOrders(),
-        getFinanceClubs(),
-      ]);
-      setInvoices(invoiceResponse);
-      setOrders(ordersResponse);
-      setClubs(clubsResponse);
+      const invoicesPromise = getFinanceInvoicesPage(
+        {
+          page: currentPage,
+          pageSize: Number(pageSize),
+          q: searchQuery || undefined,
+          status: statusFilter === "all" ? undefined : statusFilter,
+        },
+        { signal: controller.signal }
+      );
+      if (includeStatic) {
+        const [invoiceResponse, clubsResponse] = await Promise.all([
+          invoicesPromise,
+          getFinanceClubs({ signal: controller.signal }),
+        ]);
+        setInvoices(invoiceResponse.results);
+        setTotalInvoiceCount(invoiceResponse.count);
+        setClubs(clubsResponse);
+      } else {
+        const invoiceResponse = await invoicesPromise;
+        setInvoices(invoiceResponse.results);
+        setTotalInvoiceCount(invoiceResponse.count);
+      }
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
       if (!silent) {
         setErrorMessage(error instanceof Error ? error.message : t("paymentsLoadError"));
       }
     } finally {
+      if (requestAbortRef.current === controller) {
+        requestAbortRef.current = null;
+      }
+      isRefreshingRef.current = false;
       if (!silent) {
         setIsLoading(false);
       }
     }
-  }, [t]);
+  }, [currentPage, pageSize, searchQuery, statusFilter, t]);
 
   useEffect(() => {
     void loadInvoices();
   }, [loadInvoices]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setSearchQuery(searchInput.trim());
+    }, 250);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [searchInput]);
+
+  useEffect(() => {
+    return () => {
+      requestAbortRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -127,7 +171,7 @@ export default function LtfFinancePaymentsPage() {
     }
     const refreshInBackground = () => {
       if (document.visibilityState === "visible") {
-        void loadInvoices({ silent: true });
+        void loadInvoices({ silent: true, includeStatic: false });
       }
     };
     const intervalId = window.setInterval(refreshInBackground, AUTO_REFRESH_INTERVAL_MS);
@@ -140,13 +184,6 @@ export default function LtfFinancePaymentsPage() {
     };
   }, [loadInvoices]);
 
-  const filteredInvoices = useMemo(() => {
-    if (statusFilter === "all") {
-      return invoices;
-    }
-    return invoices.filter((invoice) => invoice.status === statusFilter);
-  }, [invoices, statusFilter]);
-
   const clubNameById = useMemo(() => {
     return clubs.reduce<Record<number, string>>((acc, club) => {
       acc[club.id] = club.name;
@@ -154,40 +191,13 @@ export default function LtfFinancePaymentsPage() {
     }, {});
   }, [clubs]);
 
-  const orderQuantityById = useMemo(() => {
-    return orders.reduce<Record<number, number>>((acc, order) => {
-      acc[order.id] = order.items.reduce((sum, item) => sum + (item.quantity ?? 0), 0);
-      return acc;
-    }, {});
-  }, [orders]);
-
   const getInvoiceQuantity = useCallback((invoice: FinanceInvoice) => {
-    if (!invoice.order) {
-      return "-";
-    }
-    return orderQuantityById[invoice.order] ?? 0;
-  }, [orderQuantityById]);
+    return typeof invoice.item_quantity === "number" ? invoice.item_quantity : "-";
+  }, []);
 
   const searchedInvoices = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return filteredInvoices;
-    }
-    return filteredInvoices.filter((invoice) => {
-      const numberText = invoice.invoice_number.toLowerCase();
-      const statusText = invoice.status.toLowerCase();
-      const clubText = (clubNameById[invoice.club] ?? String(invoice.club)).toLowerCase();
-      const qtyText = String(getInvoiceQuantity(invoice));
-      const totalText = `${invoice.total} ${invoice.currency}`.toLowerCase();
-      return (
-        numberText.includes(normalizedQuery) ||
-        statusText.includes(normalizedQuery) ||
-        clubText.includes(normalizedQuery) ||
-        qtyText.includes(normalizedQuery) ||
-        totalText.includes(normalizedQuery)
-      );
-    });
-  }, [filteredInvoices, searchQuery, clubNameById, getInvoiceQuantity]);
+    return invoices;
+  }, [invoices]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -329,13 +339,13 @@ export default function LtfFinancePaymentsPage() {
       .sort((left, right) => left.clubName.localeCompare(right.clubName));
   }, [clubNameById, searchedInvoices]);
 
-  const resolvedPageSize =
-    pageSize === "all" ? Math.max(groupedClubRows.length, 1) : Number(pageSize);
-  const totalPages = Math.max(1, Math.ceil(groupedClubRows.length / resolvedPageSize));
-  const pagedClubRows = useMemo(() => {
-    const startIndex = (currentPage - 1) * resolvedPageSize;
-    return groupedClubRows.slice(startIndex, startIndex + resolvedPageSize);
-  }, [currentPage, groupedClubRows, resolvedPageSize]);
+  const totalPages = Math.max(1, Math.ceil(totalInvoiceCount / Number(pageSize)));
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   useEffect(() => {
     const validClubIds = new Set(groupedClubRows.map((clubGroup) => clubGroup.clubId));
@@ -426,8 +436,8 @@ export default function LtfFinancePaymentsPage() {
         <Input
           className="w-full max-w-sm"
           placeholder={t("searchPaymentsPlaceholder")}
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
+          value={searchInput}
+          onChange={(event) => setSearchInput(event.target.value)}
         />
         <div className="flex items-center gap-3">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -478,7 +488,7 @@ export default function LtfFinancePaymentsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {pagedClubRows.map((clubGroup) => {
+                {groupedClubRows.map((clubGroup) => {
                   const clubExpanded = expandedClubSet.has(clubGroup.clubId);
                   return (
                     <Fragment key={clubGroup.clubId}>

@@ -6,6 +6,8 @@ type RequestOptions = Omit<RequestInit, "headers"> & {
 
 const DEFAULT_API_URL = "http://localhost:8000";
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0"]);
+const API_REQUEST_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_API_REQUEST_TIMEOUT_MS ?? "15000");
+const inFlightGetRequests = new Map<string, Promise<unknown>>();
 
 function resolveApiUrl(configuredUrl?: string): string {
   const fallback = configuredUrl?.trim() || DEFAULT_API_URL;
@@ -40,7 +42,53 @@ function resolveApiUrl(configuredUrl?: string): string {
 const API_URL = resolveApiUrl(process.env.NEXT_PUBLIC_API_URL);
 export { API_URL };
 
-export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+function buildRequestSignal(externalSignal?: AbortSignal | null) {
+  const hasFiniteTimeout = Number.isFinite(API_REQUEST_TIMEOUT_MS) && API_REQUEST_TIMEOUT_MS > 0;
+  if (!hasFiniteTimeout && !externalSignal) {
+    return {
+      signal: undefined,
+      didTimeout: () => false,
+      cleanup: () => {},
+    };
+  }
+
+  const controller = new AbortController();
+  let didTimeout = false;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const onExternalAbort = () => {
+    controller.abort();
+  };
+
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      externalSignal.addEventListener("abort", onExternalAbort, { once: true });
+    }
+  }
+
+  if (hasFiniteTimeout) {
+    timeoutId = setTimeout(() => {
+      didTimeout = true;
+      controller.abort();
+    }, API_REQUEST_TIMEOUT_MS);
+  }
+
+  return {
+    signal: controller.signal,
+    didTimeout: () => didTimeout,
+    cleanup: () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      if (externalSignal) {
+        externalSignal.removeEventListener("abort", onExternalAbort);
+      }
+    },
+  };
+}
+
+async function executeApiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const token = getToken();
   const requestUrl = `${API_URL}${path}`;
   const isFormDataRequest =
@@ -56,13 +104,25 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   if (!isFormDataRequest) {
     defaultHeaders["Content-Type"] = "application/json";
   }
-  const response = await fetch(requestUrl, {
-    ...options,
-    headers: {
-      ...defaultHeaders,
-      ...options.headers,
-    },
-  });
+  const { signal, didTimeout, cleanup } = buildRequestSignal(options.signal);
+  let response: Response;
+  try {
+    response = await fetch(requestUrl, {
+      ...options,
+      signal,
+      headers: {
+        ...defaultHeaders,
+        ...options.headers,
+      },
+    });
+  } catch (error) {
+    cleanup();
+    if (didTimeout()) {
+      throw new Error("Request timed out. Please try again.");
+    }
+    throw error;
+  }
+  cleanup();
 
   if (!response.ok) {
     const contentType = response.headers.get("content-type");
@@ -105,4 +165,26 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     return null as T;
   }
   return (await response.json()) as T;
+}
+
+export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const requestUrl = `${API_URL}${path}`;
+  const method = (options.method ?? "GET").toUpperCase();
+  const token = getToken() ?? "";
+  const shouldDedupeGetRequest = method === "GET" && !options.signal;
+  const dedupeKey = shouldDedupeGetRequest ? `${method}:${requestUrl}:${token}` : null;
+  if (!dedupeKey) {
+    return executeApiRequest<T>(path, options);
+  }
+
+  const existingPromise = inFlightGetRequests.get(dedupeKey);
+  if (existingPromise) {
+    return existingPromise as Promise<T>;
+  }
+
+  const requestPromise = executeApiRequest<T>(path, options).finally(() => {
+    inFlightGetRequests.delete(dedupeKey);
+  });
+  inFlightGetRequests.set(dedupeKey, requestPromise);
+  return requestPromise;
 }

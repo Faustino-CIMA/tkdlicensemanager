@@ -2,6 +2,10 @@
 
 Modern, secure Taekwondo license management for the Luxembourg Taekwondo Federation (LTF).
 
+## Release Notes
+
+- See `CHANGELOG.md` for user-facing and technical release notes.
+
 ## Prerequisites
 
 Required:
@@ -90,6 +94,14 @@ Traefik routing (optional):
 docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d --build
 ```
 
+PgBouncer pooling (optional):
+- Use the PgBouncer override to add a pooled Postgres hop for backend/worker/beat.
+- Startup command:
+```
+docker compose -f docker-compose.yml -f docker-compose.pgbouncer.yml up -d --build
+```
+- This profile switches Django DB host to `pgbouncer` and sets `DJANGO_DB_CONN_MAX_AGE=0`.
+
 What the services are:
 - `frontend`: Next.js UI (accessible at `http://localhost:3000/`)
 - `backend`: Django API (accessible at `http://localhost:8000/`)
@@ -177,6 +189,31 @@ Celery + Redis:
 - `CELERY_BROKER_URL` (default `redis://redis:6379/0`)
 - `CELERY_RESULT_BACKEND` (default `redis://redis:6379/1`)
 - `REDIS_URL` (used for general cache/queues)
+
+Performance:
+- `DJANGO_DB_CONN_MAX_AGE` (default `60`)
+- `DJANGO_DB_CONN_HEALTH_CHECKS` (default `True`)
+- `DJANGO_DB_CONNECT_TIMEOUT` (default `5`)
+- `DJANGO_DB_STATEMENT_TIMEOUT_MS` (default `15000`)
+- `DJANGO_DB_USE_PGBOUNCER` (default `False`; when `True`, startup `statement_timeout` option is skipped for PgBouncer compatibility)
+- `POSTGRES_MAX_CONNECTIONS` (default `300`, container-level Postgres setting)
+- `POSTGRES_SHARED_BUFFERS` (default `256MB`)
+- `POSTGRES_EFFECTIVE_CACHE_SIZE` (default `768MB`)
+- `POSTGRES_WORK_MEM` (default `8MB`)
+- `POSTGRES_MAINTENANCE_WORK_MEM` (default `64MB`)
+- `POSTGRES_LOG_MIN_DURATION_STATEMENT_MS` (default `750`, logs slow SQL statements in Postgres container logs)
+- `DJANGO_CACHE_URL` (optional; set to Redis for shared cache across Gunicorn workers)
+- `GUNICORN_WORKERS` (default `4`)
+- `GUNICORN_THREADS` (default `2`)
+- `GUNICORN_TIMEOUT` (default `120`)
+- `API_PAGINATION_DEFAULT_PAGE_SIZE` (default `50`, used when `page` is requested)
+- `API_PAGINATION_MAX_PAGE_SIZE` (default `200`)
+- `PGBOUNCER_POOL_MODE` (default `transaction`, when using PgBouncer override)
+- `PGBOUNCER_MAX_CLIENT_CONN` (default `500`)
+- `PGBOUNCER_DEFAULT_POOL_SIZE` (default `50`)
+- `PGBOUNCER_RESERVE_POOL_SIZE` (default `10`)
+- `DASHBOARD_OVERVIEW_CACHE_TTL_SECONDS` (default `20`, short server-side cache for overview endpoints)
+- `STRIPE_RECONCILE_BATCH_LIMIT` (default `100`, limits per-run Stripe reconciliation workload)
 
 Encryption:
 - `FERNET_KEYS` (optional, comma-separated keys for encrypted finance fields)

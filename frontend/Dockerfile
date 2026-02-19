@@ -9,7 +9,7 @@ RUN npm ci
 
 COPY --chown=app:app . /app
 
-RUN npm run build
+RUN npm run build && chown -R app:app /app
 
 EXPOSE 3000
 

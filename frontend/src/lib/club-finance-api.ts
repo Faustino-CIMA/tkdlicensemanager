@@ -1,5 +1,35 @@
 import { apiRequest } from "./api";
 import type { FinanceInvoice, FinanceOrder } from "./ltf-finance-api";
+import { PaginatedResponse, unwrapListResponse } from "./pagination";
+
+type ApiCallOptions = {
+  signal?: AbortSignal;
+};
+
+type ClubListQueryParams = {
+  clubId?: number | null;
+  q?: string;
+  status?: string;
+};
+
+type ClubPageParams = ClubListQueryParams & {
+  page: number;
+  pageSize: number;
+};
+
+function buildClubListQuery(params?: ClubListQueryParams) {
+  const search = new URLSearchParams();
+  if (params?.clubId) {
+    search.set("club_id", String(params.clubId));
+  }
+  if (params?.q) {
+    search.set("q", params.q);
+  }
+  if (params?.status) {
+    search.set("status", params.status);
+  }
+  return search;
+}
 
 export type CheckoutSession = {
   id: string;
@@ -20,18 +50,73 @@ export type PayconiqPayment = {
   created_at: string;
 };
 
-export function getClubOrders(clubId?: number | null) {
-  const query = clubId ? `?club_id=${encodeURIComponent(String(clubId))}` : "";
-  return apiRequest<FinanceOrder[]>(`/api/club-orders/${query}`);
+export function getClubOrders(clubId?: number | null, options?: ApiCallOptions) {
+  return getClubOrdersList({ clubId }, options);
+}
+
+export function getClubOrdersList(
+  params?: ClubListQueryParams,
+  options?: ApiCallOptions
+) {
+  const search = buildClubListQuery(params);
+  const suffix = search.toString();
+  return apiRequest<FinanceOrder[] | PaginatedResponse<FinanceOrder>>(
+    `/api/club-orders/${suffix ? `?${suffix}` : ""}`,
+    {
+      signal: options?.signal,
+    }
+  ).then((response) => unwrapListResponse(response));
+}
+
+export function getClubOrdersPage(
+  params: ClubPageParams,
+  options?: ApiCallOptions
+) {
+  const search = buildClubListQuery(params);
+  search.set("page", String(params.page));
+  search.set("page_size", String(params.pageSize));
+  const suffix = search.toString();
+  return apiRequest<PaginatedResponse<FinanceOrder>>(`/api/club-orders/${suffix ? `?${suffix}` : ""}`, {
+    signal: options?.signal,
+  });
 }
 
 export function getClubOrder(orderId: number) {
   return apiRequest<FinanceOrder>(`/api/club-orders/${orderId}/`);
 }
 
-export function getClubInvoices(clubId?: number | null) {
-  const query = clubId ? `?club_id=${encodeURIComponent(String(clubId))}` : "";
-  return apiRequest<FinanceInvoice[]>(`/api/club-invoices/${query}`);
+export function getClubInvoices(clubId?: number | null, options?: ApiCallOptions) {
+  return getClubInvoicesList({ clubId }, options);
+}
+
+export function getClubInvoicesList(
+  params?: ClubListQueryParams,
+  options?: ApiCallOptions
+) {
+  const search = buildClubListQuery(params);
+  const suffix = search.toString();
+  return apiRequest<FinanceInvoice[] | PaginatedResponse<FinanceInvoice>>(
+    `/api/club-invoices/${suffix ? `?${suffix}` : ""}`,
+    {
+      signal: options?.signal,
+    }
+  ).then((response) => unwrapListResponse(response));
+}
+
+export function getClubInvoicesPage(
+  params: ClubPageParams,
+  options?: ApiCallOptions
+) {
+  const search = buildClubListQuery(params);
+  search.set("page", String(params.page));
+  search.set("page_size", String(params.pageSize));
+  const suffix = search.toString();
+  return apiRequest<PaginatedResponse<FinanceInvoice>>(
+    `/api/club-invoices/${suffix ? `?${suffix}` : ""}`,
+    {
+      signal: options?.signal,
+    }
+  );
 }
 
 export function getClubInvoice(invoiceId: number) {

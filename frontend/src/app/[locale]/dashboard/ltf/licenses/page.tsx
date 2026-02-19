@@ -28,8 +28,8 @@ import {
   createLicense,
   getClubs,
   getLicenseTypes,
-  getLicenses,
-  getMembers,
+  getLicensesPage,
+  getMembersList,
   updateLicense,
 } from "@/lib/ltf-admin-api";
 import { formatDisplayDate } from "@/lib/date-display";
@@ -58,6 +58,7 @@ export default function LtfAdminLicensesPage() {
   const locale = pathname?.split("/")[1] || "en";
   const [clubs, setClubs] = useState<Club[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [clubMembers, setClubMembers] = useState<Member[]>([]);
   const [licenses, setLicenses] = useState<License[]>([]);
   const [licenseTypes, setLicenseTypes] = useState<LicenseType[]>([]);
   const [expandedClubIds, setExpandedClubIds] = useState<number[]>([]);
@@ -65,14 +66,16 @@ export default function LtfAdminLicensesPage() {
   const [editingLicense, setEditingLicense] = useState<License | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("25");
+  const [totalCount, setTotalCount] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const lastSelectedLicenseIdRef = useRef<number | null>(null);
 
-  const pageSizeOptions = ["10", "25", "50", "100", "150", "200", "all"];
+  const pageSizeOptions = ["10", "25", "50", "100", "150", "200"];
 
   const {
     handleSubmit,
@@ -96,11 +99,28 @@ export default function LtfAdminLicensesPage() {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const [clubsResponse, membersResponse, licensesResponse, licenseTypesResponse] =
-        await Promise.all([getClubs(), getMembers(), getLicenses(), getLicenseTypes()]);
+      const [clubsResponse, licensesResponse, licenseTypesResponse] =
+        await Promise.all([
+          getClubs(),
+          getLicensesPage({
+            page: currentPage,
+            pageSize: Number(pageSize),
+            q: searchQuery || undefined,
+          }),
+          getLicenseTypes(),
+        ]);
+
+      const visibleMemberIds = Array.from(
+        new Set(licensesResponse.results.map((license) => license.member))
+      );
+      const membersResponse =
+        visibleMemberIds.length > 0
+          ? await getMembersList({ ids: visibleMemberIds })
+          : [];
       setClubs(clubsResponse);
       setMembers(membersResponse);
-      setLicenses(licensesResponse);
+      setLicenses(licensesResponse.results);
+      setTotalCount(licensesResponse.count);
       setLicenseTypes(licenseTypesResponse);
       if (clubsResponse.length > 0 && !watch("club")) {
         setValue("club", String(clubsResponse[0].id));
@@ -113,19 +133,46 @@ export default function LtfAdminLicensesPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [setValue, watch]);
+  }, [currentPage, pageSize, searchQuery, setValue, watch]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setSearchQuery(searchInput.trim());
+    }, 250);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [searchInput]);
+
   const selectedClubId = Number(watch("club")) || null;
-  const clubMembers = useMemo(() => {
+
+  useEffect(() => {
     if (!selectedClubId) {
-      return members;
+      setClubMembers([]);
+      return;
     }
-    return members.filter((member) => member.club === selectedClubId);
-  }, [members, selectedClubId]);
+
+    let cancelled = false;
+    void getMembersList({ clubId: selectedClubId })
+      .then((response) => {
+        if (!cancelled) {
+          setClubMembers(response);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setClubMembers([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClubId]);
 
   const memberById = useMemo(() => new Map(members.map((member) => [member.id, member])), [members]);
   const clubById = useMemo(() => new Map(clubs.map((club) => [club.id, club])), [clubs]);
@@ -133,30 +180,6 @@ export default function LtfAdminLicensesPage() {
     () => new Map(licenseTypes.map((licenseType) => [licenseType.id, licenseType])),
     [licenseTypes]
   );
-
-  const searchedLicenses = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return licenses;
-    }
-    return licenses.filter((license) => {
-      const member = memberById.get(license.member);
-      const club = clubById.get(license.club);
-      const licenseType = licenseTypeById.get(license.license_type);
-      const memberName = member ? `${member.first_name} ${member.last_name}`.toLowerCase() : "";
-      const clubName = club?.name.toLowerCase() ?? "";
-      const yearText = String(license.year);
-      const statusText = license.status.toLowerCase();
-      const licenseTypeName = licenseType?.name.toLowerCase() ?? "";
-      return (
-        memberName.includes(normalizedQuery) ||
-        clubName.includes(normalizedQuery) ||
-        yearText.includes(normalizedQuery) ||
-        statusText.includes(normalizedQuery) ||
-        licenseTypeName.includes(normalizedQuery)
-      );
-    });
-  }, [clubById, licenseTypeById, licenses, memberById, searchQuery]);
 
   const groupedClubRows = useMemo(() => {
     const grouped = new Map<
@@ -167,7 +190,7 @@ export default function LtfAdminLicensesPage() {
       }
     >();
 
-    for (const license of searchedLicenses) {
+    for (const license of licenses) {
       const clubName = clubById.get(license.club)?.name ?? t("unknownClub");
       const clubEntry = grouped.get(license.club);
       if (!clubEntry) {
@@ -232,15 +255,10 @@ export default function LtfAdminLicensesPage() {
         };
       })
       .sort((left, right) => left.clubName.localeCompare(right.clubName));
-  }, [clubById, memberById, searchedLicenses, t]);
+  }, [clubById, licenses, memberById, t]);
 
-  const resolvedPageSize =
-    pageSize === "all" ? Math.max(groupedClubRows.length, 1) : Number(pageSize);
-  const totalPages = Math.max(1, Math.ceil(groupedClubRows.length / resolvedPageSize));
-  const pagedClubRows = useMemo(() => {
-    const startIndex = (currentPage - 1) * resolvedPageSize;
-    return groupedClubRows.slice(startIndex, startIndex + resolvedPageSize);
-  }, [currentPage, groupedClubRows, resolvedPageSize]);
+  const totalPages = Math.max(1, Math.ceil(totalCount / Number(pageSize)));
+  const pagedClubRows = groupedClubRows;
 
   useEffect(() => {
     setCurrentPage(1);
@@ -261,8 +279,8 @@ export default function LtfAdminLicensesPage() {
   const expandedYearSet = useMemo(() => new Set(expandedYearKeys), [expandedYearKeys]);
 
   const allFilteredIds = useMemo(
-    () => searchedLicenses.map((license) => license.id),
-    [searchedLicenses]
+    () => licenses.map((license) => license.id),
+    [licenses]
   );
   const visibleLeafLicenseIds = useMemo(() => {
     const ids: number[] = [];
@@ -448,8 +466,8 @@ export default function LtfAdminLicensesPage() {
             <Input
               className="w-full max-w-xs"
               placeholder={t("searchLicensesPlaceholder")}
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
             />
             <Select value={pageSize} onValueChange={setPageSize}>
               <SelectTrigger className="w-[150px]">
