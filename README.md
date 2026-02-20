@@ -213,7 +213,11 @@ Performance:
 - `PGBOUNCER_DEFAULT_POOL_SIZE` (default `50`)
 - `PGBOUNCER_RESERVE_POOL_SIZE` (default `10`)
 - `DASHBOARD_OVERVIEW_CACHE_TTL_SECONDS` (default `20`, short server-side cache for overview endpoints)
-- `STRIPE_RECONCILE_BATCH_LIMIT` (default `100`, limits per-run Stripe reconciliation workload)
+- `STRIPE_RECONCILE_BATCH_LIMIT` (default `50`, limits per-run Stripe reconciliation workload)
+- `CELERY_RECONCILE_PENDING_STRIPE_INTERVAL_SECONDS` (default `120`, fallback Stripe polling interval)
+- `CELERY_ACTIVATE_ELIGIBLE_LICENSES_MINUTE` (default `17`, hourly license activation minute offset)
+- `CELERY_RECONCILE_EXPIRED_LICENSES_HOUR` (default `3`, daily expired-license reconciliation hour)
+- `CELERY_RECONCILE_EXPIRED_LICENSES_MINUTE` (default `11`, daily expired-license reconciliation minute)
 
 Encryption:
 - `FERNET_KEYS` (optional, comma-separated keys for encrypted finance fields)

@@ -8,6 +8,7 @@ import json
 import re
 from pathlib import Path
 
+from celery.schedules import crontab
 from decouple import config
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -329,18 +330,44 @@ CELERY_BEAT_SCHEDULE_FILENAME = config(
     "CELERY_BEAT_SCHEDULE_FILENAME",
     default=str(MEDIA_ROOT / "celerybeat-schedule"),
 )
+CELERY_RECONCILE_PENDING_STRIPE_INTERVAL_SECONDS = max(
+    30,
+    config(
+        "CELERY_RECONCILE_PENDING_STRIPE_INTERVAL_SECONDS",
+        cast=int,
+        default=120,
+    ),
+)
+CELERY_ACTIVATE_ELIGIBLE_LICENSES_MINUTE = config(
+    "CELERY_ACTIVATE_ELIGIBLE_LICENSES_MINUTE",
+    cast=int,
+    default=17,
+)
+CELERY_RECONCILE_EXPIRED_LICENSES_HOUR = config(
+    "CELERY_RECONCILE_EXPIRED_LICENSES_HOUR",
+    cast=int,
+    default=3,
+)
+CELERY_RECONCILE_EXPIRED_LICENSES_MINUTE = config(
+    "CELERY_RECONCILE_EXPIRED_LICENSES_MINUTE",
+    cast=int,
+    default=11,
+)
 CELERY_BEAT_SCHEDULE = {
     "reconcile-expired-licenses-daily": {
         "task": "licenses.tasks.reconcile_expired_licenses",
-        "schedule": 60 * 60 * 24,
+        "schedule": crontab(
+            hour=CELERY_RECONCILE_EXPIRED_LICENSES_HOUR,
+            minute=CELERY_RECONCILE_EXPIRED_LICENSES_MINUTE,
+        ),
     },
     "activate-eligible-paid-licenses-hourly": {
         "task": "licenses.tasks.activate_eligible_paid_licenses",
-        "schedule": 60 * 60,
+        "schedule": crontab(minute=CELERY_ACTIVATE_ELIGIBLE_LICENSES_MINUTE),
     },
     "reconcile-pending-stripe-orders-every-minute": {
         "task": "licenses.tasks.reconcile_pending_stripe_orders",
-        "schedule": 60,
+        "schedule": CELERY_RECONCILE_PENDING_STRIPE_INTERVAL_SECONDS,
     },
 }
 
@@ -350,7 +377,7 @@ STRIPE_API_VERSION = config("STRIPE_API_VERSION", default="2026-01-28.clover")
 STRIPE_RECONCILE_BATCH_LIMIT = config(
     "STRIPE_RECONCILE_BATCH_LIMIT",
     cast=int,
-    default=100,
+    default=50,
 )
 STRIPE_CHECKOUT_SUCCESS_URL = config(
     "STRIPE_CHECKOUT_SUCCESS_URL",
