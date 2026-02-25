@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
+import { useClubSelection } from "@/components/club-selection-provider";
 import { getClubs, updateClub } from "@/lib/club-admin-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +25,8 @@ type ClubFormValues = z.infer<typeof clubSchema>;
 
 export default function ClubAdminSettingsPage() {
   const t = useTranslations("ClubAdmin");
-  const [selectedClubId, setSelectedClubId] = useState<number | null>(null);
+  const { selectedClubId } = useClubSelection();
+  const requestIdRef = useRef(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -45,32 +47,59 @@ export default function ClubAdminSettingsPage() {
     },
   });
 
-  const loadClubs = useCallback(async () => {
-    setIsLoading(true);
-    setErrorMessage(null);
-    try {
-      const clubsResponse = await getClubs();
-      if (clubsResponse.length > 0) {
-        const club = clubsResponse[0];
-        setSelectedClubId(club.id);
-        reset({
-          name: club.name,
-          address_line1: club.address_line1 ?? club.address ?? "",
-          address_line2: club.address_line2 ?? "",
-          postal_code: club.postal_code ?? "",
-          locality: club.locality ?? club.city ?? "",
-        });
-      }
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to load club.");
-    } finally {
-      setIsLoading(false);
-    }
+  const resetToEmpty = useCallback(() => {
+    reset({
+      name: "",
+      address_line1: "",
+      address_line2: "",
+      postal_code: "",
+      locality: "",
+    });
   }, [reset]);
 
+  const loadSelectedClub = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+    setIsLoading(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    if (!selectedClubId) {
+      resetToEmpty();
+      setIsLoading(false);
+      return;
+    }
+    try {
+      const clubsResponse = await getClubs();
+      if (requestId !== requestIdRef.current) {
+        return;
+      }
+      const club = clubsResponse.find((record) => record.id === selectedClubId);
+      if (!club) {
+        resetToEmpty();
+        return;
+      }
+      reset({
+        name: club.name,
+        address_line1: club.address_line1 ?? club.address ?? "",
+        address_line2: club.address_line2 ?? "",
+        postal_code: club.postal_code ?? "",
+        locality: club.locality ?? club.city ?? "",
+      });
+    } catch (error) {
+      if (requestId !== requestIdRef.current) {
+        return;
+      }
+      setErrorMessage(error instanceof Error ? error.message : "Failed to load club.");
+      resetToEmpty();
+    } finally {
+      if (requestId === requestIdRef.current) {
+        setIsLoading(false);
+      }
+    }
+  }, [reset, resetToEmpty, selectedClubId]);
+
   useEffect(() => {
-    void loadClubs();
-  }, [loadClubs]);
+    void loadSelectedClub();
+  }, [loadSelectedClub]);
 
   const onSubmit = async (values: ClubFormValues) => {
     if (!selectedClubId) {

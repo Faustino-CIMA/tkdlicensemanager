@@ -9,7 +9,11 @@ import re
 import mimetypes
 from pathlib import Path
 
-from accounts.permissions import IsLtfAdmin, IsLtfFinanceOrLtfAdmin
+from accounts.permissions import (
+    IsLtfAdmin,
+    IsLtfAdminOrClubAdmin,
+    IsLtfFinanceOrLtfAdmin,
+)
 from config.pagination import OptionalPaginationListMixin
 from django.conf import settings
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
@@ -99,8 +103,10 @@ class ClubViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == "logo_content":
             return [permissions.AllowAny()]
-        if self.action in ["create", "update", "partial_update", "destroy"]:
+        if self.action in ["create", "destroy"]:
             return [IsLtfAdmin()]
+        if self.action in ["update", "partial_update"]:
+            return [IsLtfAdminOrClubAdmin()]
         return [permissions.IsAuthenticated()]
 
     def get_queryset(self):
