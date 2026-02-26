@@ -8,6 +8,7 @@ import { useParams } from "next/navigation";
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
+import { PayconiqPaymentCard } from "@/components/club-admin/payconiq-payment-card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Member, getMembers } from "@/lib/club-admin-api";
@@ -138,6 +139,38 @@ export default function ClubInvoiceDetailPage() {
     { key: "quantity", header: t("qtyLabel") },
   ];
 
+  const handleCreatePayconiqPayment = async () => {
+    if (!invoice) {
+      return;
+    }
+    setIsPayconiqBusy(true);
+    setPayconiqError(null);
+    try {
+      const payment = await createPayconiqPayment(invoice.id);
+      setPayconiqPayment(payment);
+    } catch (error) {
+      setPayconiqError(error instanceof Error ? error.message : t("payconiqError"));
+    } finally {
+      setIsPayconiqBusy(false);
+    }
+  };
+
+  const handleRefreshPayconiqPayment = async () => {
+    if (!payconiqPayment) {
+      return;
+    }
+    setIsPayconiqBusy(true);
+    setPayconiqError(null);
+    try {
+      const payment = await getPayconiqPaymentStatus(payconiqPayment.id);
+      setPayconiqPayment(payment);
+    } catch (error) {
+      setPayconiqError(error instanceof Error ? error.message : t("payconiqError"));
+    } finally {
+      setIsPayconiqBusy(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <ClubAdminLayout title={t("invoiceDetailTitle")} subtitle={t("invoiceDetailSubtitle")}>
@@ -198,76 +231,13 @@ export default function ClubInvoiceDetailPage() {
         <EntityTable columns={columns} rows={items} />
       </section>
 
-      <section className="mt-6 rounded-3xl border border-zinc-100 bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold text-zinc-700">{t("payconiqTitle")}</h2>
-          <p className="text-sm text-zinc-600">{t("payconiqHint")}</p>
-          {payconiqError ? (
-            <p className="text-sm text-red-600">{payconiqError}</p>
-          ) : null}
-          {payconiqPayment ? (
-            <div className="flex flex-col gap-2 text-sm text-zinc-700">
-              <div>
-                <span className="font-medium">{t("payconiqStatusLabel")}</span>{" "}
-                {payconiqPayment.payconiq_status || payconiqPayment.status}
-              </div>
-              <div>
-                <span className="font-medium">{t("payconiqLinkLabel")}</span>{" "}
-                <a className="text-blue-600 underline" href={payconiqPayment.payconiq_payment_url}>
-                  {payconiqPayment.payconiq_payment_url}
-                </a>
-              </div>
-            </div>
-          ) : null}
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="secondary"
-              disabled={isPayconiqBusy}
-              onClick={async () => {
-                if (!invoice) {
-                  return;
-                }
-                setIsPayconiqBusy(true);
-                setPayconiqError(null);
-                try {
-                  const payment = await createPayconiqPayment(invoice.id);
-                  setPayconiqPayment(payment);
-                } catch (error) {
-                  setPayconiqError(
-                    error instanceof Error ? error.message : t("payconiqError")
-                  );
-                } finally {
-                  setIsPayconiqBusy(false);
-                }
-              }}
-            >
-              {t("payconiqCreateButton")}
-            </Button>
-            {payconiqPayment ? (
-              <Button
-                variant="outline"
-                disabled={isPayconiqBusy}
-                onClick={async () => {
-                  setIsPayconiqBusy(true);
-                  setPayconiqError(null);
-                  try {
-                    const payment = await getPayconiqPaymentStatus(payconiqPayment.id);
-                    setPayconiqPayment(payment);
-                  } catch (error) {
-                    setPayconiqError(
-                      error instanceof Error ? error.message : t("payconiqError")
-                    );
-                  } finally {
-                    setIsPayconiqBusy(false);
-                  }
-                }}
-              >
-                {t("payconiqRefreshButton")}
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      </section>
+      <PayconiqPaymentCard
+        payment={payconiqPayment}
+        errorMessage={payconiqError}
+        isBusy={isPayconiqBusy}
+        onCreate={handleCreatePayconiqPayment}
+        onRefresh={handleRefreshPayconiqPayment}
+      />
     </ClubAdminLayout>
   );
 }
