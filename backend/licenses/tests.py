@@ -5,6 +5,7 @@ import json
 import time
 from unittest.mock import patch
 from decimal import Decimal
+from urllib.error import URLError
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
@@ -1662,6 +1663,22 @@ class PayconiqPaymentTests(TestCase):
             total=Decimal("30.00"),
         )
 
+    def _http_response(self, payload):
+        class MockHttpResponse:
+            def __init__(self, body):
+                self._body = body.encode("utf-8")
+
+            def read(self):
+                return self._body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                return False
+
+        return MockHttpResponse(json.dumps(payload))
+
     @override_settings(PAYCONIQ_MODE="mock", PAYCONIQ_BASE_URL="https://payconiq.mock")
     def test_club_admin_can_create_payconiq_payment(self):
         self.client.force_authenticate(user=self.club_admin)
@@ -1676,6 +1693,144 @@ class PayconiqPaymentTests(TestCase):
         self.assertTrue(
             FinanceAuditLog.objects.filter(order=self.order, action="payconiq.created").exists()
         )
+
+    @override_settings(
+        PAYCONIQ_MODE="aggregator",
+        PAYCONIQ_API_KEY="sandbox_api_key",
+        PAYCONIQ_MERCHANT_ID="merchant_sandbox_123",
+        PAYCONIQ_BASE_URL="https://sandbox-aggregator.example.test",
+        PAYCONIQ_CREATE_PATH="/v1/payments",
+        PAYCONIQ_STATUS_PATH="/v1/payments/{payment_id}",
+        PAYCONIQ_TIMEOUT_SECONDS=5,
+        PAYCONIQ_AUTH_SCHEME="Bearer",
+    )
+    @patch("licenses.payconiq.urlopen")
+    def test_aggregator_create_payment_success(self, urlopen_mock):
+        urlopen_mock.return_value = self._http_response(
+            {
+                "id": "agg_payment_123",
+                "checkout_url": "https://pay.example.test/checkout/agg_payment_123",
+                "status": "created",
+            }
+        )
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            "/api/payconiq/create/",
+            {"invoice_id": self.invoice.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["provider"], "payconiq")
+        self.assertEqual(response.data["payconiq_status"], "PENDING")
+        self.assertEqual(response.data["payconiq_payment_id"], "agg_payment_123")
+        self.assertEqual(
+            response.data["payconiq_payment_url"],
+            "https://pay.example.test/checkout/agg_payment_123",
+        )
+
+        request_obj = urlopen_mock.call_args.args[0]
+        self.assertEqual(
+            request_obj.full_url, "https://sandbox-aggregator.example.test/v1/payments"
+        )
+        header_map = {key.lower(): value for key, value in request_obj.header_items()}
+        self.assertEqual(header_map.get("authorization"), "Bearer sandbox_api_key")
+        self.assertEqual(header_map.get("x-merchant-id"), "merchant_sandbox_123")
+
+        request_payload = json.loads(request_obj.data.decode("utf-8"))
+        self.assertEqual(request_payload["reference"], self.invoice.invoice_number)
+        self.assertEqual(request_payload["currency"], "EUR")
+        self.assertEqual(request_payload["amount"], "30.00")
+
+    @override_settings(
+        PAYCONIQ_MODE="aggregator",
+        PAYCONIQ_API_KEY="sandbox_api_key",
+        PAYCONIQ_MERCHANT_ID="merchant_sandbox_123",
+        PAYCONIQ_BASE_URL="https://sandbox-aggregator.example.test",
+        PAYCONIQ_CREATE_PATH="/v1/payments",
+        PAYCONIQ_STATUS_PATH="/v1/payments/{payment_id}",
+    )
+    @patch("licenses.payconiq.urlopen")
+    def test_aggregator_status_paid_is_idempotent(self, urlopen_mock):
+        urlopen_mock.side_effect = [
+            self._http_response(
+                {
+                    "id": "agg_payment_456",
+                    "checkout_url": "https://pay.example.test/checkout/agg_payment_456",
+                    "status": "open",
+                }
+            ),
+            self._http_response({"id": "agg_payment_456", "status": "succeeded"}),
+            self._http_response({"id": "agg_payment_456", "status": "succeeded"}),
+        ]
+        self.client.force_authenticate(user=self.club_admin)
+        create_response = self.client.post(
+            "/api/payconiq/create/",
+            {"invoice_id": self.invoice.id},
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        payment_id = create_response.data["id"]
+
+        first_status_response = self.client.get(f"/api/payconiq/{payment_id}/status/")
+        second_status_response = self.client.get(f"/api/payconiq/{payment_id}/status/")
+        self.assertEqual(first_status_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_status_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(first_status_response.data["payconiq_status"], "PAID")
+        self.assertEqual(second_status_response.data["payconiq_status"], "PAID")
+        self.assertEqual(first_status_response.data["status"], Payment.Status.PAID)
+        self.assertEqual(second_status_response.data["status"], Payment.Status.PAID)
+
+        self.order.refresh_from_db()
+        self.invoice.refresh_from_db()
+        self.assertEqual(self.order.status, Order.Status.PAID)
+        self.assertEqual(self.invoice.status, Invoice.Status.PAID)
+        self.assertEqual(
+            Payment.objects.filter(order=self.order, provider=Payment.Provider.PAYCONIQ).count(),
+            1,
+        )
+        self.assertEqual(
+            FinanceAuditLog.objects.filter(order=self.order, action="order.paid").count(),
+            1,
+        )
+
+    @override_settings(
+        PAYCONIQ_MODE="aggregator",
+        PAYCONIQ_API_KEY="secret_api_key",
+        PAYCONIQ_MERCHANT_ID="merchant_sandbox_123",
+        PAYCONIQ_BASE_URL="https://sandbox-aggregator.example.test",
+        PAYCONIQ_CREATE_PATH="/v1/payments",
+    )
+    @patch("licenses.payconiq.urlopen", side_effect=URLError("connection refused"))
+    def test_aggregator_create_payment_returns_sanitized_provider_error(self, urlopen_mock):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            "/api/payconiq/create/",
+            {"invoice_id": self.invoice.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
+        self.assertIn("unavailable", response.data["detail"].lower())
+        self.assertNotIn("secret_api_key", response.data["detail"])
+        urlopen_mock.assert_called_once()
+
+    @override_settings(
+        PAYCONIQ_MODE="aggregator",
+        PAYCONIQ_API_KEY="",
+        PAYCONIQ_MERCHANT_ID="",
+        PAYCONIQ_BASE_URL="https://sandbox-aggregator.example.test",
+        PAYCONIQ_CREATE_PATH="/v1/payments",
+    )
+    @patch("licenses.payconiq.urlopen")
+    def test_aggregator_create_payment_requires_credentials(self, urlopen_mock):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            "/api/payconiq/create/",
+            {"invoice_id": self.invoice.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertIn("configuration is incomplete", response.data["detail"].lower())
+        urlopen_mock.assert_not_called()
 
     @override_settings(PAYCONIQ_MODE="mock")
     def test_club_admin_blocked_for_other_club(self):

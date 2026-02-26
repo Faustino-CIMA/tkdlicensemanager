@@ -388,10 +388,20 @@ STRIPE_CHECKOUT_CANCEL_URL = config(
     default=f"{FRONTEND_BASE_URL}/checkout/cancel",
 )
 
-PAYCONIQ_MODE = config("PAYCONIQ_MODE", default="mock")
-PAYCONIQ_API_KEY = config("PAYCONIQ_API_KEY", default="")
-PAYCONIQ_MERCHANT_ID = config("PAYCONIQ_MERCHANT_ID", default="")
-PAYCONIQ_BASE_URL = config("PAYCONIQ_BASE_URL", default="https://payconiq.mock")
+PAYCONIQ_MODE = config("PAYCONIQ_MODE", default="mock").strip().lower()
+PAYCONIQ_API_KEY = config("PAYCONIQ_API_KEY", default="").strip()
+PAYCONIQ_MERCHANT_ID = config("PAYCONIQ_MERCHANT_ID", default="").strip()
+PAYCONIQ_BASE_URL = config("PAYCONIQ_BASE_URL", default="https://payconiq.mock").strip()
+PAYCONIQ_CREATE_PATH = config("PAYCONIQ_CREATE_PATH", default="/v1/payments")
+PAYCONIQ_STATUS_PATH = config(
+    "PAYCONIQ_STATUS_PATH",
+    default="/v1/payments/{payment_id}",
+)
+PAYCONIQ_TIMEOUT_SECONDS = max(
+    1,
+    config("PAYCONIQ_TIMEOUT_SECONDS", cast=int, default=10),
+)
+PAYCONIQ_AUTH_SCHEME = config("PAYCONIQ_AUTH_SCHEME", default="Bearer").strip()
 
 INVOICE_SEPA_BENEFICIARY = config("INVOICE_SEPA_BENEFICIARY", default="LTF License Manager")
 INVOICE_SEPA_IBAN = config("INVOICE_SEPA_IBAN", default="")

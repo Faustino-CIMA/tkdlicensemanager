@@ -169,11 +169,15 @@ Stripe + payments:
 - `STRIPE_CHECKOUT_SUCCESS_URL`
 - `STRIPE_CHECKOUT_CANCEL_URL`
 
-Payconiq (dev/test):
-- `PAYCONIQ_MODE` (default `mock`)
-- `PAYCONIQ_API_KEY`
-- `PAYCONIQ_MERCHANT_ID`
-- `PAYCONIQ_BASE_URL`
+Payconiq (mock + aggregator):
+- `PAYCONIQ_MODE` (`mock` or `aggregator`, default `mock`)
+- `PAYCONIQ_BASE_URL` (mock redirect base in `mock`, provider API base URL in `aggregator`)
+- `PAYCONIQ_API_KEY` (required for `aggregator`)
+- `PAYCONIQ_MERCHANT_ID` (required for `aggregator`)
+- `PAYCONIQ_CREATE_PATH` (default `/v1/payments`)
+- `PAYCONIQ_STATUS_PATH` (default `/v1/payments/{payment_id}`)
+- `PAYCONIQ_TIMEOUT_SECONDS` (default `10`)
+- `PAYCONIQ_AUTH_SCHEME` (default `Bearer`)
 
 SEPA (invoice QR):
 - `INVOICE_SEPA_BENEFICIARY`
@@ -232,9 +236,32 @@ Stripe configuration:
 - Stripe processing requires consent: if member consent is missing, Club Admins must explicitly confirm consent when creating a checkout session.
 - Finance access: LTF Finance has full access to orders/invoices/audit logs; LTF Admin can only perform fallback actions (confirm payment or activate licenses).
 
-Payconiq (dev/test):
-- Set `PAYCONIQ_MODE=mock` and `PAYCONIQ_BASE_URL` for local testing.
-- Use the Club Admin invoice page to generate a Payconiq payment link.
+Payconiq setup (mock, sandbox, production):
+- API contracts remain stable for frontend usage:
+  - `POST /api/payconiq/create/`
+  - `GET /api/payconiq/{id}/status/`
+- Local/dev (`mock` mode):
+  - Set `PAYCONIQ_MODE=mock`
+  - Set `PAYCONIQ_BASE_URL=https://payconiq.mock` (or any local fake base URL)
+  - Use the Club Admin invoice page to generate payment links safely without external calls.
+- Sandbox (`aggregator` mode):
+  1. Create an account with your payment aggregator and request Payconiq sandbox access.
+  2. Obtain sandbox credentials and API details: API key, merchant id, API base URL, create endpoint path, status endpoint path.
+  3. Set `.env` values:
+     - `PAYCONIQ_MODE=aggregator`
+     - `PAYCONIQ_BASE_URL=<sandbox-api-base-url>`
+     - `PAYCONIQ_API_KEY=<sandbox-api-key>`
+     - `PAYCONIQ_MERCHANT_ID=<sandbox-merchant-id>`
+     - Optional overrides: `PAYCONIQ_CREATE_PATH`, `PAYCONIQ_STATUS_PATH`, `PAYCONIQ_TIMEOUT_SECONDS`, `PAYCONIQ_AUTH_SCHEME`
+  4. Restart backend/worker services.
+  5. Verify flow by calling `POST /api/payconiq/create/` then polling `GET /api/payconiq/{id}/status/`.
+- Production (`aggregator` mode):
+  1. Request production Payconiq enablement from the same aggregator.
+  2. Replace sandbox credentials/endpoints in `.env` with production values only.
+  3. Restart services and run a small payment smoke test before full rollout.
+- Security notes:
+  - Never commit real Payconiq secrets into git.
+  - Backend returns sanitized provider errors without exposing credentials.
 - The printable invoice includes both Payconiq and SEPA QR codes (SEPA requires the `INVOICE_SEPA_*` fields).
 
 Webhook processing:

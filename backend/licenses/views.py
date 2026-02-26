@@ -67,7 +67,7 @@ from .pdf_utils import render_invoice_pdf
 from .policy import get_or_create_license_type_policy, validate_member_license_order
 from .services import apply_payment_and_activate
 from .tasks import process_stripe_webhook_event
-from .payconiq import create_payment, get_status
+from .payconiq import PayconiqServiceError, create_payment, get_status
 
 
 def _to_iso_z(value):
@@ -1123,11 +1123,14 @@ class PayconiqPaymentViewSet(viewsets.GenericViewSet):
         if not self._ensure_club_access(request.user, order):
             return Response({"detail": "Not allowed."}, status=HTTP_403_FORBIDDEN)
 
-        result = create_payment(
-            amount=order.total,
-            currency=order.currency,
-            reference=invoice.invoice_number,
-        )
+        try:
+            result = create_payment(
+                amount=order.total,
+                currency=order.currency,
+                reference=invoice.invoice_number,
+            )
+        except PayconiqServiceError as exc:
+            return Response({"detail": str(exc)}, status=exc.status_code)
 
         payment = Payment.objects.create(
             invoice=invoice,
@@ -1169,7 +1172,10 @@ class PayconiqPaymentViewSet(viewsets.GenericViewSet):
         if payment.provider != Payment.Provider.PAYCONIQ:
             return Response({"detail": "Not a Payconiq payment."}, status=HTTP_400_BAD_REQUEST)
 
-        payment.payconiq_status = get_status(payment_id=payment.payconiq_payment_id)
+        try:
+            payment.payconiq_status = get_status(payment_id=payment.payconiq_payment_id)
+        except PayconiqServiceError as exc:
+            return Response({"detail": str(exc)}, status=exc.status_code)
         mapped_status, should_finalize_order = _map_payconiq_payment_status(
             payment.payconiq_status
         )
