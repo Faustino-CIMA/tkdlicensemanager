@@ -167,8 +167,41 @@ class ClubApiTests(TestCase):
         )
         self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
 
-    def test_non_ltf_admin_cannot_modify_club_logos(self):
+    def test_club_admin_can_manage_own_club_logos(self):
         self.client.force_authenticate(user=self.club_admin)
+        create_response = self.client.post(
+            f"/api/clubs/{self.club.id}/logos/",
+            {
+                "file": self._logo_file(),
+                "usage_type": "general",
+                "label": "Club admin logo",
+                "is_selected": True,
+            },
+            format="multipart",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        logo_id = create_response.data["id"]
+
+        patch_response = self.client.patch(
+            f"/api/clubs/{self.club.id}/logos/{logo_id}/",
+            {"usage_type": "invoice", "is_selected": True},
+            format="json",
+        )
+        self.assertEqual(patch_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(patch_response.data["usage_type"], "invoice")
+
+        delete_response = self.client.delete(
+            f"/api/clubs/{self.club.id}/logos/{logo_id}/"
+        )
+        self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_non_ltf_admin_cannot_modify_club_logos(self):
+        member_user = User.objects.create_user(
+            username="member-logo",
+            password="pass12345",
+            role=User.Roles.MEMBER,
+        )
+        self.client.force_authenticate(user=member_user)
         create_response = self.client.post(
             f"/api/clubs/{self.club.id}/logos/",
             {
@@ -192,6 +225,34 @@ class ClubApiTests(TestCase):
         self.club.refresh_from_db()
         self.assertEqual(self.club.iban, "LU280019400644750000")
         self.assertEqual(self.club.bank_name, "POST Luxembourg")
+
+    def test_club_admin_can_patch_own_club_iban(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.patch(
+            f"/api/clubs/{self.club.id}/",
+            {
+                "iban": "LU28 0019 4006 4475 0000",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.club.refresh_from_db()
+        self.assertEqual(self.club.iban, "LU280019400644750000")
+        self.assertEqual(self.club.bank_name, "POST Luxembourg")
+
+    def test_club_admin_cannot_patch_other_club(self):
+        other_club = Club.objects.create(
+            name="Other Club",
+            city="Esch",
+            created_by=self.ltf_admin,
+        )
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.patch(
+            f"/api/clubs/{other_club.id}/",
+            {"city": "Differdange"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_update_club_rejects_invalid_iban(self):
         self.client.force_authenticate(user=self.ltf_admin)
@@ -566,6 +627,11 @@ class BrandingAssetApiTests(TestCase):
             password="pass12345",
             role=User.Roles.CLUB_ADMIN,
         )
+        self.member_user = User.objects.create_user(
+            username="brand-member",
+            password="pass12345",
+            role=User.Roles.MEMBER,
+        )
         self.club = Club.objects.create(
             name="Brand Club",
             city="Luxembourg",
@@ -618,7 +684,7 @@ class BrandingAssetApiTests(TestCase):
         )
 
     def test_non_ltf_admin_cannot_modify_club_logos(self):
-        self.client.force_authenticate(user=self.club_admin)
+        self.client.force_authenticate(user=self.member_user)
         response = self.client.post(
             f"/api/clubs/{self.club.id}/logos/",
             {"file": self._make_logo()},

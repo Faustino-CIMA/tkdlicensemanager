@@ -100,6 +100,15 @@ class ClubViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
     serializer_class = ClubSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def _can_manage_club(self, user, club: Club) -> bool:
+        if not user or not user.is_authenticated:
+            return False
+        if user.role == "ltf_admin":
+            return True
+        if user.role == "club_admin" and club.admins.filter(id=user.id).exists():
+            return True
+        return False
+
     def get_permissions(self):
         if self.action == "logo_content":
             return [permissions.AllowAny()]
@@ -115,8 +124,22 @@ class ClubViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
         user = self.request.user
         if not user or not user.is_authenticated:
             return Club.objects.none()
+        # For mutations where object-level rules apply, fetch the club first
+        # and authorize explicitly in the handler to return 403 (not 404).
+        if self.action in ["update", "partial_update"]:
+            return Club.objects.all()
+        if self.action in ["logos", "logo_detail"] and self.request.method in [
+            "POST",
+            "PATCH",
+            "DELETE",
+        ]:
+            return Club.objects.all()
         if user.role in ["ltf_admin", "ltf_finance"]:
             return Club.objects.all()
+        if user.role == "club_admin":
+            return Club.objects.filter(admins=user).distinct()
+        if user.role == "coach":
+            return Club.objects.filter(members__user=user).distinct()
         return (
             Club.objects.filter(admins=user)
             | Club.objects.filter(members__user=user)
@@ -138,6 +161,18 @@ class ClubViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
         return super().destroy(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        club = self.get_object()
+        if not self._can_manage_club(request.user, club):
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        club = self.get_object()
+        if not self._can_manage_club(request.user, club):
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        return super().partial_update(request, *args, **kwargs)
 
     @action(detail=True, methods=["get"], permission_classes=[permissions.IsAuthenticated])
     def admins(self, request, pk=None):
@@ -306,7 +341,7 @@ class ClubViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
             )
             return Response({"logos": serializer.data}, status=status.HTTP_200_OK)
 
-        if request.user.role != "ltf_admin":
+        if not self._can_manage_club(request.user, club):
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
 
         create_serializer = BrandingAssetCreateSerializer(data=request.data)
@@ -358,7 +393,7 @@ class ClubViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
         if not logo:
             return Response({"detail": "Logo not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        if request.user.role != "ltf_admin":
+        if not self._can_manage_club(request.user, club):
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
 
         if request.method == "DELETE":
