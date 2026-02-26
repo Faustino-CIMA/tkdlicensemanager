@@ -1,4 +1,17 @@
 services:
+  backend:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ltf-backend.rule=Host(`${TRAEFIK_BACKEND_HOST:-api.ltkdf.org}`)"
+      - "traefik.http.routers.ltf-backend.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+      - "traefik.http.routers.ltf-backend.tls=true"
+      - "traefik.http.routers.ltf-backend.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
+      - "traefik.http.services.ltf-backend.loadbalancer.server.port=8000"
+      - "traefik.docker.network=${TRAEFIK_DOCKER_NETWORK:-traefik-public}"
+    networks:
+      - app-net
+      - traefik-public
+
   frontend:
     labels:
       - "traefik.enable=true"
@@ -13,8 +26,6 @@ services:
       - traefik-public
 
 networks:
-  app-net:
-    driver: bridge
   traefik-public:
     external: true
     name: ${TRAEFIK_DOCKER_NETWORK:-traefik-public}

@@ -4,6 +4,8 @@ services:
   db:
     image: postgres:alpine
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     env_file:
       - .env
     environment:
@@ -21,30 +23,34 @@ services:
       -c log_checkpoints=on
       -c log_lock_waits=on
     ports:
-      - "5432:5432"
+      - "${DB_BIND_ADDRESS:-127.0.0.1}:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 20s
     networks:
       - app-net
 
   redis:
     image: redis:alpine
     restart: unless-stopped
+    init: true
+    stop_grace_period: 20s
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "6379:6379"
+      - "${REDIS_BIND_ADDRESS:-127.0.0.1}:6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 15s
     networks:
       - app-net
 
@@ -52,6 +58,9 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
+    init: true
+    stop_signal: SIGTERM
+    stop_grace_period: 60s
     user: "0:0"
     env_file:
       - .env
@@ -87,16 +96,17 @@ services:
       - staticfiles_data:/app/staticfiles
       - mediafiles_data:/app/media
     ports:
-      - "8000:8000"
+      - "${BACKEND_BIND_ADDRESS:-0.0.0.0}:8000:8000"
     healthcheck:
       test:
         [
           "CMD-SHELL",
           "python -c \"import urllib.request,sys; req=urllib.request.Request('http://localhost:8000/api/health/', headers={'X-Forwarded-Proto':'https'}); resp=urllib.request.urlopen(req); sys.exit(0 if resp.getcode()==200 else 1)\"",
         ]
-      interval: 10s
+      interval: 15s
       timeout: 5s
-      retries: 5
+      retries: 8
+      start_period: 120s
     networks:
       - app-net
 
@@ -104,6 +114,9 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
+    init: true
+    stop_signal: SIGTERM
+    stop_grace_period: 120s
     user: "0:0"
     env_file:
       - .env
@@ -139,6 +152,9 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
+    init: true
+    stop_signal: SIGTERM
+    stop_grace_period: 60s
     user: "0:0"
     env_file:
       - .env
@@ -176,6 +192,9 @@ services:
     build:
       context: ./frontend
     restart: unless-stopped
+    init: true
+    stop_signal: SIGTERM
+    stop_grace_period: 45s
     env_file:
       - .env
     environment:
@@ -185,16 +204,17 @@ services:
         condition: service_healthy
     command: ["npm", "run", "start", "--", "-p", "3000"]
     ports:
-      - "3000:3000"
+      - "${FRONTEND_BIND_ADDRESS:-0.0.0.0}:3000:3000"
     healthcheck:
       test:
         [
           "CMD-SHELL",
           "node -e \"fetch('http://localhost:3000/').then(() => process.exit(0)).catch(() => process.exit(1))\"",
         ]
-      interval: 10s
+      interval: 15s
       timeout: 5s
-      retries: 5
+      retries: 8
+      start_period: 45s
     networks:
       - app-net
 

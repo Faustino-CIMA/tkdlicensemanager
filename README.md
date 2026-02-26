@@ -125,6 +125,52 @@ If Docker fails to start:
 - Reboot Docker Desktop (Windows/macOS) or restart the Docker daemon (Linux).
 - Check port conflicts (see Troubleshooting below).
 
+## Dokploy Stability Checklist
+
+Use this short runbook to reduce cold-boot false negatives and proxy/routing surprises on Dokploy.
+
+1. Required env values (minimum):
+- `DJANGO_ALLOWED_HOSTS`
+- `CSRF_TRUSTED_ORIGINS`
+- `CORS_ALLOWED_ORIGINS`
+- `DJANGO_SECURE_USE_X_FORWARDED_PROTO=True`
+- `DJANGO_SECURE_SSL_REDIRECT=True`
+- `DJANGO_SESSION_COOKIE_SECURE=True`
+- `DJANGO_CSRF_COOKIE_SECURE=True`
+- `DJANGO_SECURE_HSTS_SECONDS` / `DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS` / `DJANGO_SECURE_HSTS_PRELOAD`
+- `NEXT_PUBLIC_API_URL` and `FRONTEND_BASE_URL`
+
+2. Startup commands:
+```
+docker compose -f docker-compose.yml config
+docker compose -f docker-compose.yml -f docker-compose.traefik.yml config
+docker compose up -d --build
+```
+
+3. Health verification:
+```
+docker compose ps
+curl -fsS http://localhost:8000/api/health/
+curl -fsS http://localhost:3000/
+```
+
+4. Service logs (last 15 minutes):
+```
+docker compose logs --since=15m backend frontend worker beat
+```
+
+5. Basic restart/rollback procedure:
+- Restart app tier only:
+```
+docker compose up -d --build backend frontend worker beat
+```
+- Roll back to a known good revision:
+```
+git checkout <known-good-sha>
+docker compose up -d --build --force-recreate backend frontend worker beat
+```
+- After rollback, rerun the health verification commands above.
+
 ## Screenshots
 
 Docker Desktop (containers running):
