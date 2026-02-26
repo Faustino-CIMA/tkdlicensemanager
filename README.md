@@ -6,6 +6,13 @@ Modern, secure Taekwondo license management for the Luxembourg Taekwondo Federat
 
 - See `CHANGELOG.md` for user-facing and technical release notes.
 
+## CI (GitHub Actions)
+
+Automated CI runs on push and pull requests to `main`:
+- Backend: migrations, Django checks, and test suite
+- Frontend: lint and production build
+- Workflow file: `.github/workflows/ci.yml`
+
 ## Prerequisites
 
 Required:
@@ -70,6 +77,19 @@ docker compose exec backend python manage.py createsuperuser
 - Swagger docs: `http://localhost:8000/api/docs/`
 - Frontend: `http://localhost:3000/`
 
+## Verify Install
+
+Check services:
+```
+docker compose ps
+```
+
+Quick smoke checks:
+```
+curl http://localhost:8000/api/schema/
+curl http://localhost:3000/
+```
+
 ## Docker Notes (beginner-friendly)
 
 Docker runs each part of the app in its own isolated container, so you do not have to install Python, Node, Postgres, or Redis on your machine. The `docker-compose.yml` file is the recipe that tells Docker which containers to start, how they talk to each other, and which ports are exposed on your laptop.
@@ -88,7 +108,7 @@ Common Docker commands you will use:
 - Run a command inside a container: `docker compose exec backend python manage.py migrate`
 
 Traefik routing (optional):
-- Base `docker-compose.yml` is Traefik-agnostic (safe for Dockploy without external network coupling).
+- Base `docker-compose.yml` is Traefik-agnostic (safe for Dokploy without external network coupling).
 - Use Traefik labels via override file when needed:
 ```
 docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d --build
@@ -125,7 +145,7 @@ If Docker fails to start:
 - Reboot Docker Desktop (Windows/macOS) or restart the Docker daemon (Linux).
 - Check port conflicts (see Troubleshooting below).
 
-## Dokploy Stability Checklist
+## Deploy (Dokploy)
 
 Use this short runbook to reduce cold-boot false negatives and proxy/routing surprises on Dokploy.
 
@@ -173,9 +193,9 @@ docker compose up -d --build --force-recreate backend frontend worker beat
 
 ## Screenshots
 
-Docker Desktop (containers running):
-![Docker Desktop showing ltf-license-manager containers running](docs/screenshots/docker-desktop-containers.png)
-_Caption: Docker Desktop shows all services running (backend, frontend, db, redis, worker)._
+Docker services (containers running):
+![Docker services showing ltf-license-manager containers running](docs/screenshots/docker-desktop-containers.png)
+_Caption: `docker compose ps` output with all core services running (backend, frontend, db, redis, worker)._
 
 Terminal (Compose start + status):
 ![Terminal output showing docker compose up and docker compose ps](docs/screenshots/docker-compose-terminal.png)
@@ -190,7 +210,7 @@ _Caption: Frontend UI on port 3000 and Swagger API docs on port 8000._
 ```
 /backend   Django + DRF API
 /frontend  Next.js App Router UI
-/infra     Infra-related files (placeholder)
+/infra     Infrastructure scaffolding for deployment-related assets
 ```
 
 ## Environment Variables
@@ -279,7 +299,7 @@ Stripe configuration:
 - Set `STRIPE_SECRET_KEY` and `STRIPE_API_VERSION` in `.env`.
 - Set `STRIPE_WEBHOOK_SECRET` to the signing secret for your Stripe webhook endpoint.
 - Ensure `STRIPE_CHECKOUT_SUCCESS_URL` and `STRIPE_CHECKOUT_CANCEL_URL` match your frontend URLs.
-- Stripe processing requires consent: if member consent is missing, Club Admins must explicitly confirm consent when creating a checkout session.
+- Club Admin checkout flow does not require an extra consent prompt; consent enforcement is handled in backend policy and user consent state.
 - Finance access: LTF Finance has full access to orders/invoices/audit logs; LTF Admin can only perform fallback actions (confirm payment or activate licenses).
 
 Payconiq setup (mock, sandbox, production):
@@ -466,19 +486,6 @@ GDPR:
 - `GET /api/auth/data-export/` now includes `profile_photo` metadata and download reference
 - `DELETE /api/auth/data-delete/` clears stored profile picture files and metadata before user deletion
 
-## Verify Install
-
-Check services:
-```
-docker compose ps
-```
-
-Quick smoke checks:
-```
-curl http://localhost:8000/api/schema/
-curl http://localhost:3000/
-```
-
 ## MVP Features (current)
 
 - Role-based authentication (LTF admin, LTF finance, club admin, coach, member)
@@ -508,4 +515,4 @@ curl http://localhost:3000/
 - **Stuck migrations**: `docker compose down -v` to reset volumes (data loss), then `docker compose up --build`.
 - **Celery Beat schedule file**: `backend/celerybeat-schedule` is generated locally; keep it out of git.
 - **makemigrations permission denied in Docker**: run `python backend/manage.py makemigrations` locally or add the migration file in the repo, then run `docker compose exec backend python manage.py migrate`.
-- **`traefik-public` network not found**: either create it manually (`docker network create traefik-public`) or deploy with base compose only (without `docker-compose.traefik.yml`) and use Dockploy domain routing UI.
+- **`traefik-public` network not found**: either create it manually (`docker network create traefik-public`) or deploy with base compose only (without `docker-compose.traefik.yml`) and use Dokploy domain routing UI.
