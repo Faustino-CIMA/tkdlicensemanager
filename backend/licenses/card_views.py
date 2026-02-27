@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from django.db import transaction
 from django.db.models import Max
-from django.http import HttpResponse
+from django.http import FileResponse, HttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiResponse, extend_schema
@@ -28,6 +28,7 @@ from .card_serializers import (
     CardTemplateVersionSerializer,
     MergeFieldSerializer,
     PaperProfileSerializer,
+    PrintJobCreateSerializer,
     PrintJobSerializer,
     get_merge_field_registry_payload,
 )
@@ -35,9 +36,12 @@ from .models import (
     CardFormatPreset,
     CardTemplate,
     CardTemplateVersion,
+    FinanceAuditLog,
     PaperProfile,
     PrintJob,
+    PrintJobItem,
 )
+from .tasks import execute_print_job_task
 
 
 def _is_ltf_admin(user) -> bool:
@@ -389,32 +393,275 @@ class PrintJobViewSet(
 ):
     serializer_class = PrintJobSerializer
     permission_classes = [IsLtfAdminOrClubAdmin]
-    queryset = PrintJob.objects.select_related("club", "template_version", "paper_profile").all()
+    queryset = PrintJob.objects.select_related(
+        "club",
+        "template_version",
+        "template_version__card_format",
+        "paper_profile",
+        "requested_by",
+        "executed_by",
+    ).prefetch_related("items").all()
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return PrintJobCreateSerializer
+        return PrintJobSerializer
+
+    def _ensure_club_admin_scope(self, user, print_job: PrintJob) -> None:
+        if _is_ltf_admin(user):
+            return
+        if _is_club_admin(user) and print_job.club.admins.filter(id=user.id).exists():
+            return
+        raise PermissionDenied("Club Admin can only access print jobs for own club.")
 
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
             return PrintJob.objects.none()
         user = self.request.user
+        base_queryset = PrintJob.objects.select_related(
+            "club",
+            "template_version",
+            "template_version__card_format",
+            "paper_profile",
+            "requested_by",
+            "executed_by",
+        ).prefetch_related("items")
         if _is_ltf_admin(user):
-            return PrintJob.objects.select_related("club", "template_version", "paper_profile").all()
+            return base_queryset.all()
         if _is_club_admin(user):
-            return PrintJob.objects.select_related("club", "template_version", "paper_profile").filter(
-                club__admins=user
-            )
+            object_actions = {"retrieve", "execute", "retry", "cancel", "pdf"}
+            if self.action in object_actions:
+                return base_queryset.all()
+            return base_queryset.filter(club__admins=user)
         return PrintJob.objects.none()
 
-    def perform_create(self, serializer):
-        user = self.request.user
+    @extend_schema(request=PrintJobCreateSerializer, responses=PrintJobSerializer)
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = request.user
         club = serializer.validated_data["club"]
         if _is_club_admin(user) and not club.admins.filter(id=user.id).exists():
             raise PermissionDenied("Club Admin can only create print jobs for own club.")
+
         template_version = serializer.validated_data["template_version"]
-        selected_profile = serializer.validated_data.get("paper_profile") or template_version.paper_profile
-        serializer.save(
-            requested_by=user if user.is_authenticated else None,
-            paper_profile=selected_profile,
-            status=PrintJob.Status.QUEUED,
+        resolved_paper_profile = serializer.validated_data["resolved_paper_profile"]
+        resolved_items = serializer.validated_data["resolved_items"]
+        selected_slots = serializer.validated_data.get("selected_slots") or []
+        metadata = serializer.validated_data.get("metadata") or {}
+
+        with transaction.atomic():
+            print_job = PrintJob.objects.create(
+                club=club,
+                template_version=template_version,
+                paper_profile=resolved_paper_profile,
+                status=PrintJob.Status.DRAFT,
+                total_items=len(resolved_items),
+                selected_slots=selected_slots,
+                include_bleed_guide=serializer.validated_data.get("include_bleed_guide", False),
+                include_safe_area_guide=serializer.validated_data.get(
+                    "include_safe_area_guide", False
+                ),
+                bleed_mm=serializer.validated_data.get("bleed_mm", "2.00"),
+                safe_area_mm=serializer.validated_data.get("safe_area_mm", "3.00"),
+                metadata=metadata,
+                requested_by=user if user.is_authenticated else None,
+            )
+            print_items: list[PrintJobItem] = []
+            for index, item_payload in enumerate(resolved_items):
+                slot_index = selected_slots[index] if selected_slots else index
+                print_items.append(
+                    PrintJobItem(
+                        print_job=print_job,
+                        member=item_payload["member"],
+                        license=item_payload["license"],
+                        quantity=1,
+                        slot_index=slot_index,
+                        status=PrintJobItem.Status.PENDING,
+                    )
+                )
+            PrintJobItem.objects.bulk_create(print_items)
+            FinanceAuditLog.objects.create(
+                action="print_job.created",
+                message="Print job created.",
+                actor=user if user.is_authenticated else None,
+                club=club,
+                metadata={
+                    "print_job_id": print_job.id,
+                    "item_count": len(resolved_items),
+                    "selected_slots": selected_slots,
+                },
+            )
+
+        response_serializer = PrintJobSerializer(print_job, context={"request": request})
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+    def retrieve(self, request, *args, **kwargs):
+        print_job = self.get_object()
+        self._ensure_club_admin_scope(request.user, print_job)
+        serializer = PrintJobSerializer(print_job, context={"request": request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def _queue_print_job(
+        self,
+        *,
+        request,
+        print_job: PrintJob,
+        allow_statuses: set[str],
+        audit_action: str,
+    ) -> tuple[PrintJob, int]:
+        user = request.user if request.user.is_authenticated else None
+        with transaction.atomic():
+            locked_job = (
+                PrintJob.objects.select_for_update()
+                .select_related("club")
+                .get(id=print_job.id)
+            )
+            if locked_job.status == PrintJob.Status.SUCCEEDED and locked_job.artifact_pdf:
+                return locked_job, status.HTTP_200_OK
+            if locked_job.status in {PrintJob.Status.QUEUED, PrintJob.Status.RUNNING}:
+                return locked_job, status.HTTP_202_ACCEPTED
+            if locked_job.status not in allow_statuses:
+                raise serializers.ValidationError(
+                    {"detail": f"Print job cannot be queued from status '{locked_job.status}'."}
+                )
+
+            locked_job.status = PrintJob.Status.QUEUED
+            locked_job.queued_at = timezone.now()
+            locked_job.finished_at = None
+            locked_job.cancelled_at = None
+            locked_job.error_detail = ""
+            locked_job.last_error_at = None
+            if user and locked_job.executed_by_id is None:
+                locked_job.executed_by = user
+            locked_job.save(
+                update_fields=[
+                    "status",
+                    "queued_at",
+                    "finished_at",
+                    "cancelled_at",
+                    "error_detail",
+                    "last_error_at",
+                    "executed_by",
+                    "updated_at",
+                ]
+            )
+            FinanceAuditLog.objects.create(
+                action=f"print_job.{audit_action}",
+                message="Print job queued for execution.",
+                actor=user,
+                club=locked_job.club,
+                metadata={"print_job_id": locked_job.id},
+            )
+
+        execute_print_job_task.delay(
+            locked_job.id,
+            user.id if user is not None else None,
         )
+        return locked_job, status.HTTP_202_ACCEPTED
+
+    @extend_schema(request=None, responses=PrintJobSerializer)
+    @action(detail=True, methods=["post"], url_path="execute")
+    def execute(self, request, pk=None):
+        print_job = self.get_object()
+        self._ensure_club_admin_scope(request.user, print_job)
+        if print_job.status == PrintJob.Status.CANCELLED:
+            return Response(
+                {"detail": "Cancelled print jobs must be retried, not executed directly."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        queued_job, response_status = self._queue_print_job(
+            request=request,
+            print_job=print_job,
+            allow_statuses={PrintJob.Status.DRAFT, PrintJob.Status.FAILED},
+            audit_action="execute_queued",
+        )
+        payload = PrintJobSerializer(queued_job, context={"request": request}).data
+        return Response(payload, status=response_status)
+
+    @extend_schema(request=None, responses=PrintJobSerializer)
+    @action(detail=True, methods=["post"], url_path="retry")
+    def retry(self, request, pk=None):
+        print_job = self.get_object()
+        self._ensure_club_admin_scope(request.user, print_job)
+        queued_job, response_status = self._queue_print_job(
+            request=request,
+            print_job=print_job,
+            allow_statuses={PrintJob.Status.FAILED, PrintJob.Status.CANCELLED},
+            audit_action="retry_queued",
+        )
+        payload = PrintJobSerializer(queued_job, context={"request": request}).data
+        return Response(payload, status=response_status)
+
+    @extend_schema(request=None, responses=PrintJobSerializer)
+    @action(detail=True, methods=["post"], url_path="cancel")
+    def cancel(self, request, pk=None):
+        print_job = self.get_object()
+        self._ensure_club_admin_scope(request.user, print_job)
+        if print_job.status == PrintJob.Status.SUCCEEDED:
+            return Response(
+                {"detail": "Cannot cancel a succeeded print job."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if print_job.status == PrintJob.Status.CANCELLED:
+            payload = PrintJobSerializer(print_job, context={"request": request}).data
+            return Response(payload, status=status.HTTP_200_OK)
+
+        with transaction.atomic():
+            locked_job = (
+                PrintJob.objects.select_for_update()
+                .select_related("club")
+                .get(id=print_job.id)
+            )
+            if locked_job.status != PrintJob.Status.CANCELLED:
+                locked_job.status = PrintJob.Status.CANCELLED
+                locked_job.cancelled_at = timezone.now()
+                locked_job.finished_at = timezone.now()
+                locked_job.save(
+                    update_fields=[
+                        "status",
+                        "cancelled_at",
+                        "finished_at",
+                        "updated_at",
+                    ]
+                )
+                locked_job.items.filter(status=PrintJobItem.Status.PENDING).update(
+                    status=PrintJobItem.Status.FAILED
+                )
+                FinanceAuditLog.objects.create(
+                    action="print_job.cancelled",
+                    message="Print job cancelled.",
+                    actor=request.user if request.user.is_authenticated else None,
+                    club=locked_job.club,
+                    metadata={"print_job_id": locked_job.id},
+                )
+        locked_job = PrintJob.objects.get(id=print_job.id)
+        payload = PrintJobSerializer(locked_job, context={"request": request}).data
+        return Response(payload, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(response=OpenApiTypes.BINARY, description="Rendered print job PDF.")
+        }
+    )
+    @action(detail=True, methods=["get"], url_path="pdf")
+    def pdf(self, request, pk=None):
+        print_job = self.get_object()
+        self._ensure_club_admin_scope(request.user, print_job)
+        if print_job.status != PrintJob.Status.SUCCEEDED or not print_job.artifact_pdf:
+            return Response(
+                {"detail": "Print job PDF artifact is not available yet."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        artifact_stream = print_job.artifact_pdf.open("rb")
+        response = FileResponse(artifact_stream, content_type="application/pdf")
+        response["Content-Disposition"] = (
+            f'attachment; filename="{print_job.job_number.lower()}-artifact.pdf"'
+        )
+        if print_job.artifact_size_bytes:
+            response["Content-Length"] = str(print_job.artifact_size_bytes)
+        return response
 
 
 class MergeFieldRegistryView(APIView):

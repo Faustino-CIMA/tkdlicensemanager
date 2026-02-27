@@ -807,6 +807,22 @@ def _render_pdf(html: str, *, base_url: str | None = None) -> bytes:
     return HTML(string=html, base_url=base_url).write_pdf()
 
 
+def build_sheet_slots(
+    *,
+    paper_profile: PaperProfile,
+    selected_slots: list[int] | None = None,
+) -> tuple[list[dict[str, Any]], list[int]]:
+    return _build_slot_layout(paper_profile=paper_profile, selected_slots=selected_slots)
+
+
+def render_card_fragment_html(preview_data: dict[str, Any]) -> str:
+    return _render_card_fragment(preview_data)
+
+
+def render_pdf_bytes_from_html(html: str, *, base_url: str | None = None) -> bytes:
+    return _render_pdf(html, base_url=base_url)
+
+
 def render_card_pdf_bytes(preview_data: dict[str, Any], *, base_url: str | None = None) -> bytes:
     html = _render_card_document_html(preview_data)
     return _render_pdf(html, base_url=base_url)

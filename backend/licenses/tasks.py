@@ -16,6 +16,7 @@ from accounts.email_utils import send_resend_email
 from .history import expire_outdated_licenses, log_license_status_change
 from .models import FinanceAuditLog, Invoice, License, Order
 from .pdf_utils import build_invoice_context, render_invoice_pdf
+from .print_jobs import execute_print_job_now
 from .services import apply_payment_and_activate
 
 
@@ -64,6 +65,11 @@ def activate_order_from_stripe(order_id: int, stripe_data: dict | None = None) -
         stripe_data=stripe_data,
         payment_details=payment_details,
     )
+
+
+@shared_task
+def execute_print_job_task(print_job_id: int, actor_id: int | None = None) -> None:
+    execute_print_job_now(print_job_id=print_job_id, actor_id=actor_id)
 
 
 @shared_task

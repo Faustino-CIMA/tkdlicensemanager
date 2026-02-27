@@ -738,7 +738,23 @@ class PrintJob(models.Model):
     )
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
     total_items = models.PositiveIntegerField(default=0)  # pyright: ignore[reportArgumentType]
+    selected_slots = models.JSONField(default=list, blank=True)
+    include_bleed_guide = models.BooleanField(default=False)  # pyright: ignore[reportArgumentType]
+    include_safe_area_guide = models.BooleanField(default=False)  # pyright: ignore[reportArgumentType]
+    bleed_mm = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        default=Decimal("2.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+    )
+    safe_area_mm = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        default=Decimal("3.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+    )
     metadata = models.JSONField(default=dict, blank=True)
+    execution_metadata = models.JSONField(default=dict, blank=True)
     requested_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -746,8 +762,23 @@ class PrintJob(models.Model):
         blank=True,
         related_name="print_jobs_requested",
     )
+    executed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="print_jobs_executed",
+    )
+    queued_at = models.DateTimeField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    execution_attempts = models.PositiveIntegerField(default=0)  # pyright: ignore[reportArgumentType]
+    artifact_pdf = models.FileField(upload_to="print_jobs/artifacts/", blank=True)
+    artifact_size_bytes = models.PositiveIntegerField(default=0)  # pyright: ignore[reportArgumentType]
+    artifact_sha256 = models.CharField(max_length=64, blank=True)
+    error_detail = models.TextField(blank=True)
+    last_error_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -798,6 +829,13 @@ class PrintJobItem(models.Model):
         ordering = ["id"]
         indexes = [
             models.Index(fields=["print_job", "status"], name="pritem_job_status_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["print_job", "slot_index"],
+                condition=Q(slot_index__isnull=False),
+                name="pritem_unique_nonnull_slot_per_job",
+            )
         ]
 
     def __str__(self) -> str:

@@ -2,7 +2,7 @@ from decimal import Decimal
 from io import BytesIO
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -16,10 +16,12 @@ from .models import (
     CardFormatPreset,
     CardTemplate,
     CardTemplateVersion,
+    FinanceAuditLog,
     License,
     LicenseType,
     PaperProfile,
     PrintJob,
+    PrintJobItem,
 )
 
 
@@ -170,6 +172,33 @@ class LicenseCardRoleAccessTests(TestCase):
             design_payload=_sample_design_payload(),
             created_by=self.ltf_admin,
         )
+        self.license_type = LicenseType.objects.create(name="Role License", code="role-license")
+        self.own_member = Member.objects.create(
+            club=self.club,
+            first_name="Own",
+            last_name="Admin",
+            ltf_licenseid="LTF-ROLE-OWN-001",
+        )
+        self.other_member = Member.objects.create(
+            club=self.other_club,
+            first_name="Other",
+            last_name="Admin",
+            ltf_licenseid="LTF-ROLE-OTHER-001",
+        )
+        self.own_license = License.objects.create(
+            member=self.own_member,
+            club=self.club,
+            license_type=self.license_type,
+            year=timezone.localdate().year,
+            status=License.Status.ACTIVE,
+        )
+        self.other_license = License.objects.create(
+            member=self.other_member,
+            club=self.other_club,
+            license_type=self.license_type,
+            year=timezone.localdate().year,
+            status=License.Status.ACTIVE,
+        )
 
     def test_ltf_admin_has_full_template_and_version_access(self):
         self.client.force_authenticate(user=self.ltf_admin)
@@ -279,13 +308,14 @@ class LicenseCardRoleAccessTests(TestCase):
                 "club": self.club.id,
                 "template_version": self.published_version.id,
                 "paper_profile": self.paper_profile.id,
-                "total_items": 3,
+                "license_ids": [self.own_license.id],
+                "selected_slots": [0],
                 "metadata": {"trigger": "club-admin"},
             },
             format="json",
         )
         self.assertEqual(own_club_response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(own_club_response.data["status"], PrintJob.Status.QUEUED)
+        self.assertEqual(own_club_response.data["status"], PrintJob.Status.DRAFT)
 
         other_club_response = self.client.post(
             "/api/print-jobs/",
@@ -293,11 +323,27 @@ class LicenseCardRoleAccessTests(TestCase):
                 "club": self.other_club.id,
                 "template_version": self.published_version.id,
                 "paper_profile": self.paper_profile.id,
-                "total_items": 1,
+                "license_ids": [self.other_license.id],
             },
             format="json",
         )
         self.assertEqual(other_club_response.status_code, status.HTTP_403_FORBIDDEN)
+
+        ltf_created_job = PrintJob.objects.create(
+            club=self.other_club,
+            template_version=self.published_version,
+            paper_profile=self.paper_profile,
+            total_items=1,
+            requested_by=self.ltf_admin,
+        )
+        denied_retrieve = self.client.get(f"/api/print-jobs/{ltf_created_job.id}/")
+        denied_execute = self.client.post(
+            f"/api/print-jobs/{ltf_created_job.id}/execute/",
+            {},
+            format="json",
+        )
+        self.assertEqual(denied_retrieve.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(denied_execute.status_code, status.HTTP_403_FORBIDDEN)
 
         self.client.force_authenticate(user=self.ltf_finance)
         denied_response = self.client.get("/api/print-jobs/")
@@ -736,3 +782,352 @@ class LicenseCardPreviewApiTests(TestCase):
                 self.assertEqual(data_response.status_code, status.HTTP_403_FORBIDDEN)
                 self.assertEqual(card_pdf_response.status_code, status.HTTP_403_FORBIDDEN)
                 self.assertEqual(sheet_pdf_response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
+class PrintJobExecutionPipelineTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.ltf_admin = User.objects.create_user(
+            username="cards-print-admin",
+            password="pass12345",
+            role=User.Roles.LTF_ADMIN,
+        )
+        self.club_admin = User.objects.create_user(
+            username="cards-print-club-admin",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+        )
+        self.other_club_admin = User.objects.create_user(
+            username="cards-print-other-club-admin",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+        )
+        self.coach = User.objects.create_user(
+            username="cards-print-coach",
+            password="pass12345",
+            role=User.Roles.COACH,
+        )
+        self.member_user = User.objects.create_user(
+            username="cards-print-member",
+            password="pass12345",
+            role=User.Roles.MEMBER,
+        )
+        self.ltf_finance = User.objects.create_user(
+            username="cards-print-finance",
+            password="pass12345",
+            role=User.Roles.LTF_FINANCE,
+        )
+
+        self.club = Club.objects.create(name="Print Club", created_by=self.ltf_admin)
+        self.club.admins.add(self.club_admin)
+        self.other_club = Club.objects.create(name="Other Print Club", created_by=self.ltf_admin)
+        self.other_club.admins.add(self.other_club_admin)
+
+        self.license_type = LicenseType.objects.create(name="Print Annual", code="print-annual")
+        self.member_one = Member.objects.create(
+            club=self.club,
+            first_name="Print",
+            last_name="One",
+            ltf_licenseid="LTF-PRINT-001",
+        )
+        self.member_two = Member.objects.create(
+            club=self.club,
+            first_name="Print",
+            last_name="Two",
+            ltf_licenseid="LTF-PRINT-002",
+        )
+        self.other_member = Member.objects.create(
+            club=self.other_club,
+            first_name="Other",
+            last_name="Print",
+            ltf_licenseid="LTF-PRINT-003",
+        )
+        self.license_one = License.objects.create(
+            member=self.member_one,
+            club=self.club,
+            license_type=self.license_type,
+            year=timezone.localdate().year,
+            status=License.Status.ACTIVE,
+        )
+        self.license_two = License.objects.create(
+            member=self.member_two,
+            club=self.club,
+            license_type=self.license_type,
+            year=timezone.localdate().year,
+            status=License.Status.ACTIVE,
+        )
+        self.other_license = License.objects.create(
+            member=self.other_member,
+            club=self.other_club,
+            license_type=self.license_type,
+            year=timezone.localdate().year,
+            status=License.Status.ACTIVE,
+        )
+
+        self.card_format = CardFormatPreset.objects.get(code="3c")
+        self.paper_profile = PaperProfile.objects.get(code="sigel-lp798")
+        self.template = CardTemplate.objects.create(
+            name="Print Pipeline Template",
+            created_by=self.ltf_admin,
+            updated_by=self.ltf_admin,
+        )
+        self.template_version = CardTemplateVersion.objects.create(
+            template=self.template,
+            version_number=1,
+            status=CardTemplateVersion.Status.PUBLISHED,
+            card_format=self.card_format,
+            paper_profile=self.paper_profile,
+            design_payload=_sample_render_design_payload(),
+            created_by=self.ltf_admin,
+            published_by=self.ltf_admin,
+            published_at=timezone.now(),
+        )
+
+    def _create_print_job(self, *, user, payload: dict) -> dict:
+        self.client.force_authenticate(user=user)
+        response = self.client.post("/api/print-jobs/", payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        return response.data
+
+    def test_create_execute_and_download_pdf_artifact(self):
+        created_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": self.template_version.id,
+                "paper_profile": self.paper_profile.id,
+                "license_ids": [self.license_one.id, self.license_two.id],
+                "selected_slots": [1, 3],
+                "include_bleed_guide": True,
+                "include_safe_area_guide": True,
+                "metadata": {"reason": "batch-print"},
+            },
+        )
+        job_id = created_job["id"]
+        self.assertEqual(created_job["status"], PrintJob.Status.DRAFT)
+        self.assertEqual(created_job["total_items"], 2)
+        self.assertEqual([row["slot_index"] for row in created_job["items"]], [1, 3])
+
+        self.client.force_authenticate(user=self.ltf_admin)
+        execute_response = self.client.post(
+            f"/api/print-jobs/{job_id}/execute/",
+            {},
+            format="json",
+        )
+        self.assertIn(execute_response.status_code, {status.HTTP_200_OK, status.HTTP_202_ACCEPTED})
+
+        retrieve_response = self.client.get(f"/api/print-jobs/{job_id}/")
+        self.assertEqual(retrieve_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(retrieve_response.data["status"], PrintJob.Status.SUCCEEDED)
+        self.assertTrue(retrieve_response.data["artifact_pdf"])
+        self.assertEqual(retrieve_response.data["execution_metadata"]["selected_slots"], [1, 3])
+
+        pdf_response = self.client.get(f"/api/print-jobs/{job_id}/pdf/")
+        self.assertEqual(pdf_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(pdf_response["Content-Type"], "application/pdf")
+        pdf_bytes = b"".join(pdf_response.streaming_content)
+        self.assertTrue(pdf_bytes.startswith(b"%PDF"))
+
+        self.assertTrue(FinanceAuditLog.objects.filter(action="print_job.created").exists())
+        self.assertTrue(FinanceAuditLog.objects.filter(action="print_job.succeeded").exists())
+
+    def test_execute_is_idempotent_after_success(self):
+        created_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": self.template_version.id,
+                "paper_profile": self.paper_profile.id,
+                "license_ids": [self.license_one.id],
+            },
+        )
+        job_id = created_job["id"]
+        self.client.force_authenticate(user=self.ltf_admin)
+        first_execute = self.client.post(
+            f"/api/print-jobs/{job_id}/execute/",
+            {},
+            format="json",
+        )
+        self.assertIn(first_execute.status_code, {status.HTTP_200_OK, status.HTTP_202_ACCEPTED})
+        first_state = PrintJob.objects.get(id=job_id)
+        self.assertEqual(first_state.status, PrintJob.Status.SUCCEEDED)
+        attempts_after_first_run = int(first_state.execution_attempts)
+
+        second_execute = self.client.post(
+            f"/api/print-jobs/{job_id}/execute/",
+            {},
+            format="json",
+        )
+        self.assertEqual(second_execute.status_code, status.HTTP_200_OK)
+        final_state = PrintJob.objects.get(id=job_id)
+        self.assertEqual(final_state.status, PrintJob.Status.SUCCEEDED)
+        self.assertEqual(int(final_state.execution_attempts), attempts_after_first_run)
+
+    def test_create_rejects_insufficient_partial_sheet_slots(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            "/api/print-jobs/",
+            {
+                "club": self.club.id,
+                "template_version": self.template_version.id,
+                "paper_profile": self.paper_profile.id,
+                "license_ids": [self.license_one.id, self.license_two.id],
+                "selected_slots": [0],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("selected slots", str(response.data).lower())
+
+    def test_retry_after_failed_execution(self):
+        created_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": self.template_version.id,
+                "paper_profile": self.paper_profile.id,
+                "license_ids": [self.license_one.id],
+                "selected_slots": [0],
+            },
+        )
+        job_id = created_job["id"]
+        print_job = PrintJob.objects.get(id=job_id)
+        print_job.selected_slots = [99]
+        print_job.save(update_fields=["selected_slots", "updated_at"])
+
+        self.client.force_authenticate(user=self.ltf_admin)
+        execute_response = self.client.post(
+            f"/api/print-jobs/{job_id}/execute/",
+            {},
+            format="json",
+        )
+        self.assertIn(execute_response.status_code, {status.HTTP_200_OK, status.HTTP_202_ACCEPTED})
+        failed_state = PrintJob.objects.get(id=job_id)
+        self.assertEqual(failed_state.status, PrintJob.Status.FAILED)
+        self.assertTrue(failed_state.error_detail)
+
+        failed_state.selected_slots = [0]
+        failed_state.save(update_fields=["selected_slots", "updated_at"])
+        retry_response = self.client.post(
+            f"/api/print-jobs/{job_id}/retry/",
+            {},
+            format="json",
+        )
+        self.assertIn(retry_response.status_code, {status.HTTP_200_OK, status.HTTP_202_ACCEPTED})
+        final_state = PrintJob.objects.get(id=job_id)
+        self.assertEqual(final_state.status, PrintJob.Status.SUCCEEDED)
+
+    def test_cancel_then_retry_flow(self):
+        created_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": self.template_version.id,
+                "paper_profile": self.paper_profile.id,
+                "member_ids": [self.member_one.id],
+            },
+        )
+        job_id = created_job["id"]
+
+        self.client.force_authenticate(user=self.ltf_admin)
+        cancel_response = self.client.post(
+            f"/api/print-jobs/{job_id}/cancel/",
+            {},
+            format="json",
+        )
+        self.assertEqual(cancel_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(cancel_response.data["status"], PrintJob.Status.CANCELLED)
+
+        execute_after_cancel = self.client.post(
+            f"/api/print-jobs/{job_id}/execute/",
+            {},
+            format="json",
+        )
+        self.assertEqual(execute_after_cancel.status_code, status.HTTP_400_BAD_REQUEST)
+
+        retry_response = self.client.post(
+            f"/api/print-jobs/{job_id}/retry/",
+            {},
+            format="json",
+        )
+        self.assertIn(retry_response.status_code, {status.HTTP_200_OK, status.HTTP_202_ACCEPTED})
+        final_state = PrintJob.objects.get(id=job_id)
+        self.assertEqual(final_state.status, PrintJob.Status.SUCCEEDED)
+
+    def test_permission_matrix_for_print_job_execution(self):
+        created_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": self.template_version.id,
+                "paper_profile": self.paper_profile.id,
+                "license_ids": [self.license_one.id],
+            },
+        )
+        job_id = created_job["id"]
+
+        self.client.force_authenticate(user=self.club_admin)
+        own_execute = self.client.post(
+            f"/api/print-jobs/{job_id}/execute/",
+            {},
+            format="json",
+        )
+        self.assertIn(own_execute.status_code, {status.HTTP_200_OK, status.HTTP_202_ACCEPTED})
+
+        other_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.other_club.id,
+                "template_version": self.template_version.id,
+                "paper_profile": self.paper_profile.id,
+                "license_ids": [self.other_license.id],
+            },
+        )
+        other_job_id = other_job["id"]
+        self.client.force_authenticate(user=self.club_admin)
+        denied_other_retrieve = self.client.get(f"/api/print-jobs/{other_job_id}/")
+        denied_other_execute = self.client.post(
+            f"/api/print-jobs/{other_job_id}/execute/",
+            {},
+            format="json",
+        )
+        self.assertEqual(denied_other_retrieve.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(denied_other_execute.status_code, status.HTTP_403_FORBIDDEN)
+
+        for user in [self.coach, self.member_user, self.ltf_finance]:
+            with self.subTest(role=user.role):
+                self.client.force_authenticate(user=user)
+                denied_list = self.client.get("/api/print-jobs/")
+                denied_create = self.client.post(
+                    "/api/print-jobs/",
+                    {
+                        "club": self.club.id,
+                        "template_version": self.template_version.id,
+                        "paper_profile": self.paper_profile.id,
+                        "license_ids": [self.license_one.id],
+                    },
+                    format="json",
+                )
+                self.assertEqual(denied_list.status_code, status.HTTP_403_FORBIDDEN)
+                self.assertEqual(denied_create.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_print_job_items_marked_as_printed_after_success(self):
+        created_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": self.template_version.id,
+                "paper_profile": self.paper_profile.id,
+                "license_ids": [self.license_one.id, self.license_two.id],
+            },
+        )
+        job_id = created_job["id"]
+        self.client.force_authenticate(user=self.ltf_admin)
+        self.client.post(f"/api/print-jobs/{job_id}/execute/", {}, format="json")
+
+        statuses = list(
+            PrintJobItem.objects.filter(print_job_id=job_id).values_list("status", flat=True)
+        )
+        self.assertTrue(statuses)
+        self.assertTrue(all(item_status == PrintJobItem.Status.PRINTED for item_status in statuses))

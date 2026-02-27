@@ -24,6 +24,7 @@ Last updated: 2026-02-27
 - Payconiq backend supports both `mock` and production-ready `aggregator` mode with stable API contracts — completed
 - Final documentation polish: root README publication pass, screenshot package, and frontend README alignment — completed
 - License Card Step 3 backend render engine: deterministic preview-data + card/sheet PDF APIs with guides and merge resolution — completed
+- License Card Step 5 backend print execution pipeline: async execute/retry/cancel lifecycle, PDF artifact persistence, secure download endpoint, and audit/status history — completed
 
 ## Key Decisions
 - Material Design 3 is the only UI framework
@@ -36,7 +37,7 @@ Last updated: 2026-02-27
 ## Current Open / Next Priorities (update after every milestone)
 - Gather real Payconiq sandbox credentials and run first live sandbox verification
 - Any remaining Dokploy stability tweaks
-- License Card Step 4/5 integration (print jobs execution + final production print pipeline)
+- License Card Step 6+ frontend/ops integration for production batch printing workflows
 
 ## Coding & Memory Rules (always follow)
 - Explain ALL JS/TS in extreme beginner detail

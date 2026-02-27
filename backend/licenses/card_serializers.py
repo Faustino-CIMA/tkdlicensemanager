@@ -6,6 +6,9 @@ from typing import Any
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
+from clubs.models import Club
+from members.models import Member
+
 from .card_registry import (
     ALLOWED_MERGE_FIELDS,
     MERGE_FIELD_REGISTRY,
@@ -15,6 +18,7 @@ from .models import (
     CardFormatPreset,
     CardTemplate,
     CardTemplateVersion,
+    License,
     PaperProfile,
     PrintJob,
     PrintJobItem,
@@ -260,10 +264,25 @@ class PrintJobSerializer(serializers.ModelSerializer):
             "paper_profile",
             "status",
             "total_items",
+            "selected_slots",
+            "include_bleed_guide",
+            "include_safe_area_guide",
+            "bleed_mm",
+            "safe_area_mm",
             "metadata",
+            "execution_metadata",
             "requested_by",
+            "executed_by",
+            "queued_at",
             "started_at",
             "finished_at",
+            "cancelled_at",
+            "execution_attempts",
+            "artifact_pdf",
+            "artifact_size_bytes",
+            "artifact_sha256",
+            "error_detail",
+            "last_error_at",
             "created_at",
             "updated_at",
             "items",
@@ -271,9 +290,19 @@ class PrintJobSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "job_number",
             "status",
+            "total_items",
             "requested_by",
+            "executed_by",
+            "queued_at",
             "started_at",
             "finished_at",
+            "cancelled_at",
+            "execution_attempts",
+            "artifact_pdf",
+            "artifact_size_bytes",
+            "artifact_sha256",
+            "error_detail",
+            "last_error_at",
             "created_at",
             "updated_at",
             "items",
@@ -291,6 +320,181 @@ class PrintJobSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"paper_profile": "Paper profile card format must match template version format."}
                 )
+        return attrs
+
+
+class PrintJobCreateSerializer(serializers.Serializer):
+    club = serializers.PrimaryKeyRelatedField(queryset=Club.objects.all())
+    template_version = serializers.PrimaryKeyRelatedField(
+        queryset=CardTemplateVersion.objects.select_related("paper_profile", "card_format").all()
+    )
+    paper_profile = serializers.PrimaryKeyRelatedField(
+        queryset=PaperProfile.objects.select_related("card_format").all(),
+        required=False,
+        allow_null=True,
+    )
+    member_ids = serializers.ListField(
+        required=False,
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+    )
+    license_ids = serializers.ListField(
+        required=False,
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+    )
+    selected_slots = serializers.ListField(
+        required=False,
+        child=serializers.IntegerField(min_value=0),
+        allow_empty=False,
+    )
+    include_bleed_guide = serializers.BooleanField(required=False, default=False)
+    include_safe_area_guide = serializers.BooleanField(required=False, default=False)
+    bleed_mm = serializers.DecimalField(
+        required=False,
+        max_digits=8,
+        decimal_places=2,
+        min_value=Decimal("0.00"),
+        default=Decimal("2.00"),
+    )
+    safe_area_mm = serializers.DecimalField(
+        required=False,
+        max_digits=8,
+        decimal_places=2,
+        min_value=Decimal("0.00"),
+        default=Decimal("3.00"),
+    )
+    metadata = serializers.JSONField(required=False, default=dict)
+
+    def validate(self, attrs):
+        club = attrs["club"]
+        template_version = attrs["template_version"]
+        paper_profile = attrs.get("paper_profile") or template_version.paper_profile
+        member_ids = attrs.get("member_ids") or []
+        license_ids = attrs.get("license_ids") or []
+        selected_slots = attrs.get("selected_slots") or []
+
+        if template_version.status != CardTemplateVersion.Status.PUBLISHED:
+            raise serializers.ValidationError(
+                {"template_version": "Print jobs must use a published template version."}
+            )
+        if not member_ids and not license_ids:
+            raise serializers.ValidationError(
+                {"detail": "At least one of member_ids or license_ids is required."}
+            )
+        if len(set(member_ids)) != len(member_ids):
+            raise serializers.ValidationError({"member_ids": "Duplicate member ids are not allowed."})
+        if len(set(license_ids)) != len(license_ids):
+            raise serializers.ValidationError({"license_ids": "Duplicate license ids are not allowed."})
+        if len(set(selected_slots)) != len(selected_slots):
+            raise serializers.ValidationError(
+                {"selected_slots": "Duplicate slot indices are not allowed."}
+            )
+        if paper_profile and paper_profile.card_format_id != template_version.card_format_id:
+            raise serializers.ValidationError(
+                {"paper_profile": "Paper profile card format must match template version format."}
+            )
+        if selected_slots and paper_profile is None:
+            raise serializers.ValidationError(
+                {"selected_slots": "Selected slots require a paper profile."}
+            )
+
+        members = []
+        if member_ids:
+            member_queryset = Member.objects.select_related("club").filter(id__in=member_ids)
+            members = sorted(list(member_queryset), key=lambda member: member.id)
+            found_member_ids = {member.id for member in members}
+            missing_member_ids = [member_id for member_id in member_ids if member_id not in found_member_ids]
+            if missing_member_ids:
+                raise serializers.ValidationError(
+                    {"member_ids": f"Unknown member id(s): {', '.join(str(value) for value in missing_member_ids)}."}
+                )
+            invalid_member_ids = [member.id for member in members if member.club_id != club.id]
+            if invalid_member_ids:
+                raise serializers.ValidationError(
+                    {
+                        "member_ids": (
+                            "Member id(s) do not belong to the selected club: "
+                            + ", ".join(str(value) for value in invalid_member_ids)
+                        )
+                    }
+                )
+
+        licenses = []
+        if license_ids:
+            license_queryset = License.objects.select_related("member", "club").filter(id__in=license_ids)
+            licenses = sorted(list(license_queryset), key=lambda license_record: license_record.id)
+            found_license_ids = {license_record.id for license_record in licenses}
+            missing_license_ids = [
+                license_id for license_id in license_ids if license_id not in found_license_ids
+            ]
+            if missing_license_ids:
+                raise serializers.ValidationError(
+                    {"license_ids": f"Unknown license id(s): {', '.join(str(value) for value in missing_license_ids)}."}
+                )
+            invalid_license_ids = [license_record.id for license_record in licenses if license_record.club_id != club.id]
+            if invalid_license_ids:
+                raise serializers.ValidationError(
+                    {
+                        "license_ids": (
+                            "License id(s) do not belong to the selected club: "
+                            + ", ".join(str(value) for value in invalid_license_ids)
+                        )
+                    }
+                )
+
+        resolved_items: list[dict[str, Any]] = []
+        license_member_ids = set()
+        for license_record in licenses:
+            resolved_items.append(
+                {
+                    "member": license_record.member,
+                    "license": license_record,
+                }
+            )
+            license_member_ids.add(license_record.member_id)
+        for member in members:
+            if member.id in license_member_ids:
+                continue
+            resolved_items.append({"member": member, "license": None})
+
+        if not resolved_items:
+            raise serializers.ValidationError({"detail": "No printable items were resolved."})
+        if selected_slots:
+            sorted_slots = sorted(int(slot) for slot in selected_slots)
+            if len(sorted_slots) < len(resolved_items):
+                raise serializers.ValidationError(
+                    {
+                        "selected_slots": (
+                            "Selected slots count must be >= number of printable items."
+                        )
+                    }
+                )
+            if paper_profile:
+                invalid_slot_indexes = [
+                    slot
+                    for slot in sorted_slots
+                    if slot < 0 or slot >= int(paper_profile.slot_count)
+                ]
+                if invalid_slot_indexes:
+                    raise serializers.ValidationError(
+                        {
+                            "selected_slots": (
+                                "Out-of-range slot index(es): "
+                                + ", ".join(str(value) for value in invalid_slot_indexes)
+                            )
+                        }
+                    )
+            attrs["selected_slots"] = sorted_slots
+
+        metadata = attrs.get("metadata")
+        if metadata is None:
+            attrs["metadata"] = {}
+        elif not isinstance(metadata, dict):
+            raise serializers.ValidationError({"metadata": "metadata must be an object."})
+
+        attrs["resolved_paper_profile"] = paper_profile
+        attrs["resolved_items"] = resolved_items
         return attrs
 
 
