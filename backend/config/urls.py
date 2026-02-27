@@ -49,6 +49,14 @@ from licenses.views import (
     PaymentViewSet,
     StripeWebhookView,
 )
+from licenses.card_views import (
+    CardFormatPresetViewSet,
+    CardTemplateViewSet,
+    CardTemplateVersionViewSet,
+    MergeFieldRegistryView,
+    PaperProfileViewSet,
+    PrintJobViewSet,
+)
 from members.views import MemberViewSet
 
 router = DefaultRouter()
@@ -64,6 +72,15 @@ router.register(r"payconiq", PayconiqPaymentViewSet, basename="payconiq")
 router.register(r"club-orders", ClubOrderViewSet, basename="club-order")
 router.register(r"club-invoices", ClubInvoiceViewSet, basename="club-invoice")
 router.register(r"finance-audit-logs", FinanceAuditLogViewSet, basename="finance-audit-log")
+router.register(r"card-formats", CardFormatPresetViewSet, basename="card-format")
+router.register(r"paper-profiles", PaperProfileViewSet, basename="paper-profile")
+router.register(r"card-templates", CardTemplateViewSet, basename="card-template")
+router.register(
+    r"card-template-versions",
+    CardTemplateVersionViewSet,
+    basename="card-template-version",
+)
+router.register(r"print-jobs", PrintJobViewSet, basename="print-job")
 
 def health_check(request):
     return JsonResponse({"status": "ok"})
@@ -127,6 +144,7 @@ urlpatterns = [
     ),
     path("api/stripe/webhook/", StripeWebhookView.as_view(), name="stripe-webhook"),
     path("api/invoices/<int:invoice_id>/pdf/", InvoicePdfView.as_view(), name="invoice-pdf"),
+    path("api/merge-fields/", MergeFieldRegistryView.as_view(), name="merge-fields"),
     path("api/", include(router.urls)),
     path("api/schema/", schema_view, name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="docs"),

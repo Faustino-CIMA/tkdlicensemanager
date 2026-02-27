@@ -4,6 +4,7 @@ from typing import cast
 from uuid import uuid4
 
 from django.conf import settings
+from django.core.validators import MinValueValidator
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
@@ -449,3 +450,355 @@ class FinanceAuditLog(models.Model):
 
     def __str__(self):
         return f"{self.action} - {self.created_at:%Y-%m-%d}"
+
+
+def generate_print_job_number() -> str:
+    return f"PRN-{uuid4().hex[:12].upper()}"
+
+
+class CardFormatPreset(models.Model):
+    code = models.SlugField(max_length=50, unique=True)
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    width_mm = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+    )
+    height_mm = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+    )
+    is_custom = models.BooleanField(default=False)  # pyright: ignore[reportArgumentType]
+    is_active = models.BooleanField(default=True)  # pyright: ignore[reportArgumentType]
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return str(self.name)
+
+
+class PaperProfile(models.Model):
+    code = models.SlugField(max_length=50, unique=True)
+    name = models.CharField(max_length=120)
+    description = models.TextField(blank=True)
+    card_format = models.ForeignKey(
+        CardFormatPreset,
+        on_delete=models.PROTECT,
+        related_name="paper_profiles",
+    )
+    sheet_width_mm = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+    )
+    sheet_height_mm = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+    )
+    card_width_mm = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+    )
+    card_height_mm = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+    )
+    margin_top_mm = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+    )
+    margin_bottom_mm = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+    )
+    margin_left_mm = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+    )
+    margin_right_mm = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+    )
+    horizontal_gap_mm = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+    )
+    vertical_gap_mm = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+    )
+    columns = models.PositiveSmallIntegerField(default=1)  # pyright: ignore[reportArgumentType]
+    rows = models.PositiveSmallIntegerField(default=1)  # pyright: ignore[reportArgumentType]
+    slot_count = models.PositiveSmallIntegerField(default=1)  # pyright: ignore[reportArgumentType]
+    is_preset = models.BooleanField(default=False)  # pyright: ignore[reportArgumentType]
+    is_active = models.BooleanField(default=True)  # pyright: ignore[reportArgumentType]
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="paper_profiles_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def clean(self):
+        super().clean()
+        expected_slot_count = int(self.rows) * int(self.columns)
+        if expected_slot_count != int(self.slot_count):
+            raise ValidationError({"slot_count": "Slot count must equal rows * columns."})
+
+    def __str__(self) -> str:
+        return str(self.name)
+
+
+class CardTemplate(models.Model):
+    name = models.CharField(max_length=120)
+    description = models.TextField(blank=True)
+    is_default = models.BooleanField(default=False)  # pyright: ignore[reportArgumentType]
+    is_active = models.BooleanField(default=True)  # pyright: ignore[reportArgumentType]
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="card_templates_created",
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="card_templates_updated",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["is_default"],
+                condition=Q(is_default=True),
+                name="unique_default_card_template",
+            )
+        ]
+        ordering = ["name", "-created_at"]
+
+    def __str__(self) -> str:
+        return str(self.name)
+
+
+class CardTemplateVersion(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        PUBLISHED = "published", "Published"
+
+    template = models.ForeignKey(
+        CardTemplate,
+        on_delete=models.CASCADE,
+        related_name="versions",
+    )
+    version_number = models.PositiveIntegerField()
+    label = models.CharField(max_length=120, blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
+    card_format = models.ForeignKey(
+        CardFormatPreset,
+        on_delete=models.PROTECT,
+        related_name="template_versions",
+    )
+    paper_profile = models.ForeignKey(
+        PaperProfile,
+        on_delete=models.PROTECT,
+        related_name="template_versions",
+        null=True,
+        blank=True,
+    )
+    design_payload = models.JSONField(default=dict, blank=True)
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="card_template_versions_created",
+    )
+    published_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="card_template_versions_published",
+    )
+    published_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["template_id", "-version_number", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["template", "version_number"],
+                name="unique_template_version_number",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["template", "status"], name="tmplv_template_status_idx"),
+            models.Index(fields=["status", "-published_at"], name="tmplv_status_published_idx"),
+        ]
+
+    def clean(self):
+        super().clean()
+        if (
+            self.paper_profile_id
+            and self.card_format_id
+            and self.paper_profile.card_format_id != self.card_format_id
+        ):
+            raise ValidationError(
+                {"paper_profile": "Paper profile card format must match template card format."}
+            )
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            existing = CardTemplateVersion.objects.filter(pk=self.pk).first()
+            if (
+                existing
+                and existing.status == CardTemplateVersion.Status.PUBLISHED
+                and self.status == CardTemplateVersion.Status.PUBLISHED
+            ):
+                immutable_fields = [
+                    "template_id",
+                    "version_number",
+                    "label",
+                    "card_format_id",
+                    "paper_profile_id",
+                    "design_payload",
+                    "notes",
+                ]
+                if any(
+                    getattr(existing, field_name) != getattr(self, field_name)
+                    for field_name in immutable_fields
+                ):
+                    raise ValidationError("Published template versions are immutable.")
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.template.name} v{self.version_number}"
+
+
+class PrintJob(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        QUEUED = "queued", "Queued"
+        RUNNING = "running", "Running"
+        SUCCEEDED = "succeeded", "Succeeded"
+        FAILED = "failed", "Failed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    job_number = models.CharField(
+        max_length=20,
+        unique=True,
+        default=generate_print_job_number,
+        editable=False,
+    )
+    club = models.ForeignKey(Club, on_delete=models.PROTECT, related_name="print_jobs")
+    template_version = models.ForeignKey(
+        CardTemplateVersion,
+        on_delete=models.PROTECT,
+        related_name="print_jobs",
+    )
+    paper_profile = models.ForeignKey(
+        PaperProfile,
+        on_delete=models.PROTECT,
+        related_name="print_jobs",
+        null=True,
+        blank=True,
+    )
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
+    total_items = models.PositiveIntegerField(default=0)  # pyright: ignore[reportArgumentType]
+    metadata = models.JSONField(default=dict, blank=True)
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="print_jobs_requested",
+    )
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["club", "status", "-created_at"], name="prjob_club_status_idx"),
+            models.Index(fields=["status", "-created_at"], name="prjob_status_created_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return str(self.job_number)
+
+
+class PrintJobItem(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        PRINTED = "printed", "Printed"
+        FAILED = "failed", "Failed"
+
+    print_job = models.ForeignKey(
+        PrintJob,
+        on_delete=models.CASCADE,
+        related_name="items",
+    )
+    member = models.ForeignKey(
+        Member,
+        on_delete=models.PROTECT,
+        related_name="print_job_items",
+        null=True,
+        blank=True,
+    )
+    license = models.ForeignKey(
+        License,
+        on_delete=models.PROTECT,
+        related_name="print_job_items",
+        null=True,
+        blank=True,
+    )
+    quantity = models.PositiveIntegerField(default=1)  # pyright: ignore[reportArgumentType]
+    slot_index = models.PositiveIntegerField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["id"]
+        indexes = [
+            models.Index(fields=["print_job", "status"], name="pritem_job_status_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.print_job.job_number} item {self.id}"
