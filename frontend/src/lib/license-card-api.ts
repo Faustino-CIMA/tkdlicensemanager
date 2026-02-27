@@ -1,4 +1,5 @@
-import { apiRequest } from "./api";
+import { API_URL, apiRequest } from "./api";
+import { getToken } from "./auth";
 import { PaginatedResponse, unwrapListResponse } from "./pagination";
 
 type ApiCallOptions = {
@@ -224,6 +225,78 @@ export type PrintJobInput = {
   metadata?: Record<string, unknown>;
 };
 
+export type CardPreviewRequestInput = {
+  member_id?: number;
+  license_id?: number;
+  club_id?: number;
+  sample_data?: Record<string, unknown>;
+  include_bleed_guide?: boolean;
+  include_safe_area_guide?: boolean;
+  bleed_mm?: number | string;
+  safe_area_mm?: number | string;
+};
+
+export type CardSheetPreviewRequestInput = CardPreviewRequestInput & {
+  paper_profile_id?: number;
+  selected_slots?: number[];
+};
+
+export type CardPreviewDataResponse = {
+  template_version_id: number;
+  template_id: number;
+  card_format: {
+    id: number;
+    code: string;
+    name: string;
+    width_mm: string;
+    height_mm: string;
+  };
+  paper_profile: {
+    id: number;
+    code: string;
+    name: string;
+    sheet_width_mm: string;
+    sheet_height_mm: string;
+    card_width_mm: string;
+    card_height_mm: string;
+    rows: number;
+    columns: number;
+    slot_count: number;
+  } | null;
+  guides: {
+    include_bleed_guide: boolean;
+    include_safe_area_guide: boolean;
+    bleed_mm: string;
+    safe_area_mm: string;
+  };
+  context: Record<string, string>;
+  selected_slots: number[];
+  slots: Array<{
+    slot_index: number;
+    row: number;
+    column: number;
+    x_mm: string;
+    y_mm: string;
+    width_mm: string;
+    height_mm: string;
+    selected: boolean;
+  }>;
+  elements: Array<
+    CardDesignElement & {
+      render_order: number;
+      rotation_deg: string;
+      opacity: string;
+      z_index: number;
+      merge_field: string;
+      resolved_text?: string;
+      resolved_source?: string;
+      resolved_value?: string;
+      qr_data_uri?: string;
+      barcode_placeholder?: string;
+    }
+  >;
+};
+
 type CardTemplateVersionListQuery = {
   templateId?: number;
 };
@@ -413,4 +486,85 @@ export function createPrintJob(input: PrintJobInput) {
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+function normalizeApiErrorMessage(message: string, contentType: string | null): string {
+  if (contentType?.includes("application/json") && message) {
+    try {
+      const parsed = JSON.parse(message) as {
+        non_field_errors?: string[];
+        detail?: string;
+        message?: string;
+        error?: string;
+      };
+      if (Array.isArray(parsed?.non_field_errors) && parsed.non_field_errors.length > 0) {
+        return parsed.non_field_errors.join(" ");
+      }
+      if (typeof parsed?.detail === "string") {
+        return parsed.detail;
+      }
+      if (typeof parsed?.message === "string") {
+        return parsed.message;
+      }
+      if (typeof parsed?.error === "string") {
+        return parsed.error;
+      }
+    } catch {
+      return message;
+    }
+  }
+  return message;
+}
+
+async function postPreviewPdf(
+  path: string,
+  payload: CardPreviewRequestInput | CardSheetPreviewRequestInput
+) {
+  const token = getToken();
+  const response = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Token ${token}` } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type");
+    const message = await response.text();
+    throw new Error(
+      normalizeApiErrorMessage(message, contentType) ||
+        `Request failed with ${response.status}`
+    );
+  }
+
+  return response.blob();
+}
+
+export function getCardTemplateVersionPreviewData(
+  versionId: number,
+  payload: CardSheetPreviewRequestInput
+) {
+  return apiRequest<CardPreviewDataResponse>(
+    `/api/card-template-versions/${versionId}/preview-data/`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+export function getCardTemplateVersionCardPreviewPdf(
+  versionId: number,
+  payload: CardPreviewRequestInput
+) {
+  return postPreviewPdf(`/api/card-template-versions/${versionId}/preview-card-pdf/`, payload);
+}
+
+export function getCardTemplateVersionSheetPreviewPdf(
+  versionId: number,
+  payload: CardSheetPreviewRequestInput
+) {
+  return postPreviewPdf(`/api/card-template-versions/${versionId}/preview-sheet-pdf/`, payload);
 }

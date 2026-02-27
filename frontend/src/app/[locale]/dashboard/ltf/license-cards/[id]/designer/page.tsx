@@ -25,12 +25,18 @@ import {
   CardDesignPayload,
   CardElementType,
   CardFormat,
+  CardPreviewDataResponse,
+  CardPreviewRequestInput,
+  CardSheetPreviewRequestInput,
   CardTemplate,
   CardTemplateVersion,
   MergeField,
   PaperProfile,
   createCardTemplateVersion,
   getCardFormats,
+  getCardTemplateVersionCardPreviewPdf,
+  getCardTemplateVersionPreviewData,
+  getCardTemplateVersionSheetPreviewPdf,
   getCardTemplate,
   getCardTemplateVersions,
   getMergeFields,
@@ -70,8 +76,9 @@ const ALLOWED_ELEMENT_TYPES: CardElementType[] = [
   "qr",
   "barcode",
 ];
-const BLEED_GUIDE_MM = 2;
-const SAFE_AREA_MM = 3;
+const DEFAULT_BLEED_MM = "2.00";
+const DEFAULT_SAFE_AREA_MM = "3.00";
+const TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE = "template-default";
 const MERGE_FIELD_TOKEN_REGEX = /\{\{\s*([^{}\s]+)\s*\}\}/g;
 
 function toFiniteNumber(value: unknown, fallback: number) {
@@ -90,6 +97,10 @@ function roundMm(value: number) {
   return Number(value.toFixed(2));
 }
 
+function toMmString(value: number) {
+  return roundMm(value).toFixed(2);
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -99,6 +110,66 @@ function generateElementId() {
     return crypto.randomUUID();
   }
   return `element-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+}
+
+function parseOptionalPositiveInt(rawValue: string) {
+  const normalized = rawValue.trim();
+  if (!normalized) {
+    return undefined;
+  }
+  const parsed = Number(normalized);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return undefined;
+  }
+  return parsed;
+}
+
+function normalizeSlotSelection(selectedSlots: number[], slotCount: number) {
+  const unique = new Set<number>();
+  for (const slot of selectedSlots) {
+    if (Number.isInteger(slot) && slot >= 0 && slot < slotCount) {
+      unique.add(slot);
+    }
+  }
+  return Array.from(unique.values()).sort((a, b) => a - b);
+}
+
+function parsePreviewSampleData(sampleDataInput: string): Record<string, unknown> {
+  const normalized = sampleDataInput.trim();
+  if (!normalized) {
+    return {};
+  }
+  const parsed = JSON.parse(normalized) as unknown;
+  if (!isPlainObject(parsed)) {
+    throw new Error("sample_data must be a JSON object.");
+  }
+  return parsed;
+}
+
+function openBlobInNewTab(blob: Blob) {
+  const url = window.URL.createObjectURL(blob);
+  window.open(url, "_blank", "noopener,noreferrer");
+  window.setTimeout(() => {
+    window.URL.revokeObjectURL(url);
+  }, 15000);
+}
+
+function getPreviewElementResolvedValue(
+  element: CardPreviewDataResponse["elements"][number]
+) {
+  if (typeof element.resolved_text === "string" && element.resolved_text.trim()) {
+    return element.resolved_text;
+  }
+  if (typeof element.resolved_value === "string" && element.resolved_value.trim()) {
+    return element.resolved_value;
+  }
+  if (typeof element.resolved_source === "string" && element.resolved_source.trim()) {
+    return element.resolved_source;
+  }
+  if (typeof element.merge_field === "string" && element.merge_field.trim()) {
+    return `{{${element.merge_field}}}`;
+  }
+  return "-";
 }
 
 function clampElementToCanvas(
@@ -266,12 +337,26 @@ export default function LtfAdminLicenseCardDesignerPage() {
   const [dragState, setDragState] = useState<DragState>(null);
   const [showBleedGuide, setShowBleedGuide] = useState(true);
   const [showSafeAreaGuide, setShowSafeAreaGuide] = useState(true);
+  const [bleedGuideMmInput, setBleedGuideMmInput] = useState(DEFAULT_BLEED_MM);
+  const [safeAreaGuideMmInput, setSafeAreaGuideMmInput] = useState(DEFAULT_SAFE_AREA_MM);
+  const [previewMemberIdInput, setPreviewMemberIdInput] = useState("");
+  const [previewLicenseIdInput, setPreviewLicenseIdInput] = useState("");
+  const [previewClubIdInput, setPreviewClubIdInput] = useState("");
+  const [previewSampleDataInput, setPreviewSampleDataInput] = useState("{}");
+  const [previewPaperProfileValue, setPreviewPaperProfileValue] = useState(
+    TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE
+  );
+  const [previewSelectedSlots, setPreviewSelectedSlots] = useState<number[]>([]);
+  const [previewData, setPreviewData] = useState<CardPreviewDataResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isCreatingDraft, setIsCreatingDraft] = useState(false);
   const [isPublishingDraft, setIsPublishingDraft] = useState(false);
+  const [isLoadingPreviewData, setIsLoadingPreviewData] = useState(false);
+  const [isOpeningCardPreviewPdf, setIsOpeningCardPreviewPdf] = useState(false);
+  const [isOpeningSheetPreviewPdf, setIsOpeningSheetPreviewPdf] = useState(false);
   const canvasRef = useRef<HTMLDivElement | null>(null);
 
   const canManageDesigner = currentRole === "ltf_admin";
@@ -318,6 +403,26 @@ export default function LtfAdminLicenseCardDesignerPage() {
     return paperProfileById.get(selectedVersion.paper_profile) ?? null;
   }, [paperProfileById, selectedVersion]);
 
+  const paperProfilesForSelectedCardFormat = useMemo(() => {
+    if (!selectedCardFormat) {
+      return [];
+    }
+    return paperProfiles.filter((paperProfile) => paperProfile.card_format === selectedCardFormat.id);
+  }, [paperProfiles, selectedCardFormat]);
+
+  const previewPaperProfileOverride = useMemo(() => {
+    if (previewPaperProfileValue === TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE) {
+      return null;
+    }
+    const parsedId = Number(previewPaperProfileValue);
+    if (!Number.isFinite(parsedId)) {
+      return null;
+    }
+    return paperProfileById.get(parsedId) ?? null;
+  }, [paperProfileById, previewPaperProfileValue]);
+
+  const effectivePreviewPaperProfile = previewPaperProfileOverride ?? selectedPaperProfile;
+
   const canvasWidthMm = toFiniteNumber(selectedCardFormat?.width_mm, 85.6);
   const canvasHeightMm = toFiniteNumber(selectedCardFormat?.height_mm, 53.98);
   const canvasScale = useMemo(() => {
@@ -327,8 +432,33 @@ export default function LtfAdminLicenseCardDesignerPage() {
   }, [canvasHeightMm, canvasWidthMm]);
   const canvasWidthPx = canvasWidthMm * canvasScale;
   const canvasHeightPx = canvasHeightMm * canvasScale;
-  const bleedPx = BLEED_GUIDE_MM * canvasScale;
-  const safeAreaPx = SAFE_AREA_MM * canvasScale;
+  const bleedGuideMm = Math.max(0, toFiniteNumber(bleedGuideMmInput, Number(DEFAULT_BLEED_MM)));
+  const safeAreaGuideMm = Math.max(
+    0,
+    toFiniteNumber(safeAreaGuideMmInput, Number(DEFAULT_SAFE_AREA_MM))
+  );
+  const bleedPx = bleedGuideMm * canvasScale;
+  const safeAreaPx = safeAreaGuideMm * canvasScale;
+
+  const effectiveSlotCount = useMemo(() => {
+    if (previewData?.paper_profile?.slot_count) {
+      return previewData.paper_profile.slot_count;
+    }
+    if (effectivePreviewPaperProfile?.slot_count) {
+      return effectivePreviewPaperProfile.slot_count;
+    }
+    return 0;
+  }, [effectivePreviewPaperProfile, previewData?.paper_profile?.slot_count]);
+
+  const slotGridColumns = useMemo(() => {
+    if (previewData?.paper_profile?.columns) {
+      return previewData.paper_profile.columns;
+    }
+    if (effectivePreviewPaperProfile?.columns) {
+      return effectivePreviewPaperProfile.columns;
+    }
+    return 1;
+  }, [effectivePreviewPaperProfile, previewData?.paper_profile?.columns]);
 
   const selectedElement = useMemo(() => {
     if (!selectedElementId) {
@@ -419,11 +549,39 @@ export default function LtfAdminLicenseCardDesignerPage() {
     if (!selectedVersion) {
       setDesignPayload({ elements: [], metadata: { unit: "mm" } });
       setSelectedElementId(null);
+      setPreviewData(null);
+      setPreviewSelectedSlots([]);
+      setPreviewPaperProfileValue(TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE);
       return;
     }
     setDesignPayload(normalizeDesignPayload(selectedVersion.design_payload));
     setSelectedElementId(null);
-  }, [selectedVersion]);
+    setPreviewData(null);
+    setPreviewPaperProfileValue((previousValue) => {
+      if (previousValue === TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE) {
+        return previousValue;
+      }
+      const parsed = Number(previousValue);
+      const matchesCardFormat = paperProfilesForSelectedCardFormat.some(
+        (paperProfile) => paperProfile.id === parsed
+      );
+      return matchesCardFormat ? previousValue : TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE;
+    });
+  }, [paperProfilesForSelectedCardFormat, selectedVersion]);
+
+  useEffect(() => {
+    if (effectiveSlotCount <= 0) {
+      setPreviewSelectedSlots([]);
+      return;
+    }
+    setPreviewSelectedSlots((previousSlots) => {
+      const normalized = normalizeSlotSelection(previousSlots, effectiveSlotCount);
+      if (normalized.length > 0) {
+        return normalized;
+      }
+      return Array.from({ length: effectiveSlotCount }, (_, index) => index);
+    });
+  }, [effectiveSlotCount]);
 
   useEffect(() => {
     if (!dragState || !isEditableDraft) {
@@ -760,6 +918,169 @@ export default function LtfAdminLicenseCardDesignerPage() {
     }
   };
 
+  const buildPreviewSheetPayload = useCallback((): CardSheetPreviewRequestInput => {
+    let sampleData: Record<string, unknown> = {};
+    try {
+      sampleData = parsePreviewSampleData(previewSampleDataInput);
+    } catch {
+      throw new Error(t("licenseCardPreviewInvalidSampleDataError"));
+    }
+
+    const payload: CardSheetPreviewRequestInput = {
+      include_bleed_guide: showBleedGuide,
+      include_safe_area_guide: showSafeAreaGuide,
+      bleed_mm: toMmString(bleedGuideMm),
+      safe_area_mm: toMmString(safeAreaGuideMm),
+      sample_data: sampleData,
+    };
+
+    const memberId = parseOptionalPositiveInt(previewMemberIdInput);
+    if (typeof memberId === "number") {
+      payload.member_id = memberId;
+    }
+    const licenseId = parseOptionalPositiveInt(previewLicenseIdInput);
+    if (typeof licenseId === "number") {
+      payload.license_id = licenseId;
+    }
+    const clubId = parseOptionalPositiveInt(previewClubIdInput);
+    if (typeof clubId === "number") {
+      payload.club_id = clubId;
+    }
+    if (previewPaperProfileValue !== TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE) {
+      const paperProfileId = Number(previewPaperProfileValue);
+      if (Number.isFinite(paperProfileId)) {
+        payload.paper_profile_id = paperProfileId;
+      }
+    }
+    if (effectiveSlotCount > 0) {
+      const normalized = normalizeSlotSelection(previewSelectedSlots, effectiveSlotCount);
+      if (normalized.length > 0) {
+        payload.selected_slots = normalized;
+      }
+    }
+    return payload;
+  }, [
+    bleedGuideMm,
+    effectiveSlotCount,
+    previewClubIdInput,
+    previewLicenseIdInput,
+    previewMemberIdInput,
+    previewPaperProfileValue,
+    previewSampleDataInput,
+    previewSelectedSlots,
+    safeAreaGuideMm,
+    showBleedGuide,
+    showSafeAreaGuide,
+    t,
+  ]);
+
+  const buildPreviewCardPayload = useCallback((): CardPreviewRequestInput => {
+    const sheetPayload = buildPreviewSheetPayload();
+    return {
+      member_id: sheetPayload.member_id,
+      license_id: sheetPayload.license_id,
+      club_id: sheetPayload.club_id,
+      sample_data: sheetPayload.sample_data,
+      include_bleed_guide: sheetPayload.include_bleed_guide,
+      include_safe_area_guide: sheetPayload.include_safe_area_guide,
+      bleed_mm: sheetPayload.bleed_mm,
+      safe_area_mm: sheetPayload.safe_area_mm,
+    };
+  }, [buildPreviewSheetPayload]);
+
+  const handleRefreshPreviewData = async () => {
+    if (!selectedVersion) {
+      setErrorMessage(t("licenseCardDesignerNoVersionsSubtitle"));
+      return;
+    }
+
+    setIsLoadingPreviewData(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      const payload = buildPreviewSheetPayload();
+      const response = await getCardTemplateVersionPreviewData(selectedVersion.id, payload);
+      setPreviewData(response);
+      if (Array.isArray(response.selected_slots)) {
+        setPreviewSelectedSlots(response.selected_slots);
+      }
+      setSuccessMessage(t("licenseCardPreviewDataLoadedSuccess"));
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : t("licenseCardPreviewDataLoadError")
+      );
+    } finally {
+      setIsLoadingPreviewData(false);
+    }
+  };
+
+  const handleOpenCardPreviewPdf = async () => {
+    if (!selectedVersion) {
+      setErrorMessage(t("licenseCardDesignerNoVersionsSubtitle"));
+      return;
+    }
+
+    setIsOpeningCardPreviewPdf(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      const payload = buildPreviewCardPayload();
+      const blob = await getCardTemplateVersionCardPreviewPdf(selectedVersion.id, payload);
+      openBlobInNewTab(blob);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : t("licenseCardPreviewCardPdfError")
+      );
+    } finally {
+      setIsOpeningCardPreviewPdf(false);
+    }
+  };
+
+  const handleOpenSheetPreviewPdf = async () => {
+    if (!selectedVersion) {
+      setErrorMessage(t("licenseCardDesignerNoVersionsSubtitle"));
+      return;
+    }
+    if (!effectivePreviewPaperProfile && previewPaperProfileValue === TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE) {
+      setErrorMessage(t("licenseCardPreviewSheetRequiresPaperProfileError"));
+      return;
+    }
+
+    setIsOpeningSheetPreviewPdf(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      const payload = buildPreviewSheetPayload();
+      if (!payload.paper_profile_id && !selectedVersion.paper_profile) {
+        setErrorMessage(t("licenseCardPreviewSheetRequiresPaperProfileError"));
+        return;
+      }
+      const blob = await getCardTemplateVersionSheetPreviewPdf(selectedVersion.id, payload);
+      openBlobInNewTab(blob);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : t("licenseCardPreviewSheetPdfError")
+      );
+    } finally {
+      setIsOpeningSheetPreviewPdf(false);
+    }
+  };
+
+  const togglePreviewSlot = (slotIndex: number) => {
+    if (effectiveSlotCount <= 0) {
+      return;
+    }
+    setPreviewSelectedSlots((previousSlots) => {
+      const selectedSet = new Set(normalizeSlotSelection(previousSlots, effectiveSlotCount));
+      if (selectedSet.has(slotIndex)) {
+        selectedSet.delete(slotIndex);
+      } else {
+        selectedSet.add(slotIndex);
+      }
+      return normalizeSlotSelection(Array.from(selectedSet.values()), effectiveSlotCount);
+    });
+  };
+
   const toolLabelByType = {
     text: t("licenseCardDesignerToolText"),
     image: t("licenseCardDesignerToolImage"),
@@ -921,6 +1242,300 @@ export default function LtfAdminLicenseCardDesignerPage() {
         </div>
       </section>
 
+      <section className="mb-4 space-y-4 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+        <div>
+          <h2 className="text-sm font-semibold text-zinc-900">
+            {t("licenseCardPreviewControlsTitle")}
+          </h2>
+          <p className="mt-1 text-xs text-zinc-500">{t("licenseCardPreviewControlsSubtitle")}</p>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          <div className="space-y-1">
+            <label className="text-xs font-medium uppercase text-zinc-500">
+              {t("licenseCardPreviewMemberIdLabel")}
+            </label>
+            <Input
+              type="number"
+              min="1"
+              value={previewMemberIdInput}
+              onChange={(event) => setPreviewMemberIdInput(event.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium uppercase text-zinc-500">
+              {t("licenseCardPreviewLicenseIdLabel")}
+            </label>
+            <Input
+              type="number"
+              min="1"
+              value={previewLicenseIdInput}
+              onChange={(event) => setPreviewLicenseIdInput(event.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium uppercase text-zinc-500">
+              {t("licenseCardPreviewClubIdLabel")}
+            </label>
+            <Input
+              type="number"
+              min="1"
+              value={previewClubIdInput}
+              onChange={(event) => setPreviewClubIdInput(event.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium uppercase text-zinc-500">
+              {t("licenseCardPreviewPaperProfileOverrideLabel")}
+            </label>
+            <Select value={previewPaperProfileValue} onValueChange={setPreviewPaperProfileValue}>
+              <SelectTrigger className="w-full">
+                <SelectValue
+                  placeholder={t("licenseCardPreviewPaperProfileTemplateDefaultOption")}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE}>
+                  {t("licenseCardPreviewPaperProfileTemplateDefaultOption")}
+                </SelectItem>
+                {paperProfilesForSelectedCardFormat.map((paperProfile) => (
+                  <SelectItem key={paperProfile.id} value={String(paperProfile.id)}>
+                    {paperProfile.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
+            <Checkbox
+              checked={showBleedGuide}
+              onCheckedChange={(checked) => setShowBleedGuide(Boolean(checked))}
+            />
+            {t("licenseCardDesignerBleedGuideToggle")}
+          </label>
+          <div className="space-y-1">
+            <label className="text-xs font-medium uppercase text-zinc-500">
+              {t("licenseCardPreviewBleedValueLabel")}
+            </label>
+            <Input
+              type="number"
+              min="0"
+              step="0.1"
+              value={bleedGuideMmInput}
+              onChange={(event) => setBleedGuideMmInput(event.target.value)}
+            />
+          </div>
+          <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
+            <Checkbox
+              checked={showSafeAreaGuide}
+              onCheckedChange={(checked) => setShowSafeAreaGuide(Boolean(checked))}
+            />
+            {t("licenseCardDesignerSafeAreaGuideToggle")}
+          </label>
+          <div className="space-y-1">
+            <label className="text-xs font-medium uppercase text-zinc-500">
+              {t("licenseCardPreviewSafeAreaValueLabel")}
+            </label>
+            <Input
+              type="number"
+              min="0"
+              step="0.1"
+              value={safeAreaGuideMmInput}
+              onChange={(event) => setSafeAreaGuideMmInput(event.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-medium uppercase text-zinc-500">
+            {t("licenseCardPreviewSampleDataLabel")}
+          </label>
+          <textarea
+            className="min-h-[132px] w-full rounded-md border border-zinc-300 px-3 py-2 font-mono text-xs outline-none focus:border-zinc-500"
+            value={previewSampleDataInput}
+            placeholder={t("licenseCardPreviewSampleDataPlaceholder")}
+            onChange={(event) => setPreviewSampleDataInput(event.target.value)}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              disabled={!selectedVersion || isLoadingPreviewData}
+              onClick={() => void handleRefreshPreviewData()}
+            >
+              {isLoadingPreviewData
+                ? t("licenseCardPreviewRefreshingDataAction")
+                : t("licenseCardPreviewRefreshDataAction")}
+            </Button>
+            <Button
+              variant="outline"
+              disabled={!selectedVersion || isOpeningCardPreviewPdf}
+              onClick={() => void handleOpenCardPreviewPdf()}
+            >
+              {isOpeningCardPreviewPdf
+                ? t("licenseCardPreviewOpeningCardPdfAction")
+                : t("licenseCardPreviewOpenCardPdfAction")}
+            </Button>
+            <Button
+              variant="outline"
+              disabled={!selectedVersion || isOpeningSheetPreviewPdf}
+              onClick={() => void handleOpenSheetPreviewPdf()}
+            >
+              {isOpeningSheetPreviewPdf
+                ? t("licenseCardPreviewOpeningSheetPdfAction")
+                : t("licenseCardPreviewOpenSheetPdfAction")}
+            </Button>
+          </div>
+        </div>
+
+        <div className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-zinc-900">
+              {t("licenseCardPreviewSlotSelectorTitle")}
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={effectiveSlotCount <= 0}
+                onClick={() =>
+                  setPreviewSelectedSlots(Array.from({ length: effectiveSlotCount }, (_, i) => i))
+                }
+              >
+                {t("licenseCardPreviewSelectAllSlotsAction")}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={effectiveSlotCount <= 0}
+                onClick={() => setPreviewSelectedSlots([])}
+              >
+                {t("licenseCardPreviewClearSlotsAction")}
+              </Button>
+            </div>
+          </div>
+          <p className="text-xs text-zinc-500">{t("licenseCardPreviewSlotSelectorSubtitle")}</p>
+          {effectiveSlotCount <= 0 ? (
+            <p className="text-xs text-zinc-500">{t("licenseCardPreviewNoSlotsAvailable")}</p>
+          ) : (
+            <div
+              className="grid gap-2"
+              style={{ gridTemplateColumns: `repeat(${Math.max(1, slotGridColumns)}, minmax(0, 1fr))` }}
+            >
+              {Array.from({ length: effectiveSlotCount }, (_, index) => {
+                const selected = previewSelectedSlots.includes(index);
+                return (
+                  <button
+                    key={index}
+                    type="button"
+                    className={`rounded-lg border px-2 py-2 text-xs transition ${
+                      selected
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"
+                    }`}
+                    onClick={() => togglePreviewSlot(index)}
+                  >
+                    {t("licenseCardPreviewSlotLabel", { index })}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="mb-4 space-y-4 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+        <div>
+          <h2 className="text-sm font-semibold text-zinc-900">{t("licenseCardPreviewDataTitle")}</h2>
+          <p className="mt-1 text-xs text-zinc-500">{t("licenseCardPreviewDataSubtitle")}</p>
+        </div>
+        {!previewData ? (
+          <p className="text-sm text-zinc-500">{t("licenseCardPreviewNoData")}</p>
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="space-y-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+              <h3 className="text-sm font-semibold text-zinc-900">
+                {t("licenseCardPreviewContextTitle")}
+              </h3>
+              <div className="max-h-72 space-y-1 overflow-auto">
+                {Object.entries(previewData.context).length === 0 ? (
+                  <p className="text-xs text-zinc-500">-</p>
+                ) : (
+                  Object.entries(previewData.context).map(([key, value]) => (
+                    <div key={key} className="rounded-md border border-zinc-200 bg-white px-2 py-1">
+                      <p className="font-mono text-[11px] text-zinc-700">{key}</p>
+                      <p className="text-xs text-zinc-900">{value || "-"}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+            <div className="space-y-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+              <h3 className="text-sm font-semibold text-zinc-900">
+                {t("licenseCardPreviewElementsTitle")}
+              </h3>
+              <div className="max-h-72 space-y-2 overflow-auto">
+                {previewData.elements.map((element) => (
+                  <div
+                    key={element.id}
+                    className="rounded-md border border-zinc-200 bg-white px-2 py-2 text-xs"
+                  >
+                    <p className="font-medium text-zinc-900">
+                      #{element.render_order + 1} - {element.id || "-"} ({element.type})
+                    </p>
+                    <p className="font-mono text-[11px] text-zinc-600">
+                      x:{element.x_mm} y:{element.y_mm} w:{element.width_mm} h:{element.height_mm}
+                    </p>
+                    <p className="mt-1 text-zinc-800">
+                      <span className="font-medium">
+                        {t("licenseCardPreviewResolvedValueLabel")}:
+                      </span>{" "}
+                      {getPreviewElementResolvedValue(element)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+              <h3 className="text-sm font-semibold text-zinc-900">
+                {t("licenseCardPreviewSlotLayoutTitle")}
+              </h3>
+              <div className="max-h-72 space-y-2 overflow-auto">
+                {previewData.slots.length === 0 ? (
+                  <p className="text-xs text-zinc-500">{t("licenseCardPreviewNoSlotsAvailable")}</p>
+                ) : (
+                  previewData.slots.map((slot) => (
+                    <div
+                      key={slot.slot_index}
+                      className={`rounded-md border px-2 py-2 text-xs ${
+                        slot.selected
+                          ? "border-blue-300 bg-blue-50 text-blue-700"
+                          : "border-zinc-200 bg-white text-zinc-700"
+                      }`}
+                    >
+                      <p className="font-medium">
+                        {t("licenseCardPreviewSlotLabel", { index: slot.slot_index })}
+                      </p>
+                      <p>
+                        r{slot.row} c{slot.column}
+                      </p>
+                      <p className="font-mono text-[11px]">
+                        x:{slot.x_mm} y:{slot.y_mm} w:{slot.width_mm} h:{slot.height_mm}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
+
       {selectedVersion?.status === "published" ? (
         <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
           {t("licenseCardDesignerPublishedReadOnlyHint")}
@@ -1004,22 +1619,6 @@ export default function LtfAdminLicenseCardDesignerPage() {
             <h2 className="text-sm font-semibold text-zinc-900">
               {t("licenseCardDesignerCanvasTitle")}
             </h2>
-            <div className="flex flex-wrap items-center gap-4">
-              <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
-                <Checkbox
-                  checked={showBleedGuide}
-                  onCheckedChange={(checked) => setShowBleedGuide(Boolean(checked))}
-                />
-                {t("licenseCardDesignerBleedGuideToggle")}
-              </label>
-              <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
-                <Checkbox
-                  checked={showSafeAreaGuide}
-                  onCheckedChange={(checked) => setShowSafeAreaGuide(Boolean(checked))}
-                />
-                {t("licenseCardDesignerSafeAreaGuideToggle")}
-              </label>
-            </div>
           </div>
           <p className="text-xs text-zinc-500">
             {t("licenseCardDesignerCanvasSizeLabel", {
