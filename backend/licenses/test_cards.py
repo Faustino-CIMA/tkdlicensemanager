@@ -1,17 +1,23 @@
 from decimal import Decimal
+from io import BytesIO
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
+from PIL import Image
 
 from accounts.models import User
 from clubs.models import Club
+from members.models import Member
 
 from .models import (
     CardFormatPreset,
     CardTemplate,
     CardTemplateVersion,
+    License,
+    LicenseType,
     PaperProfile,
     PrintJob,
 )
@@ -32,6 +38,76 @@ def _sample_design_payload() -> dict:
         ],
         "metadata": {"unit": "mm"},
     }
+
+
+def _sample_render_design_payload() -> dict:
+    return {
+        "elements": [
+            {
+                "id": "shape-bg",
+                "type": "shape",
+                "x_mm": "0.00",
+                "y_mm": "0.00",
+                "width_mm": "85.60",
+                "height_mm": "53.98",
+                "z_index": 0,
+                "style": {
+                    "background_color": "#f3f4f6",
+                    "border_color": "#d1d5db",
+                    "border_width_mm": "0.20",
+                },
+            },
+            {
+                "id": "member-name",
+                "type": "text",
+                "x_mm": "4.00",
+                "y_mm": "4.00",
+                "width_mm": "50.00",
+                "height_mm": "8.00",
+                "text": "{{member.full_name}}",
+                "z_index": 3,
+            },
+            {
+                "id": "member-photo",
+                "type": "image",
+                "x_mm": "62.00",
+                "y_mm": "4.00",
+                "width_mm": "20.00",
+                "height_mm": "20.00",
+                "source": "member.profile_picture_processed",
+                "z_index": 2,
+            },
+            {
+                "id": "license-barcode",
+                "type": "barcode",
+                "x_mm": "4.00",
+                "y_mm": "43.00",
+                "width_mm": "50.00",
+                "height_mm": "8.00",
+                "merge_field": "member.ltf_licenseid",
+                "z_index": 4,
+            },
+            {
+                "id": "license-qr",
+                "type": "qr",
+                "x_mm": "62.00",
+                "y_mm": "28.00",
+                "width_mm": "20.00",
+                "height_mm": "20.00",
+                "merge_field": "qr.validation_url",
+                "z_index": 5,
+            },
+        ],
+        "metadata": {"unit": "mm"},
+    }
+
+
+def _build_uploaded_png(name: str = "preview-photo.png") -> SimpleUploadedFile:
+    buffer = BytesIO()
+    image = Image.new("RGB", (32, 32), color=(16, 185, 129))
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    return SimpleUploadedFile(name, buffer.getvalue(), content_type="image/png")
 
 
 class LicenseCardRoleAccessTests(TestCase):
@@ -456,3 +532,207 @@ class LicenseCardValidationTests(TestCase):
         self.assertIsNotNone(profile)
         self.assertEqual(profile.slot_count, 10)
         self.assertEqual(profile.card_width_mm, Decimal("85.60"))
+
+
+class LicenseCardPreviewApiTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.ltf_admin = User.objects.create_user(
+            username="cards-preview-admin",
+            password="pass12345",
+            role=User.Roles.LTF_ADMIN,
+        )
+        self.club_admin = User.objects.create_user(
+            username="cards-preview-club-admin",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+        )
+        self.coach = User.objects.create_user(
+            username="cards-preview-coach",
+            password="pass12345",
+            role=User.Roles.COACH,
+        )
+        self.member_user = User.objects.create_user(
+            username="cards-preview-member",
+            password="pass12345",
+            role=User.Roles.MEMBER,
+        )
+        self.ltf_finance = User.objects.create_user(
+            username="cards-preview-finance",
+            password="pass12345",
+            role=User.Roles.LTF_FINANCE,
+        )
+        self.club = Club.objects.create(name="Preview Club", created_by=self.ltf_admin)
+        self.club.admins.add(self.club_admin)
+        self.member = Member.objects.create(
+            club=self.club,
+            first_name="Preview",
+            last_name="Member",
+            ltf_licenseid="LTF-PREVIEW-001",
+        )
+        self.member.profile_picture_processed = _build_uploaded_png()
+        self.member.save(update_fields=["profile_picture_processed", "updated_at"])
+        self.license_type = LicenseType.objects.create(name="Preview Annual", code="preview-annual")
+        self.license = License.objects.create(
+            member=self.member,
+            club=self.club,
+            license_type=self.license_type,
+            year=timezone.localdate().year,
+            status=License.Status.ACTIVE,
+        )
+        self.card_format = CardFormatPreset.objects.get(code="3c")
+        self.paper_profile = PaperProfile.objects.get(code="sigel-lp798")
+        self.template = CardTemplate.objects.create(
+            name="Preview Template",
+            created_by=self.ltf_admin,
+            updated_by=self.ltf_admin,
+        )
+        self.template_version = CardTemplateVersion.objects.create(
+            template=self.template,
+            version_number=1,
+            status=CardTemplateVersion.Status.DRAFT,
+            card_format=self.card_format,
+            paper_profile=self.paper_profile,
+            design_payload=_sample_render_design_payload(),
+            created_by=self.ltf_admin,
+        )
+        self.preview_data_url = f"/api/card-template-versions/{self.template_version.id}/preview-data/"
+        self.preview_card_pdf_url = (
+            f"/api/card-template-versions/{self.template_version.id}/preview-card-pdf/"
+        )
+        self.preview_sheet_pdf_url = (
+            f"/api/card-template-versions/{self.template_version.id}/preview-sheet-pdf/"
+        )
+
+    def test_preview_data_returns_deterministic_resolved_layout(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        payload = {
+            "member_id": self.member.id,
+            "license_id": self.license.id,
+            "include_bleed_guide": True,
+            "include_safe_area_guide": True,
+            "bleed_mm": "2.00",
+            "safe_area_mm": "3.00",
+            "paper_profile_id": self.paper_profile.id,
+            "selected_slots": [0, 3, 9],
+        }
+        first_response = self.client.post(self.preview_data_url, payload, format="json")
+        second_response = self.client.post(self.preview_data_url, payload, format="json")
+
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(first_response.data, second_response.data)
+        self.assertEqual(first_response.data["template_version_id"], self.template_version.id)
+        self.assertEqual(first_response.data["selected_slots"], [0, 3, 9])
+        self.assertEqual(len(first_response.data["slots"]), 10)
+
+        elements = first_response.data["elements"]
+        self.assertEqual([item["id"] for item in elements], sorted(
+            [item["id"] for item in elements],
+            key=lambda _id: next(
+                element["render_order"] for element in elements if element["id"] == _id
+            ),
+        ))
+        text_element = next(item for item in elements if item["id"] == "member-name")
+        self.assertEqual(text_element["resolved_text"], "Preview MEMBER")
+        image_element = next(item for item in elements if item["id"] == "member-photo")
+        self.assertTrue(image_element["resolved_source"].startswith("data:image/"))
+        qr_element = next(item for item in elements if item["id"] == "license-qr")
+        self.assertTrue(qr_element["resolved_value"])
+        self.assertTrue(qr_element["qr_data_uri"].startswith("data:image/png;base64,"))
+
+    def test_preview_card_pdf_returns_pdf_bytes(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            self.preview_card_pdf_url,
+            {
+                "member_id": self.member.id,
+                "license_id": self.license.id,
+                "include_bleed_guide": True,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertIn("card-preview", response["Content-Disposition"])
+        self.assertTrue(response.content.startswith(b"%PDF"))
+
+    def test_preview_sheet_pdf_returns_pdf_bytes(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            self.preview_sheet_pdf_url,
+            {
+                "member_id": self.member.id,
+                "license_id": self.license.id,
+                "paper_profile_id": self.paper_profile.id,
+                "selected_slots": [0, 5, 9],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertIn("sheet-preview", response["Content-Disposition"])
+        self.assertTrue(response.content.startswith(b"%PDF"))
+
+    def test_preview_sheet_rejects_out_of_range_slots(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            self.preview_sheet_pdf_url,
+            {
+                "member_id": self.member.id,
+                "license_id": self.license.id,
+                "paper_profile_id": self.paper_profile.id,
+                "selected_slots": [10],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("out-of-range", str(response.data["detail"]).lower())
+
+    def test_preview_rejects_unknown_merge_token_in_stored_payload(self):
+        self.template_version.design_payload = {
+            "elements": [
+                {
+                    "id": "broken",
+                    "type": "text",
+                    "x_mm": "2.00",
+                    "y_mm": "2.00",
+                    "width_mm": "20.00",
+                    "height_mm": "6.00",
+                    "text": "{{member.unknown_merge_key}}",
+                }
+            ]
+        }
+        self.template_version.save(update_fields=["design_payload", "updated_at"])
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            self.preview_data_url,
+            {"member_id": self.member.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("unknown merge field", str(response.data["detail"]).lower())
+
+    def test_preview_endpoints_are_ltf_admin_only(self):
+        payload = {"member_id": self.member.id, "license_id": self.license.id}
+        for user in [self.club_admin, self.coach, self.member_user, self.ltf_finance]:
+            with self.subTest(role=user.role):
+                self.client.force_authenticate(user=user)
+                data_response = self.client.post(self.preview_data_url, payload, format="json")
+                card_pdf_response = self.client.post(
+                    self.preview_card_pdf_url,
+                    payload,
+                    format="json",
+                )
+                sheet_pdf_response = self.client.post(
+                    self.preview_sheet_pdf_url,
+                    {
+                        **payload,
+                        "paper_profile_id": self.paper_profile.id,
+                        "selected_slots": [0, 1],
+                    },
+                    format="json",
+                )
+                self.assertEqual(data_response.status_code, status.HTTP_403_FORBIDDEN)
+                self.assertEqual(card_pdf_response.status_code, status.HTTP_403_FORBIDDEN)
+                self.assertEqual(sheet_pdf_response.status_code, status.HTTP_403_FORBIDDEN)

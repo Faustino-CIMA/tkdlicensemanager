@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
-from .card_registry import MERGE_FIELD_REGISTRY, validate_design_payload_schema
+from .card_registry import (
+    ALLOWED_MERGE_FIELDS,
+    MERGE_FIELD_REGISTRY,
+    validate_design_payload_schema,
+)
 from .models import (
     CardFormatPreset,
     CardTemplate,
@@ -287,6 +292,86 @@ class PrintJobSerializer(serializers.ModelSerializer):
                     {"paper_profile": "Paper profile card format must match template version format."}
                 )
         return attrs
+
+
+def _flatten_preview_sample_data(sample_data: dict[str, Any]) -> set[str]:
+    flattened_keys: set[str] = set()
+    for key, value in sample_data.items():
+        key_name = str(key).strip()
+        if not key_name:
+            continue
+        if isinstance(value, dict):
+            for nested_key in value.keys():
+                nested_name = str(nested_key).strip()
+                if nested_name:
+                    flattened_keys.add(f"{key_name}.{nested_name}")
+        else:
+            flattened_keys.add(key_name)
+    return flattened_keys
+
+
+class CardPreviewRequestSerializer(serializers.Serializer):
+    member_id = serializers.IntegerField(required=False, min_value=1)
+    license_id = serializers.IntegerField(required=False, min_value=1)
+    club_id = serializers.IntegerField(required=False, min_value=1)
+    sample_data = serializers.JSONField(required=False)
+    include_bleed_guide = serializers.BooleanField(required=False, default=False)
+    include_safe_area_guide = serializers.BooleanField(required=False, default=False)
+    bleed_mm = serializers.DecimalField(
+        required=False,
+        max_digits=8,
+        decimal_places=2,
+        min_value=Decimal("0.00"),
+        default=Decimal("2.00"),
+    )
+    safe_area_mm = serializers.DecimalField(
+        required=False,
+        max_digits=8,
+        decimal_places=2,
+        min_value=Decimal("0.00"),
+        default=Decimal("3.00"),
+    )
+
+    def validate_sample_data(self, value):
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("sample_data must be an object.")
+        flattened_keys = _flatten_preview_sample_data(value)
+        unknown_keys = sorted(flattened_keys - ALLOWED_MERGE_FIELDS)
+        if unknown_keys:
+            raise serializers.ValidationError(
+                "Unknown sample_data merge key(s): " + ", ".join(unknown_keys)
+            )
+        return value
+
+
+class CardSheetPreviewRequestSerializer(CardPreviewRequestSerializer):
+    paper_profile_id = serializers.IntegerField(required=False, min_value=1)
+    selected_slots = serializers.ListField(
+        required=False,
+        child=serializers.IntegerField(min_value=0),
+        allow_empty=False,
+    )
+
+    def validate_selected_slots(self, value):
+        if value is None:
+            return value
+        if len(set(value)) != len(value):
+            raise serializers.ValidationError("selected_slots must not contain duplicates.")
+        return value
+
+
+class CardPreviewDataSerializer(serializers.Serializer):
+    template_version_id = serializers.IntegerField()
+    template_id = serializers.IntegerField()
+    card_format = serializers.DictField()
+    paper_profile = serializers.DictField(required=False, allow_null=True)
+    guides = serializers.DictField()
+    context = serializers.DictField(child=serializers.CharField(allow_blank=True))
+    selected_slots = serializers.ListField(child=serializers.IntegerField(), required=False)
+    slots = serializers.ListField(child=serializers.DictField(), required=False)
+    elements = serializers.ListField(child=serializers.DictField())
 
 
 def get_merge_field_registry_payload():

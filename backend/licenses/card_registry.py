@@ -34,6 +34,11 @@ MERGE_FIELD_REGISTRY = [
         "description": "Member sex value (M/F).",
     },
     {
+        "key": "member.profile_picture_processed",
+        "label": "Member processed profile picture",
+        "description": "Resolved URL or source for the processed profile picture.",
+    },
+    {
         "key": "club.name",
         "label": "Club name",
         "description": "Name of the member's club.",

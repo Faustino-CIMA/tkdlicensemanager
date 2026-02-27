@@ -23,6 +23,7 @@ Last updated: 2026-02-27
 - Consent logic adjusted (removed unnecessary club-admin consent block for payments)
 - Payconiq backend supports both `mock` and production-ready `aggregator` mode with stable API contracts — completed
 - Final documentation polish: root README publication pass, screenshot package, and frontend README alignment — completed
+- License Card Step 3 backend render engine: deterministic preview-data + card/sheet PDF APIs with guides and merge resolution — completed
 
 ## Key Decisions
 - Material Design 3 is the only UI framework
@@ -35,6 +36,7 @@ Last updated: 2026-02-27
 ## Current Open / Next Priorities (update after every milestone)
 - Gather real Payconiq sandbox credentials and run first live sandbox verification
 - Any remaining Dokploy stability tweaks
+- License Card Step 4/5 integration (print jobs execution + final production print pipeline)
 
 ## Coding & Memory Rules (always follow)
 - Explain ALL JS/TS in extreme beginner detail

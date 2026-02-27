@@ -2,16 +2,27 @@ from __future__ import annotations
 
 from django.db import transaction
 from django.db.models import Max
+from django.http import HttpResponse
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import mixins, permissions, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .card_rendering import (
+    CardRenderError,
+    build_preview_data,
+    render_card_pdf_bytes,
+    render_sheet_pdf_bytes,
+)
 from .card_serializers import (
     CardFormatPresetSerializer,
+    CardPreviewDataSerializer,
+    CardPreviewRequestSerializer,
+    CardSheetPreviewRequestSerializer,
     CardTemplateCloneSerializer,
     CardTemplateSerializer,
     CardTemplateVersionSerializer,
@@ -203,6 +214,10 @@ class CardTemplateVersionViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(template_id=template_id)
         return queryset
 
+    def _ensure_ltf_admin_preview_access(self, request) -> None:
+        if not _is_ltf_admin(request.user):
+            raise PermissionDenied("Only LTF Admin can generate template previews.")
+
     def perform_create(self, serializer):
         if not _is_ltf_admin(self.request.user):
             raise PermissionDenied("Only LTF Admin can create template versions.")
@@ -254,6 +269,116 @@ class CardTemplateVersionViewSet(viewsets.ModelViewSet):
         version.published_by = request.user if request.user.is_authenticated else None
         version.save(update_fields=["status", "published_at", "published_by", "updated_at"])
         return Response(self.get_serializer(version).data, status=status.HTTP_200_OK)
+
+    @extend_schema(request=CardSheetPreviewRequestSerializer, responses=CardPreviewDataSerializer)
+    @action(detail=True, methods=["post"], url_path="preview-data")
+    def preview_data(self, request, pk=None):
+        self._ensure_ltf_admin_preview_access(request)
+        version = self.get_object()
+        serializer = CardSheetPreviewRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            preview_payload = build_preview_data(
+                template_version=version,
+                member_id=serializer.validated_data.get("member_id"),
+                license_id=serializer.validated_data.get("license_id"),
+                club_id=serializer.validated_data.get("club_id"),
+                sample_data=serializer.validated_data.get("sample_data") or {},
+                include_bleed_guide=serializer.validated_data.get("include_bleed_guide", False),
+                include_safe_area_guide=serializer.validated_data.get(
+                    "include_safe_area_guide", False
+                ),
+                bleed_mm=serializer.validated_data.get("bleed_mm", "2.00"),
+                safe_area_mm=serializer.validated_data.get("safe_area_mm", "3.00"),
+                paper_profile_id=serializer.validated_data.get("paper_profile_id"),
+                selected_slots=serializer.validated_data.get("selected_slots"),
+                request=request,
+            )
+        except CardRenderError as exc:
+            return Response({"detail": exc.detail}, status=exc.status_code)
+        return Response(preview_payload, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        request=CardPreviewRequestSerializer,
+        responses={
+            200: OpenApiResponse(
+                response=OpenApiTypes.BINARY,
+                description="Card preview PDF.",
+            )
+        },
+    )
+    @action(detail=True, methods=["post"], url_path="preview-card-pdf")
+    def preview_card_pdf(self, request, pk=None):
+        self._ensure_ltf_admin_preview_access(request)
+        version = self.get_object()
+        serializer = CardPreviewRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            preview_payload = build_preview_data(
+                template_version=version,
+                member_id=serializer.validated_data.get("member_id"),
+                license_id=serializer.validated_data.get("license_id"),
+                club_id=serializer.validated_data.get("club_id"),
+                sample_data=serializer.validated_data.get("sample_data") or {},
+                include_bleed_guide=serializer.validated_data.get("include_bleed_guide", False),
+                include_safe_area_guide=serializer.validated_data.get(
+                    "include_safe_area_guide", False
+                ),
+                bleed_mm=serializer.validated_data.get("bleed_mm", "2.00"),
+                safe_area_mm=serializer.validated_data.get("safe_area_mm", "3.00"),
+                request=request,
+            )
+            pdf_bytes = render_card_pdf_bytes(
+                preview_payload,
+                base_url=request.build_absolute_uri("/"),
+            )
+        except CardRenderError as exc:
+            return Response({"detail": exc.detail}, status=exc.status_code)
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = f'inline; filename="card-preview-v{version.id}.pdf"'
+        return response
+
+    @extend_schema(
+        request=CardSheetPreviewRequestSerializer,
+        responses={
+            200: OpenApiResponse(
+                response=OpenApiTypes.BINARY,
+                description="Sheet preview PDF.",
+            )
+        },
+    )
+    @action(detail=True, methods=["post"], url_path="preview-sheet-pdf")
+    def preview_sheet_pdf(self, request, pk=None):
+        self._ensure_ltf_admin_preview_access(request)
+        version = self.get_object()
+        serializer = CardSheetPreviewRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            preview_payload = build_preview_data(
+                template_version=version,
+                member_id=serializer.validated_data.get("member_id"),
+                license_id=serializer.validated_data.get("license_id"),
+                club_id=serializer.validated_data.get("club_id"),
+                sample_data=serializer.validated_data.get("sample_data") or {},
+                include_bleed_guide=serializer.validated_data.get("include_bleed_guide", False),
+                include_safe_area_guide=serializer.validated_data.get(
+                    "include_safe_area_guide", False
+                ),
+                bleed_mm=serializer.validated_data.get("bleed_mm", "2.00"),
+                safe_area_mm=serializer.validated_data.get("safe_area_mm", "3.00"),
+                paper_profile_id=serializer.validated_data.get("paper_profile_id"),
+                selected_slots=serializer.validated_data.get("selected_slots"),
+                request=request,
+            )
+            pdf_bytes = render_sheet_pdf_bytes(
+                preview_payload,
+                base_url=request.build_absolute_uri("/"),
+            )
+        except CardRenderError as exc:
+            return Response({"detail": exc.detail}, status=exc.status_code)
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = f'inline; filename="sheet-preview-v{version.id}.pdf"'
+        return response
 
 
 class PrintJobViewSet(
