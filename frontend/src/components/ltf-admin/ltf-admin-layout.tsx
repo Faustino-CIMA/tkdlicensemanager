@@ -21,6 +21,11 @@ export function LtfAdminLayout({ title, subtitle, children }: LtfAdminLayoutProp
     { href: `/${locale}/dashboard/ltf/members`, label: t("navMembers"), matchChildren: true },
     { href: `/${locale}/dashboard/ltf/licenses`, label: t("navLicenses"), matchChildren: true },
     {
+      href: `/${locale}/dashboard/ltf/license-cards`,
+      label: t("navLicenseCards"),
+      matchChildren: true,
+    },
+    {
       href: `/${locale}/dashboard/ltf/license-types`,
       label: t("navLicenseTypes"),
       matchChildren: true,
