@@ -208,10 +208,25 @@ export type PrintJob = {
   paper_profile: number | null;
   status: PrintJobStatus;
   total_items: number;
+  selected_slots: number[];
+  include_bleed_guide: boolean;
+  include_safe_area_guide: boolean;
+  bleed_mm: number | string;
+  safe_area_mm: number | string;
   metadata: Record<string, unknown>;
+  execution_metadata: Record<string, unknown>;
   requested_by: number | null;
+  executed_by: number | null;
+  queued_at: string | null;
   started_at: string | null;
   finished_at: string | null;
+  cancelled_at: string | null;
+  execution_attempts: number;
+  artifact_pdf: string | null;
+  artifact_size_bytes: number;
+  artifact_sha256: string;
+  error_detail: string;
+  last_error_at: string | null;
   created_at: string;
   updated_at: string;
   items: PrintJobItem[];
@@ -221,7 +236,13 @@ export type PrintJobInput = {
   club: number;
   template_version: number;
   paper_profile?: number | null;
-  total_items?: number;
+  member_ids?: number[];
+  license_ids?: number[];
+  selected_slots?: number[];
+  include_bleed_guide?: boolean;
+  include_safe_area_guide?: boolean;
+  bleed_mm?: number | string;
+  safe_area_mm?: number | string;
   metadata?: Record<string, unknown>;
 };
 
@@ -486,6 +507,46 @@ export function createPrintJob(input: PrintJobInput) {
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export function executePrintJob(id: number) {
+  return apiRequest<PrintJob>(`/api/print-jobs/${id}/execute/`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export function retryPrintJob(id: number) {
+  return apiRequest<PrintJob>(`/api/print-jobs/${id}/retry/`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export function cancelPrintJob(id: number) {
+  return apiRequest<PrintJob>(`/api/print-jobs/${id}/cancel/`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function downloadPrintJobPdf(id: number): Promise<Blob> {
+  const token = getToken();
+  const response = await fetch(`${API_URL}/api/print-jobs/${id}/pdf/`, {
+    method: "GET",
+    headers: {
+      ...(token ? { Authorization: `Token ${token}` } : {}),
+    },
+  });
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type");
+    const message = await response.text();
+    throw new Error(
+      normalizeApiErrorMessage(message, contentType) ||
+        `Request failed with ${response.status}`
+    );
+  }
+  return response.blob();
 }
 
 function normalizeApiErrorMessage(message: string, contentType: string | null): string {

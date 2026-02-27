@@ -30,6 +30,7 @@ type AuthMeResponse = { role: string };
 
 const BATCH_DELETE_STORAGE_KEY = "club_members_batch_delete_payload";
 const ORDER_LICENSE_STORAGE_KEY = "club_members_order_license_payload";
+const QUICK_PRINT_STORAGE_KEY = "club_quick_print_payload";
 
 export default function ClubAdminMembersPage() {
   const t = useTranslations("ClubAdmin");
@@ -350,6 +351,24 @@ export default function ClubAdminMembersPage() {
     router.push(`/${locale}/dashboard/club/members/order-licenses`);
   };
 
+  const openQuickPrintPage = () => {
+    if (!canManageMembers || selectedIds.length === 0 || !selectedClubId) {
+      return;
+    }
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(
+        QUICK_PRINT_STORAGE_KEY,
+        JSON.stringify({
+          source: "members",
+          selectedClubId,
+          memberIds: selectedIds,
+          licenseIds: [],
+        })
+      );
+    }
+    router.push(`/${locale}/dashboard/club/print-jobs/quick-print`);
+  };
+
   const toggleMemberStatus = async (member: Member) => {
     if (!canManageMembers) {
       return;
@@ -446,6 +465,13 @@ export default function ClubAdminMembersPage() {
                   onClick={openOrderPage}
                 >
                   {t("orderLicenseButton", { year: new Date().getFullYear() })}
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={selectedIds.length === 0 || !selectedClubId}
+                  onClick={openQuickPrintPage}
+                >
+                  {t("quickPrintSelectedCardsAction")}
                 </Button>
               </>
             ) : null}

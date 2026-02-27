@@ -19,6 +19,7 @@ export function ClubAdminLayout({ title, subtitle, children }: ClubAdminLayoutPr
     { href: `/${locale}/dashboard/club`, label: t("navOverview"), matchChildren: false },
     { href: `/${locale}/dashboard/club/members`, label: t("navMembers"), matchChildren: true },
     { href: `/${locale}/dashboard/club/licenses`, label: t("navLicenses"), matchChildren: true },
+    { href: `/${locale}/dashboard/club/print-jobs`, label: t("navPrintJobs"), matchChildren: true },
     { href: `/${locale}/dashboard/club/orders`, label: t("navOrders"), matchChildren: true },
     { href: `/${locale}/dashboard/club/invoices`, label: t("navInvoices"), matchChildren: true },
     { href: `/${locale}/dashboard/club/settings`, label: t("navSettings"), matchChildren: true },

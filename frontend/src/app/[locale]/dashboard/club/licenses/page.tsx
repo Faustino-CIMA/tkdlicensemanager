@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
@@ -19,6 +20,7 @@ import {
 import { formatDisplayDate } from "@/lib/date-display";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { apiRequest } from "@/lib/api";
 import {
   Select,
   SelectContent,
@@ -36,12 +38,20 @@ type MemberLicenseRow = {
   expiredCount: number;
 };
 
+type AuthMeResponse = { role: string };
+const QUICK_PRINT_STORAGE_KEY = "club_quick_print_payload";
+
 export default function ClubAdminLicensesPage() {
   const t = useTranslations("ClubAdmin");
   const common = useTranslations("Common");
+  const pathname = usePathname();
+  const router = useRouter();
+  const locale = pathname?.split("/")[1] || "en";
   const { selectedClubId, setSelectedClubId } = useClubSelection();
   const [members, setMembers] = useState<Member[]>([]);
   const [licenses, setLicenses] = useState<License[]>([]);
+  const [selectedLicenseIds, setSelectedLicenseIds] = useState<number[]>([]);
+  const [currentRole, setCurrentRole] = useState<string | null>(null);
   const [licenseTypes, setLicenseTypes] = useState<LicenseType[]>([]);
   const [expandedMemberIds, setExpandedMemberIds] = useState<number[]>([]);
   const [expandedStateHydrated, setExpandedStateHydrated] = useState(false);
@@ -54,6 +64,7 @@ export default function ClubAdminLicensesPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   const pageSizeOptions = ["10", "25", "50", "100", "150", "200"];
+  const canManageLicenses = currentRole === "club_admin";
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -108,6 +119,26 @@ export default function ClubAdminLicensesPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadCurrentUserRole = async () => {
+      try {
+        const me = await apiRequest<AuthMeResponse>("/api/auth/me/");
+        if (isMounted) {
+          setCurrentRole(me.role);
+        }
+      } catch {
+        if (isMounted) {
+          setCurrentRole(null);
+        }
+      }
+    };
+    void loadCurrentUserRole();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -176,9 +207,20 @@ export default function ClubAdminLicensesPage() {
 
   const totalPages = Math.max(1, Math.ceil(totalCount / Number(pageSize)));
 
+  const allLicenseIds = useMemo(() => licenses.map((license) => license.id), [licenses]);
+  const allLicensesSelected =
+    allLicenseIds.length > 0 &&
+    allLicenseIds.every((licenseId) => selectedLicenseIds.includes(licenseId));
+  const hiddenSelectedCount = Math.max(selectedLicenseIds.length - allLicenseIds.length, 0);
+
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, selectedClubId, pageSize]);
+
+  useEffect(() => {
+    const validIds = new Set(allLicenseIds);
+    setSelectedLicenseIds((previous) => previous.filter((licenseId) => validIds.has(licenseId)));
+  }, [allLicenseIds]);
 
   useEffect(() => {
     setExpandedStateHydrated(false);
@@ -262,6 +304,50 @@ export default function ClubAdminLicensesPage() {
     setExpandedMemberIds((previous) => previous.filter((memberId) => !pagedMemberIdSet.has(memberId)));
   };
 
+  const toggleSelectAllLicenses = () => {
+    if (!canManageLicenses) {
+      return;
+    }
+    if (allLicensesSelected) {
+      setSelectedLicenseIds([]);
+      return;
+    }
+    setSelectedLicenseIds(allLicenseIds);
+  };
+
+  const clearSelectedLicenses = () => {
+    setSelectedLicenseIds([]);
+  };
+
+  const toggleSelectLicense = (licenseId: number) => {
+    if (!canManageLicenses) {
+      return;
+    }
+    setSelectedLicenseIds((previous) =>
+      previous.includes(licenseId)
+        ? previous.filter((id) => id !== licenseId)
+        : [...previous, licenseId]
+    );
+  };
+
+  const openQuickPrintPage = () => {
+    if (!canManageLicenses || !selectedClubId || selectedLicenseIds.length === 0) {
+      return;
+    }
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(
+        QUICK_PRINT_STORAGE_KEY,
+        JSON.stringify({
+          source: "licenses",
+          selectedClubId,
+          memberIds: [],
+          licenseIds: selectedLicenseIds,
+        })
+      );
+    }
+    router.push(`/${locale}/dashboard/club/print-jobs/quick-print`);
+  };
+
   const getStatusLabel = (status: License["status"]) => {
     if (status === "active") {
       return t("statusActive");
@@ -336,7 +422,37 @@ export default function ClubAdminLicensesPage() {
             >
               {t("collapseAllMembers")}
             </Button>
+            {canManageLicenses ? (
+              <Button
+                variant="outline"
+                disabled={!selectedClubId || selectedLicenseIds.length === 0}
+                onClick={openQuickPrintPage}
+              >
+                {t("quickPrintSelectedCardsAction")}
+              </Button>
+            ) : null}
           </div>
+          {canManageLicenses ? (
+            <div className="space-y-1 text-xs text-zinc-500">
+              <span className="font-medium text-zinc-700">
+                {t("quickPrintSelectedLicensesCountLabel", { count: selectedLicenseIds.length })}
+              </span>
+              {hiddenSelectedCount > 0 ? (
+                <span className="ml-2 font-medium text-amber-700">
+                  {t("quickPrintHiddenSelectedLicensesCountLabel", { count: hiddenSelectedCount })}
+                </span>
+              ) : null}
+              {selectedLicenseIds.length > 0 ? (
+                <button
+                  type="button"
+                  className="ml-2 underline underline-offset-2 hover:text-zinc-700"
+                  onClick={clearSelectedLicenses}
+                >
+                  {t("clearSelection")}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           <div className="flex items-center gap-2 text-sm text-zinc-500">
             {t("pageLabel", { current: currentPage, total: totalPages })}
             <Button
@@ -367,6 +483,16 @@ export default function ClubAdminLicensesPage() {
             <table className="min-w-full text-left text-sm">
               <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
                 <tr>
+                  {canManageLicenses ? (
+                    <th className="w-10 px-4 py-3 font-medium">
+                      <input
+                        type="checkbox"
+                        aria-label={common("selectAllLabel")}
+                        checked={allLicensesSelected}
+                        onChange={toggleSelectAllLicenses}
+                      />
+                    </th>
+                  ) : null}
                   <th className="w-10 px-4 py-3 font-medium" />
                   <th className="px-4 py-3 font-medium">{t("memberLabel")}</th>
                   <th className="px-4 py-3 font-medium">{t("totalLabel")}</th>
@@ -379,6 +505,9 @@ export default function ClubAdminLicensesPage() {
                 {memberRows.map((row) => {
                   const isExpanded = expandedMemberSet.has(row.member.id);
                   const memberName = `${row.member.first_name} ${row.member.last_name}`;
+                  const selectedForMember = row.visibleLicenses.filter((license) =>
+                    selectedLicenseIds.includes(license.id)
+                  ).length;
                   return (
                     <Fragment key={row.member.id}>
                       <tr
@@ -394,6 +523,11 @@ export default function ClubAdminLicensesPage() {
                         role="button"
                         aria-expanded={isExpanded}
                       >
+                        {canManageLicenses ? (
+                          <td className="px-4 py-3 text-xs text-zinc-500">
+                            {selectedForMember > 0 ? selectedForMember : "—"}
+                          </td>
+                        ) : null}
                         <td className="px-4 py-3 text-zinc-500">
                           {isExpanded ? (
                             <ChevronDown className="h-4 w-4" />
@@ -416,11 +550,16 @@ export default function ClubAdminLicensesPage() {
                       </tr>
                       {isExpanded ? (
                         <tr className="bg-zinc-50/60">
-                          <td colSpan={6} className="px-6 py-3">
+                          <td colSpan={canManageLicenses ? 7 : 6} className="px-6 py-3">
                             <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
                               <table className="min-w-full text-left text-sm">
                                 <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
                                   <tr>
+                                    {canManageLicenses ? (
+                                      <th className="w-10 px-4 py-2 font-medium">
+                                        <span className="sr-only">{common("selectRowLabel")}</span>
+                                      </th>
+                                    ) : null}
                                     <th className="px-4 py-2 font-medium">{t("yearLabel")}</th>
                                     <th className="px-4 py-2 font-medium">{t("licenseTypeLabel")}</th>
                                     <th className="px-4 py-2 font-medium">{t("statusLabel")}</th>
@@ -430,6 +569,16 @@ export default function ClubAdminLicensesPage() {
                                 <tbody className="divide-y divide-zinc-100">
                                   {row.visibleLicenses.map((license) => (
                                     <tr key={license.id} className="text-zinc-700">
+                                      {canManageLicenses ? (
+                                        <td className="px-4 py-2">
+                                          <input
+                                            type="checkbox"
+                                            aria-label={common("selectRowLabel")}
+                                            checked={selectedLicenseIds.includes(license.id)}
+                                            onChange={() => toggleSelectLicense(license.id)}
+                                          />
+                                        </td>
+                                      ) : null}
                                       <td className="px-4 py-2">{license.year}</td>
                                       <td className="px-4 py-2">
                                         {licenseTypeNameById.get(license.license_type) ??
