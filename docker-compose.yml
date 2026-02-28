@@ -139,7 +139,7 @@ services:
       APP_GID=$$(id -g app) &&
       chown -R $$APP_UID:$$APP_GID /app/media /var/lib/celerybeat &&
       runuser -u app -- sh -lc 'python manage.py migrate --check &&
-      celery -A config worker -l info'"
+      celery -A config worker -l info -Q celery,$${CELERY_PRINT_JOB_QUEUE:-print_jobs}'"
     volumes:
       - ./backend:/app
       # Keep for debug-mode logging (shared host log path)

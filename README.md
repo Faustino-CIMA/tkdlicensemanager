@@ -259,6 +259,9 @@ Celery + Redis:
 - `CELERY_BROKER_URL` (default `redis://redis:6379/0`)
 - `CELERY_RESULT_BACKEND` (default `redis://redis:6379/1`)
 - `REDIS_URL` (used for general cache/queues)
+- `CELERY_PRINT_JOB_QUEUE` (default `print_jobs`, dedicated queue for print execution)
+- `CELERY_PRINT_JOB_SOFT_TIME_LIMIT_SECONDS` (default `300`)
+- `CELERY_PRINT_JOB_TIME_LIMIT_SECONDS` (default `360`)
 
 Performance:
 - `DJANGO_DB_CONN_MAX_AGE` (default `60`)
@@ -359,6 +362,12 @@ Celery + Redis:
 - `CELERY_BROKER_URL` and `CELERY_RESULT_BACKEND` must point to Redis.
 - Redis must be running for background jobs (invoice emails, webhook processing).
 - `beat` runs periodic jobs (for example daily expired-license reconciliation).
+- Worker should consume both default and print queues (compose default: `celery,print_jobs`).
+
+Print artifact lifecycle:
+- Prune old print-job PDFs safely:
+  - Dry run: `docker compose exec backend python manage.py prune_print_job_artifacts --days 30 --dry-run`
+  - Apply: `docker compose exec backend python manage.py prune_print_job_artifacts --days 30`
 
 ## Migrations and Role Rename Notes
 

@@ -1,16 +1,22 @@
 from __future__ import annotations
 
+from datetime import datetime
+
+from django.conf import settings
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, Q
 from django.http import FileResponse, HttpResponse
 from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_datetime
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import mixins, permissions, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from config.pagination import OptionalPaginationListMixin
 
 from .card_rendering import (
     CardRenderError,
@@ -29,6 +35,7 @@ from .card_serializers import (
     MergeFieldSerializer,
     PaperProfileSerializer,
     PrintJobCreateSerializer,
+    PrintJobHistoryEventSerializer,
     PrintJobSerializer,
     get_merge_field_registry_payload,
 )
@@ -386,6 +393,7 @@ class CardTemplateVersionViewSet(viewsets.ModelViewSet):
 
 
 class PrintJobViewSet(
+    OptionalPaginationListMixin,
     mixins.CreateModelMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
@@ -407,12 +415,47 @@ class PrintJobViewSet(
             return PrintJobCreateSerializer
         return PrintJobSerializer
 
+    def _log_print_job_event(
+        self,
+        *,
+        print_job: PrintJob,
+        action: str,
+        message: str,
+        metadata: dict | None = None,
+    ) -> None:
+        metadata_payload = {"print_job_id": print_job.id, **(metadata or {})}
+        FinanceAuditLog.objects.create(
+            action=f"print_job.{action}",
+            message=message,
+            actor=self.request.user if self.request.user.is_authenticated else None,
+            club=print_job.club,
+            metadata=metadata_payload,
+        )
+
     def _ensure_club_admin_scope(self, user, print_job: PrintJob) -> None:
         if _is_ltf_admin(user):
             return
         if _is_club_admin(user) and print_job.club.admins.filter(id=user.id).exists():
             return
         raise PermissionDenied("Club Admin can only access print jobs for own club.")
+
+    def _parse_datetime_range_param(self, value: str | None, *, end_of_day: bool = False) -> datetime | None:
+        raw_value = (value or "").strip()
+        if not raw_value:
+            return None
+        parsed_datetime = parse_datetime(raw_value)
+        if parsed_datetime is not None:
+            if timezone.is_naive(parsed_datetime):
+                return timezone.make_aware(parsed_datetime, timezone.get_current_timezone())
+            return parsed_datetime
+        parsed_date = parse_date(raw_value)
+        if parsed_date is not None:
+            parsed_datetime = datetime.combine(
+                parsed_date,
+                datetime.max.time() if end_of_day else datetime.min.time(),
+            )
+            return timezone.make_aware(parsed_datetime, timezone.get_current_timezone())
+        return None
 
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
@@ -427,13 +470,87 @@ class PrintJobViewSet(
             "executed_by",
         ).prefetch_related("items")
         if _is_ltf_admin(user):
-            return base_queryset.all()
+            queryset = base_queryset.all()
         if _is_club_admin(user):
-            object_actions = {"retrieve", "execute", "retry", "cancel", "pdf"}
+            object_actions = {"retrieve", "execute", "retry", "cancel", "pdf", "history"}
             if self.action in object_actions:
-                return base_queryset.all()
-            return base_queryset.filter(club__admins=user)
-        return PrintJob.objects.none()
+                queryset = base_queryset.all()
+            else:
+                queryset = base_queryset.filter(club__admins=user)
+        if not (_is_ltf_admin(user) or _is_club_admin(user)):
+            return PrintJob.objects.none()
+
+        if self.action != "list":
+            return queryset.order_by("-created_at", "-id")
+
+        status_param = self.request.query_params.get("status")
+        if status_param:
+            status_values = [value.strip() for value in status_param.split(",") if value.strip()]
+            if status_values:
+                queryset = queryset.filter(status__in=status_values)
+
+        club_id = (self.request.query_params.get("club_id") or "").strip()
+        if club_id:
+            queryset = queryset.filter(club_id=club_id)
+
+        template_version_id = (self.request.query_params.get("template_version_id") or "").strip()
+        if template_version_id:
+            queryset = queryset.filter(template_version_id=template_version_id)
+
+        requested_by_id = (self.request.query_params.get("requested_by_id") or "").strip()
+        if requested_by_id:
+            queryset = queryset.filter(requested_by_id=requested_by_id)
+
+        created_from = self._parse_datetime_range_param(self.request.query_params.get("created_from"))
+        if created_from is not None:
+            queryset = queryset.filter(created_at__gte=created_from)
+
+        created_to = self._parse_datetime_range_param(
+            self.request.query_params.get("created_to"),
+            end_of_day=True,
+        )
+        if created_to is not None:
+            queryset = queryset.filter(created_at__lte=created_to)
+
+        search_value = (self.request.query_params.get("q") or "").strip()
+        if search_value:
+            queryset = queryset.filter(
+                Q(job_number__icontains=search_value)
+                | Q(status__icontains=search_value)
+                | Q(club__name__icontains=search_value)
+                | Q(template_version__template__name__icontains=search_value)
+                | Q(template_version__label__icontains=search_value)
+                | Q(error_detail__icontains=search_value)
+            )
+
+        return queryset.order_by("-created_at", "-id")
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("status", str, OpenApiParameter.QUERY),
+            OpenApiParameter("club_id", int, OpenApiParameter.QUERY),
+            OpenApiParameter("template_version_id", int, OpenApiParameter.QUERY),
+            OpenApiParameter("requested_by_id", int, OpenApiParameter.QUERY),
+            OpenApiParameter(
+                "created_from",
+                str,
+                OpenApiParameter.QUERY,
+                description="ISO datetime/date lower bound for created_at.",
+            ),
+            OpenApiParameter(
+                "created_to",
+                str,
+                OpenApiParameter.QUERY,
+                description="ISO datetime/date upper bound for created_at.",
+            ),
+            OpenApiParameter("q", str, OpenApiParameter.QUERY),
+            OpenApiParameter("page", int, OpenApiParameter.QUERY),
+            OpenApiParameter("page_size", int, OpenApiParameter.QUERY),
+        ],
+        responses=PrintJobSerializer(many=True),
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
     @extend_schema(request=PrintJobCreateSerializer, responses=PrintJobSerializer)
     def create(self, request, *args, **kwargs):
@@ -482,16 +599,11 @@ class PrintJobViewSet(
                     )
                 )
             PrintJobItem.objects.bulk_create(print_items)
-            FinanceAuditLog.objects.create(
-                action="print_job.created",
+            self._log_print_job_event(
+                print_job=print_job,
+                action="created",
                 message="Print job created.",
-                actor=user if user.is_authenticated else None,
-                club=club,
-                metadata={
-                    "print_job_id": print_job.id,
-                    "item_count": len(resolved_items),
-                    "selected_slots": selected_slots,
-                },
+                metadata={"item_count": len(resolved_items), "selected_slots": selected_slots},
             )
 
         response_serializer = PrintJobSerializer(print_job, context={"request": request})
@@ -512,6 +624,8 @@ class PrintJobViewSet(
         audit_action: str,
     ) -> tuple[PrintJob, int]:
         user = request.user if request.user.is_authenticated else None
+        invalid_status: str | None = None
+        invalid_job: PrintJob | None = None
         with transaction.atomic():
             locked_job = (
                 PrintJob.objects.select_for_update()
@@ -519,45 +633,65 @@ class PrintJobViewSet(
                 .get(id=print_job.id)
             )
             if locked_job.status == PrintJob.Status.SUCCEEDED and locked_job.artifact_pdf:
+                self._log_print_job_event(
+                    print_job=locked_job,
+                    action=f"{audit_action}_noop_succeeded",
+                    message="Guarded transition: print job is already succeeded.",
+                )
                 return locked_job, status.HTTP_200_OK
             if locked_job.status in {PrintJob.Status.QUEUED, PrintJob.Status.RUNNING}:
+                self._log_print_job_event(
+                    print_job=locked_job,
+                    action=f"{audit_action}_noop_in_progress",
+                    message="Guarded transition: print job is already queued/running.",
+                )
                 return locked_job, status.HTTP_202_ACCEPTED
             if locked_job.status not in allow_statuses:
-                raise serializers.ValidationError(
-                    {"detail": f"Print job cannot be queued from status '{locked_job.status}'."}
+                self._log_print_job_event(
+                    print_job=locked_job,
+                    action=f"{audit_action}_rejected_invalid_status",
+                    message="Guarded transition: print job status is not eligible for queueing.",
+                    metadata={"current_status": locked_job.status},
+                )
+                invalid_status = locked_job.status
+                invalid_job = locked_job
+                locked_job = None
+
+            if locked_job is not None:
+                locked_job.status = PrintJob.Status.QUEUED
+                locked_job.queued_at = timezone.now()
+                locked_job.finished_at = None
+                locked_job.cancelled_at = None
+                locked_job.error_detail = ""
+                locked_job.last_error_at = None
+                if user and locked_job.executed_by_id is None:
+                    locked_job.executed_by = user
+                locked_job.save(
+                    update_fields=[
+                        "status",
+                        "queued_at",
+                        "finished_at",
+                        "cancelled_at",
+                        "error_detail",
+                        "last_error_at",
+                        "executed_by",
+                        "updated_at",
+                    ]
+                )
+                self._log_print_job_event(
+                    print_job=locked_job,
+                    action=audit_action,
+                    message="Print job queued for execution.",
                 )
 
-            locked_job.status = PrintJob.Status.QUEUED
-            locked_job.queued_at = timezone.now()
-            locked_job.finished_at = None
-            locked_job.cancelled_at = None
-            locked_job.error_detail = ""
-            locked_job.last_error_at = None
-            if user and locked_job.executed_by_id is None:
-                locked_job.executed_by = user
-            locked_job.save(
-                update_fields=[
-                    "status",
-                    "queued_at",
-                    "finished_at",
-                    "cancelled_at",
-                    "error_detail",
-                    "last_error_at",
-                    "executed_by",
-                    "updated_at",
-                ]
-            )
-            FinanceAuditLog.objects.create(
-                action=f"print_job.{audit_action}",
-                message="Print job queued for execution.",
-                actor=user,
-                club=locked_job.club,
-                metadata={"print_job_id": locked_job.id},
+        if invalid_status is not None and invalid_job is not None:
+            raise serializers.ValidationError(
+                {"detail": f"Print job cannot be queued from status '{invalid_status}'."}
             )
 
-        execute_print_job_task.delay(
-            locked_job.id,
-            user.id if user is not None else None,
+        execute_print_job_task.apply_async(
+            args=[locked_job.id, user.id if user is not None else None],
+            queue=getattr(settings, "CELERY_PRINT_JOB_QUEUE", "print_jobs"),
         )
         return locked_job, status.HTTP_202_ACCEPTED
 
@@ -567,6 +701,11 @@ class PrintJobViewSet(
         print_job = self.get_object()
         self._ensure_club_admin_scope(request.user, print_job)
         if print_job.status == PrintJob.Status.CANCELLED:
+            self._log_print_job_event(
+                print_job=print_job,
+                action="execute_rejected_cancelled",
+                message="Guarded transition: cancelled print job cannot be executed.",
+            )
             return Response(
                 {"detail": "Cancelled print jobs must be retried, not executed directly."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -600,11 +739,21 @@ class PrintJobViewSet(
         print_job = self.get_object()
         self._ensure_club_admin_scope(request.user, print_job)
         if print_job.status == PrintJob.Status.SUCCEEDED:
+            self._log_print_job_event(
+                print_job=print_job,
+                action="cancel_rejected_succeeded",
+                message="Guarded transition: succeeded print job cannot be cancelled.",
+            )
             return Response(
                 {"detail": "Cannot cancel a succeeded print job."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if print_job.status == PrintJob.Status.CANCELLED:
+            self._log_print_job_event(
+                print_job=print_job,
+                action="cancel_noop_already_cancelled",
+                message="Guarded transition: print job is already cancelled.",
+            )
             payload = PrintJobSerializer(print_job, context={"request": request}).data
             return Response(payload, status=status.HTTP_200_OK)
 
@@ -629,12 +778,11 @@ class PrintJobViewSet(
                 locked_job.items.filter(status=PrintJobItem.Status.PENDING).update(
                     status=PrintJobItem.Status.FAILED
                 )
-                FinanceAuditLog.objects.create(
-                    action="print_job.cancelled",
+                self._log_print_job_event(
+                    print_job=locked_job,
+                    action="cancelled",
                     message="Print job cancelled.",
-                    actor=request.user if request.user.is_authenticated else None,
-                    club=locked_job.club,
-                    metadata={"print_job_id": locked_job.id},
+                    metadata={"status_before": print_job.status},
                 )
         locked_job = PrintJob.objects.get(id=print_job.id)
         payload = PrintJobSerializer(locked_job, context={"request": request}).data
@@ -650,6 +798,12 @@ class PrintJobViewSet(
         print_job = self.get_object()
         self._ensure_club_admin_scope(request.user, print_job)
         if print_job.status != PrintJob.Status.SUCCEEDED or not print_job.artifact_pdf:
+            self._log_print_job_event(
+                print_job=print_job,
+                action="pdf_unavailable",
+                message="Guarded transition: print job artifact is not available.",
+                metadata={"status": print_job.status},
+            )
             return Response(
                 {"detail": "Print job PDF artifact is not available yet."},
                 status=status.HTTP_404_NOT_FOUND,
@@ -661,7 +815,29 @@ class PrintJobViewSet(
         )
         if print_job.artifact_size_bytes:
             response["Content-Length"] = str(print_job.artifact_size_bytes)
+        self._log_print_job_event(
+            print_job=print_job,
+            action="pdf_downloaded",
+            message="Print job PDF artifact downloaded.",
+            metadata={"artifact_size_bytes": int(print_job.artifact_size_bytes or 0)},
+        )
         return response
+
+    @extend_schema(responses=PrintJobHistoryEventSerializer(many=True))
+    @action(detail=True, methods=["get"], url_path="history")
+    def history(self, request, pk=None):
+        print_job = self.get_object()
+        self._ensure_club_admin_scope(request.user, print_job)
+        events = (
+            FinanceAuditLog.objects.filter(
+                action__startswith="print_job.",
+                metadata__print_job_id=print_job.id,
+            )
+            .select_related("actor")
+            .order_by("-created_at", "-id")
+        )
+        serializer = PrintJobHistoryEventSerializer(events, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class MergeFieldRegistryView(APIView):

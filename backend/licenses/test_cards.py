@@ -1,6 +1,11 @@
+from datetime import timedelta
 from decimal import Decimal
-from io import BytesIO
+from io import BytesIO, StringIO
+from pathlib import Path
+import tempfile
+from unittest.mock import patch
 
+from django.core.management import call_command
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -1131,3 +1136,307 @@ class PrintJobExecutionPipelineTests(TestCase):
         )
         self.assertTrue(statuses)
         self.assertTrue(all(item_status == PrintJobItem.Status.PRINTED for item_status in statuses))
+
+    def test_print_job_history_endpoint_returns_audit_events(self):
+        created_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": self.template_version.id,
+                "paper_profile": self.paper_profile.id,
+                "license_ids": [self.license_one.id],
+            },
+        )
+        job_id = created_job["id"]
+        self.client.force_authenticate(user=self.ltf_admin)
+        self.client.post(f"/api/print-jobs/{job_id}/execute/", {}, format="json")
+        self.client.get(f"/api/print-jobs/{job_id}/pdf/")
+
+        history_response = self.client.get(f"/api/print-jobs/{job_id}/history/")
+        self.assertEqual(history_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(history_response.data)
+        first_event = history_response.data[0]
+        self.assertIn("id", first_event)
+        self.assertIn("action", first_event)
+        self.assertIn("message", first_event)
+        self.assertIn("actor", first_event)
+        self.assertIn("metadata", first_event)
+        self.assertIn("created_at", first_event)
+        self.assertTrue(all(row["action"].startswith("print_job.") for row in history_response.data))
+
+        self.client.force_authenticate(user=self.club_admin)
+        own_history_response = self.client.get(f"/api/print-jobs/{job_id}/history/")
+        self.assertEqual(own_history_response.status_code, status.HTTP_200_OK)
+
+        other_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.other_club.id,
+                "template_version": self.template_version.id,
+                "paper_profile": self.paper_profile.id,
+                "license_ids": [self.other_license.id],
+            },
+        )
+        self.client.force_authenticate(user=self.club_admin)
+        denied_history_response = self.client.get(f"/api/print-jobs/{other_job['id']}/history/")
+        self.assertEqual(denied_history_response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_print_job_list_filtering_and_pagination(self):
+        created_draft = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": self.template_version.id,
+                "paper_profile": self.paper_profile.id,
+                "member_ids": [self.member_one.id],
+            },
+        )
+        created_succeeded = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": self.template_version.id,
+                "paper_profile": self.paper_profile.id,
+                "license_ids": [self.license_one.id],
+            },
+        )
+        created_other = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.other_club.id,
+                "template_version": self.template_version.id,
+                "paper_profile": self.paper_profile.id,
+                "license_ids": [self.other_license.id],
+            },
+        )
+        self.client.force_authenticate(user=self.ltf_admin)
+        self.client.post(
+            f"/api/print-jobs/{created_succeeded['id']}/execute/",
+            {},
+            format="json",
+        )
+        PrintJob.objects.filter(id=created_other["id"]).update(status=PrintJob.Status.FAILED)
+
+        succeeded_job = PrintJob.objects.get(id=created_succeeded["id"])
+        self.assertEqual(succeeded_job.status, PrintJob.Status.SUCCEEDED)
+
+        status_filtered_response = self.client.get(
+            "/api/print-jobs/",
+            {"status": PrintJob.Status.SUCCEEDED},
+        )
+        self.assertEqual(status_filtered_response.status_code, status.HTTP_200_OK)
+        status_filtered_ids = {row["id"] for row in status_filtered_response.data}
+        self.assertIn(created_succeeded["id"], status_filtered_ids)
+        self.assertNotIn(created_draft["id"], status_filtered_ids)
+
+        club_filtered_response = self.client.get("/api/print-jobs/", {"club_id": self.club.id})
+        self.assertEqual(club_filtered_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(all(row["club"] == self.club.id for row in club_filtered_response.data))
+
+        template_filtered_response = self.client.get(
+            "/api/print-jobs/",
+            {"template_version_id": self.template_version.id},
+        )
+        self.assertEqual(template_filtered_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(
+            all(row["template_version"] == self.template_version.id for row in template_filtered_response.data)
+        )
+
+        requested_by_response = self.client.get(
+            "/api/print-jobs/",
+            {"requested_by_id": self.ltf_admin.id},
+        )
+        self.assertEqual(requested_by_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(all(row["requested_by"] == self.ltf_admin.id for row in requested_by_response.data))
+
+        date_anchor = timezone.now()
+        PrintJob.objects.filter(id=created_succeeded["id"]).update(created_at=date_anchor)
+        date_range_response = self.client.get(
+            "/api/print-jobs/",
+            {
+                "created_from": (date_anchor - timedelta(minutes=1)).isoformat(),
+                "created_to": (date_anchor + timedelta(minutes=1)).isoformat(),
+            },
+        )
+        self.assertEqual(date_range_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(any(row["id"] == created_succeeded["id"] for row in date_range_response.data))
+
+        search_token = created_succeeded["job_number"][-6:]
+        search_response = self.client.get("/api/print-jobs/", {"q": search_token})
+        self.assertEqual(search_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(any(row["id"] == created_succeeded["id"] for row in search_response.data))
+
+        paginated_response = self.client.get("/api/print-jobs/", {"page": 1, "page_size": 1})
+        self.assertEqual(paginated_response.status_code, status.HTTP_200_OK)
+        self.assertIn("results", paginated_response.data)
+        self.assertEqual(len(paginated_response.data["results"]), 1)
+
+        self.client.force_authenticate(user=self.club_admin)
+        scoped_response = self.client.get("/api/print-jobs/", {"club_id": self.other_club.id})
+        self.assertEqual(scoped_response.status_code, status.HTTP_200_OK)
+        self.assertFalse(any(row["club"] == self.other_club.id for row in scoped_response.data))
+
+    def test_pdf_download_records_audit_event(self):
+        created_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": self.template_version.id,
+                "paper_profile": self.paper_profile.id,
+                "license_ids": [self.license_one.id],
+            },
+        )
+        job_id = created_job["id"]
+        self.client.force_authenticate(user=self.ltf_admin)
+        self.client.post(f"/api/print-jobs/{job_id}/execute/", {}, format="json")
+
+        response = self.client.get(f"/api/print-jobs/{job_id}/pdf/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(
+            FinanceAuditLog.objects.filter(
+                action="print_job.pdf_downloaded",
+                metadata__print_job_id=job_id,
+            ).exists()
+        )
+
+    def test_guarded_transition_audit_events_are_recorded(self):
+        created_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": self.template_version.id,
+                "paper_profile": self.paper_profile.id,
+                "member_ids": [self.member_one.id],
+            },
+        )
+        job_id = created_job["id"]
+        self.client.force_authenticate(user=self.ltf_admin)
+        self.client.post(f"/api/print-jobs/{job_id}/cancel/", {}, format="json")
+        execute_response = self.client.post(
+            f"/api/print-jobs/{job_id}/execute/",
+            {},
+            format="json",
+        )
+        self.assertEqual(execute_response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(
+            FinanceAuditLog.objects.filter(
+                action="print_job.execute_rejected_cancelled",
+                metadata__print_job_id=job_id,
+            ).exists()
+        )
+
+        draft_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": self.template_version.id,
+                "paper_profile": self.paper_profile.id,
+                "member_ids": [self.member_two.id],
+            },
+        )
+        retry_response = self.client.post(
+            f"/api/print-jobs/{draft_job['id']}/retry/",
+            {},
+            format="json",
+        )
+        self.assertEqual(retry_response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(
+            FinanceAuditLog.objects.filter(
+                action="print_job.retry_queued_rejected_invalid_status",
+                metadata__print_job_id=draft_job["id"],
+            ).exists()
+        )
+
+    def test_execution_stops_when_job_cancelled_during_processing(self):
+        created_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": self.template_version.id,
+                "paper_profile": self.paper_profile.id,
+                "license_ids": [self.license_one.id, self.license_two.id],
+            },
+        )
+        job_id = created_job["id"]
+        self.client.force_authenticate(user=self.ltf_admin)
+
+        import licenses.print_jobs as print_jobs_module
+
+        original_build_preview_data = print_jobs_module.build_preview_data
+        cancel_marker = {"cancelled": False}
+
+        def _cancel_mid_execution(*args, **kwargs):
+            result = original_build_preview_data(*args, **kwargs)
+            if not cancel_marker["cancelled"]:
+                PrintJob.objects.filter(id=job_id).update(
+                    status=PrintJob.Status.CANCELLED,
+                    cancelled_at=timezone.now(),
+                    finished_at=timezone.now(),
+                )
+                cancel_marker["cancelled"] = True
+            return result
+
+        with patch("licenses.print_jobs.build_preview_data", side_effect=_cancel_mid_execution):
+            execute_response = self.client.post(
+                f"/api/print-jobs/{job_id}/execute/",
+                {},
+                format="json",
+            )
+            self.assertIn(execute_response.status_code, {status.HTTP_200_OK, status.HTTP_202_ACCEPTED})
+
+        cancelled_job = PrintJob.objects.get(id=job_id)
+        self.assertEqual(cancelled_job.status, PrintJob.Status.CANCELLED)
+        self.assertFalse(bool(cancelled_job.artifact_pdf))
+
+    def test_prune_print_job_artifacts_command(self):
+        with tempfile.TemporaryDirectory() as temp_media_root:
+            with self.settings(MEDIA_ROOT=temp_media_root):
+                created_job = self._create_print_job(
+                    user=self.ltf_admin,
+                    payload={
+                        "club": self.club.id,
+                        "template_version": self.template_version.id,
+                        "paper_profile": self.paper_profile.id,
+                        "license_ids": [self.license_one.id],
+                    },
+                )
+                job_id = created_job["id"]
+                self.client.force_authenticate(user=self.ltf_admin)
+                self.client.post(f"/api/print-jobs/{job_id}/execute/", {}, format="json")
+                print_job = PrintJob.objects.get(id=job_id)
+                artifact_path = Path(print_job.artifact_pdf.path)
+                self.assertTrue(artifact_path.exists())
+                print_job.finished_at = timezone.now() - timedelta(days=45)
+                print_job.save(update_fields=["finished_at", "updated_at"])
+
+                dry_run_stdout = StringIO()
+                call_command(
+                    "prune_print_job_artifacts",
+                    "--days",
+                    "30",
+                    "--dry-run",
+                    stdout=dry_run_stdout,
+                )
+                print_job.refresh_from_db()
+                self.assertTrue(bool(print_job.artifact_pdf))
+                self.assertTrue(artifact_path.exists())
+                self.assertIn("Dry run complete", dry_run_stdout.getvalue())
+
+                run_stdout = StringIO()
+                call_command(
+                    "prune_print_job_artifacts",
+                    "--days",
+                    "30",
+                    stdout=run_stdout,
+                )
+                print_job.refresh_from_db()
+                self.assertFalse(bool(print_job.artifact_pdf))
+                self.assertEqual(print_job.artifact_size_bytes, 0)
+                self.assertEqual(print_job.artifact_sha256, "")
+                self.assertFalse(artifact_path.exists())
+                self.assertTrue(
+                    FinanceAuditLog.objects.filter(
+                        action="print_job.artifact_pruned",
+                        metadata__print_job_id=job_id,
+                    ).exists()
+                )

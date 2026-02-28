@@ -67,7 +67,11 @@ def activate_order_from_stripe(order_id: int, stripe_data: dict | None = None) -
     )
 
 
-@shared_task
+@shared_task(
+    queue=getattr(settings, "CELERY_PRINT_JOB_QUEUE", "print_jobs"),
+    soft_time_limit=getattr(settings, "CELERY_PRINT_JOB_SOFT_TIME_LIMIT_SECONDS", 300),
+    time_limit=getattr(settings, "CELERY_PRINT_JOB_TIME_LIMIT_SECONDS", 360),
+)
 def execute_print_job_task(print_job_id: int, actor_id: int | None = None) -> None:
     execute_print_job_now(print_job_id=print_job_id, actor_id=actor_id)
 

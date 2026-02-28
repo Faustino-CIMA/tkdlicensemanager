@@ -343,6 +343,15 @@ CELERY_ACTIVATE_ELIGIBLE_LICENSES_MINUTE = config(
     cast=int,
     default=17,
 )
+CELERY_PRINT_JOB_QUEUE = config("CELERY_PRINT_JOB_QUEUE", default="print_jobs").strip() or "print_jobs"
+CELERY_PRINT_JOB_SOFT_TIME_LIMIT_SECONDS = max(
+    30,
+    config("CELERY_PRINT_JOB_SOFT_TIME_LIMIT_SECONDS", cast=int, default=300),
+)
+CELERY_PRINT_JOB_TIME_LIMIT_SECONDS = max(
+    CELERY_PRINT_JOB_SOFT_TIME_LIMIT_SECONDS + 1,
+    config("CELERY_PRINT_JOB_TIME_LIMIT_SECONDS", cast=int, default=360),
+)
 CELERY_RECONCILE_EXPIRED_LICENSES_HOUR = config(
     "CELERY_RECONCILE_EXPIRED_LICENSES_HOUR",
     cast=int,
@@ -369,6 +378,9 @@ CELERY_BEAT_SCHEDULE = {
         "task": "licenses.tasks.reconcile_pending_stripe_orders",
         "schedule": CELERY_RECONCILE_PENDING_STRIPE_INTERVAL_SECONDS,
     },
+}
+CELERY_TASK_ROUTES = {
+    "licenses.tasks.execute_print_job_task": {"queue": CELERY_PRINT_JOB_QUEUE},
 }
 
 STRIPE_SECRET_KEY = config("STRIPE_SECRET_KEY", default="")

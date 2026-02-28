@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from hashlib import sha256
+import time
 from typing import Any
 
 from django.conf import settings
@@ -30,13 +31,23 @@ def _audit_print_job(
     actor,
     metadata: dict[str, Any] | None = None,
 ) -> None:
+    metadata_payload = {"print_job_id": print_job.id, **(metadata or {})}
     FinanceAuditLog.objects.create(
         action=f"print_job.{action}",
         message=message,
         actor=actor,
         club=print_job.club,
-        metadata=metadata or {},
+        metadata=metadata_payload,
     )
+
+
+def _is_print_job_cancelled(print_job_id: int) -> bool:
+    return PrintJob.objects.filter(id=print_job_id, status=PrintJob.Status.CANCELLED).exists()
+
+
+def _raise_if_cancelled(print_job_id: int) -> None:
+    if _is_print_job_cancelled(print_job_id):
+        raise CardRenderError("Print job execution was cancelled.")
 
 
 def _render_card_pages_html(preview_payloads: list[dict[str, Any]]) -> tuple[str, int]:
@@ -206,6 +217,8 @@ def _resolve_item_slots(print_job: PrintJob, ordered_items: list[PrintJobItem]) 
 
 def execute_print_job_now(*, print_job_id: int, actor_id: int | None = None) -> PrintJob:
     actor = UserModel.objects.filter(id=actor_id).first() if actor_id else None
+    attempt_started_monotonic = time.monotonic()
+    attempt_started_at = timezone.now()
 
     with transaction.atomic():
         print_job = PrintJob.objects.select_for_update().get(id=print_job_id)
@@ -223,6 +236,18 @@ def execute_print_job_now(*, print_job_id: int, actor_id: int | None = None) -> 
         print_job.execution_attempts = int(print_job.execution_attempts) + 1
         if actor and print_job.executed_by_id is None:
             print_job.executed_by = actor
+        queue_wait_ms = None
+        if print_job.queued_at is not None:
+            queue_wait_ms = int(
+                max(0.0, (attempt_started_at - print_job.queued_at).total_seconds()) * 1000
+            )
+        print_job.execution_metadata = {
+            **dict(print_job.execution_metadata or {}),
+            "last_attempt_started_at": attempt_started_at.isoformat(),
+            "last_attempt_status": "running",
+            "queue_wait_ms": queue_wait_ms,
+            "execution_attempt": int(print_job.execution_attempts),
+        }
         print_job.save(
             update_fields=[
                 "status",
@@ -233,6 +258,7 @@ def execute_print_job_now(*, print_job_id: int, actor_id: int | None = None) -> 
                 "last_error_at",
                 "execution_attempts",
                 "executed_by",
+                "execution_metadata",
                 "updated_at",
             ]
         )
@@ -260,6 +286,7 @@ def execute_print_job_now(*, print_job_id: int, actor_id: int | None = None) -> 
         _resolve_item_slots(print_job, ordered_items)
         preview_payloads: list[dict[str, Any]] = []
         for item in sorted(ordered_items, key=lambda current: (int(current.slot_index or 0), current.id)):
+            _raise_if_cancelled(print_job_id)
             preview_payloads.append(
                 build_preview_data(
                     template_version=print_job.template_version,
@@ -273,6 +300,7 @@ def execute_print_job_now(*, print_job_id: int, actor_id: int | None = None) -> 
                 )
             )
 
+        _raise_if_cancelled(print_job_id)
         if print_job.paper_profile is None:
             html, page_count = _render_card_pages_html(preview_payloads)
         else:
@@ -283,26 +311,36 @@ def execute_print_job_now(*, print_job_id: int, actor_id: int | None = None) -> 
                     ordered_items, key=lambda current: (int(current.slot_index or 0), current.id)
                 ),
             )
+        _raise_if_cancelled(print_job_id)
         pdf_bytes = render_pdf_bytes_from_html(
             html,
             base_url=str(settings.FRONTEND_BASE_URL).rstrip("/") + "/",
         )
     except Exception as exc:
         detail = exc.detail if isinstance(exc, CardRenderError) else str(exc)
+        failure_at = timezone.now()
+        duration_ms = int(max(0.0, time.monotonic() - attempt_started_monotonic) * 1000)
         with transaction.atomic():
             print_job = PrintJob.objects.select_for_update().select_related("club").get(id=print_job_id)
             if print_job.status == PrintJob.Status.CANCELLED:
                 return print_job
             print_job.status = PrintJob.Status.FAILED
-            print_job.finished_at = timezone.now()
+            print_job.finished_at = failure_at
             print_job.error_detail = str(detail)[:4000]
-            print_job.last_error_at = timezone.now()
+            print_job.last_error_at = failure_at
+            print_job.execution_metadata = {
+                **dict(print_job.execution_metadata or {}),
+                "last_attempt_finished_at": failure_at.isoformat(),
+                "last_attempt_duration_ms": duration_ms,
+                "last_attempt_status": "failed",
+            }
             print_job.save(
                 update_fields=[
                     "status",
                     "finished_at",
                     "error_detail",
                     "last_error_at",
+                    "execution_metadata",
                     "updated_at",
                 ]
             )
@@ -323,6 +361,8 @@ def execute_print_job_now(*, print_job_id: int, actor_id: int | None = None) -> 
         if print_job.status == PrintJob.Status.SUCCEEDED and print_job.artifact_pdf:
             return print_job
 
+        completed_at = timezone.now()
+        duration_ms = int(max(0.0, time.monotonic() - attempt_started_monotonic) * 1000)
         artifact_name = f"{print_job.job_number.lower()}-{timezone.now().strftime('%Y%m%d%H%M%S')}.pdf"
         if print_job.artifact_pdf:
             print_job.artifact_pdf.delete(save=False)
@@ -334,10 +374,13 @@ def execute_print_job_now(*, print_job_id: int, actor_id: int | None = None) -> 
             "rendered_items": len(preview_payloads),
             "page_count": page_count,
             "selected_slots": [int(slot) for slot in (print_job.selected_slots or [])],
-            "completed_at": timezone.now().isoformat(),
+            "completed_at": completed_at.isoformat(),
+            "last_attempt_finished_at": completed_at.isoformat(),
+            "last_attempt_duration_ms": duration_ms,
+            "last_attempt_status": "succeeded",
         }
         print_job.status = PrintJob.Status.SUCCEEDED
-        print_job.finished_at = timezone.now()
+        print_job.finished_at = completed_at
         print_job.error_detail = ""
         print_job.last_error_at = None
         print_job.save(

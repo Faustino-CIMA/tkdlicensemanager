@@ -18,6 +18,7 @@ from .models import (
     CardFormatPreset,
     CardTemplate,
     CardTemplateVersion,
+    FinanceAuditLog,
     License,
     PaperProfile,
     PrintJob,
@@ -249,6 +250,24 @@ class PrintJobItemSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["status", "created_at", "updated_at"]
+
+
+class PrintJobHistoryEventSerializer(serializers.ModelSerializer):
+    actor = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FinanceAuditLog
+        fields = ["id", "action", "message", "actor", "metadata", "created_at"]
+
+    def get_actor(self, obj):
+        actor = getattr(obj, "actor", None)
+        if actor is None:
+            return None
+        return {
+            "id": actor.id,
+            "username": actor.username,
+            "role": getattr(actor, "role", ""),
+        }
 
 
 class PrintJobSerializer(serializers.ModelSerializer):
