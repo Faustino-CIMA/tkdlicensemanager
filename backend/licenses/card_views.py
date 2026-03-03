@@ -18,6 +18,9 @@ from rest_framework.views import APIView
 
 from config.pagination import OptionalPaginationListMixin
 
+from clubs.models import Club
+from members.models import Member
+
 from .card_rendering import (
     CardRenderError,
     build_preview_data,
@@ -29,7 +32,12 @@ from .card_serializers import (
     CardPreviewDataSerializer,
     CardPreviewRequestSerializer,
     CardSheetPreviewRequestSerializer,
+    CardDesignerLookupItemSerializer,
+    CardFontAssetSerializer,
+    CardImageAssetSerializer,
     CardTemplateCloneSerializer,
+    CardTemplateDeleteResultSerializer,
+    CardTemplateDeleteSerializer,
     CardTemplateSerializer,
     CardTemplateVersionSerializer,
     MergeFieldSerializer,
@@ -41,9 +49,12 @@ from .card_serializers import (
 )
 from .models import (
     CardFormatPreset,
+    CardFontAsset,
+    CardImageAsset,
     CardTemplate,
     CardTemplateVersion,
     FinanceAuditLog,
+    License,
     PaperProfile,
     PrintJob,
     PrintJobItem,
@@ -70,6 +81,11 @@ class IsLtfAdminOrClubAdminReadOnly(permissions.BasePermission):
 class IsLtfAdminOrClubAdmin(permissions.BasePermission):
     def has_permission(self, request, view):
         return bool(_is_ltf_admin(request.user) or _is_club_admin(request.user))
+
+
+class IsLtfAdminOnly(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return bool(_is_ltf_admin(request.user))
 
 
 class CardFormatPresetViewSet(viewsets.ModelViewSet):
@@ -135,6 +151,36 @@ class CardTemplateViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         serializer.save(updated_by=self.request.user if self.request.user.is_authenticated else None)
 
+    def destroy(self, request, *args, **kwargs):
+        return Response(
+            {
+                "detail": (
+                    "Use POST /api/card-templates/{id}/delete/ with confirm_name for safe deletion."
+                )
+            },
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    def _audit_template_event(
+        self,
+        *,
+        template_id: int,
+        template_name: str,
+        action: str,
+        message: str,
+        metadata: dict | None = None,
+    ) -> None:
+        FinanceAuditLog.objects.create(
+            action=f"card_template.{action}",
+            message=message,
+            actor=self.request.user if self.request.user.is_authenticated else None,
+            metadata={
+                "template_id": template_id,
+                "template_name": template_name,
+                **(metadata or {}),
+            },
+        )
+
     @extend_schema(request=None, responses=CardTemplateSerializer)
     @action(detail=True, methods=["post"], url_path="set-default")
     def set_default(self, request, pk=None):
@@ -149,6 +195,148 @@ class CardTemplateViewSet(viewsets.ModelViewSet):
             template.updated_by = request.user
             template.save(update_fields=["is_default", "updated_by", "updated_at"])
         return Response(self.get_serializer(template).data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        request=CardTemplateDeleteSerializer,
+        responses=CardTemplateDeleteResultSerializer,
+    )
+    @action(detail=True, methods=["post"], url_path="delete")
+    def delete_template(self, request, pk=None):
+        if not _is_ltf_admin(request.user):
+            raise PermissionDenied("Only LTF Admin can delete templates.")
+
+        template = self.get_object()
+        serializer = CardTemplateDeleteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        confirm_name = serializer.validated_data["confirm_name"].strip()
+        if confirm_name != template.name:
+            raise serializers.ValidationError(
+                {"confirm_name": "confirm_name must exactly match the template name."}
+            )
+
+        requested_mode = str(serializer.validated_data["mode"])
+        applied_mode = requested_mode
+        was_default = bool(template.is_default)
+        referenced_by_print_jobs = False
+        deleted = False
+        deactivated = False
+        reassigned_default_template_id: int | None = None
+        rejection_detail: str | None = None
+        rejection_action: str | None = None
+
+        template_id = int(template.id)
+        template_name = str(template.name)
+
+        with transaction.atomic():
+            locked_template = CardTemplate.objects.select_for_update().get(id=template_id)
+            was_default = bool(locked_template.is_default)
+            referenced_by_print_jobs = PrintJob.objects.filter(
+                template_version__template_id=locked_template.id
+            ).exists()
+
+            if requested_mode == CardTemplateDeleteSerializer.DeleteMode.AUTO:
+                applied_mode = (
+                    CardTemplateDeleteSerializer.DeleteMode.SOFT
+                    if was_default or referenced_by_print_jobs
+                    else CardTemplateDeleteSerializer.DeleteMode.HARD
+                )
+
+            if applied_mode == CardTemplateDeleteSerializer.DeleteMode.HARD:
+                if was_default:
+                    rejection_detail = (
+                        "Default template cannot be hard deleted. Use mode 'auto' or 'soft'."
+                    )
+                    rejection_action = "delete_rejected_default"
+                elif referenced_by_print_jobs:
+                    rejection_detail = (
+                        "Template referenced by print jobs cannot be hard deleted. "
+                        "Use mode 'auto' or 'soft'."
+                    )
+                    rejection_action = "delete_rejected_referenced"
+
+                if rejection_detail is None:
+                    locked_template.delete()
+                    deleted = True
+            else:
+                update_fields = ["updated_at"]
+                if locked_template.is_active:
+                    locked_template.is_active = False
+                    deactivated = True
+                    update_fields.append("is_active")
+                if locked_template.is_default:
+                    locked_template.is_default = False
+                    update_fields.append("is_default")
+                if request.user.is_authenticated:
+                    locked_template.updated_by = request.user
+                    update_fields.append("updated_by")
+                if len(update_fields) > 1:
+                    locked_template.save(update_fields=update_fields)
+
+                if was_default:
+                    fallback_template = (
+                        CardTemplate.objects.select_for_update()
+                        .filter(is_active=True)
+                        .exclude(id=locked_template.id)
+                        .order_by("name", "-created_at")
+                        .first()
+                    )
+                    if fallback_template is not None and not fallback_template.is_default:
+                        CardTemplate.objects.filter(is_default=True).exclude(
+                            id=fallback_template.id
+                        ).update(is_default=False)
+                        fallback_template.is_default = True
+                        if request.user.is_authenticated:
+                            fallback_template.updated_by = request.user
+                            fallback_template.save(
+                                update_fields=["is_default", "updated_by", "updated_at"]
+                            )
+                        else:
+                            fallback_template.save(update_fields=["is_default", "updated_at"])
+                    if fallback_template is not None:
+                        reassigned_default_template_id = int(fallback_template.id)
+
+        if rejection_detail is not None and rejection_action is not None:
+            self._audit_template_event(
+                template_id=template_id,
+                template_name=template_name,
+                action=rejection_action,
+                message=rejection_detail,
+                metadata={
+                    "requested_mode": requested_mode,
+                    "applied_mode": applied_mode,
+                    "referenced_by_print_jobs": referenced_by_print_jobs,
+                },
+            )
+            raise serializers.ValidationError({"detail": rejection_detail})
+
+        self._audit_template_event(
+            template_id=template_id,
+            template_name=template_name,
+            action="deleted_hard" if deleted else "deleted_soft",
+            message="Card template deleted." if deleted else "Card template deactivated.",
+            metadata={
+                "requested_mode": requested_mode,
+                "applied_mode": applied_mode,
+                "referenced_by_print_jobs": referenced_by_print_jobs,
+                "was_default": was_default,
+                "deleted": deleted,
+                "deactivated": deactivated,
+                "reassigned_default_template_id": reassigned_default_template_id,
+            },
+        )
+        result_payload = {
+            "template_id": template_id,
+            "template_name": template_name,
+            "requested_mode": requested_mode,
+            "applied_mode": applied_mode,
+            "referenced_by_print_jobs": referenced_by_print_jobs,
+            "was_default": was_default,
+            "deleted": deleted,
+            "deactivated": deactivated,
+            "reassigned_default_template_id": reassigned_default_template_id,
+        }
+        return Response(result_payload, status=status.HTTP_200_OK)
 
     @extend_schema(request=CardTemplateCloneSerializer, responses=CardTemplateSerializer)
     @action(detail=True, methods=["post"], url_path="clone")
@@ -390,6 +578,34 @@ class CardTemplateVersionViewSet(viewsets.ModelViewSet):
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = f'inline; filename="sheet-preview-v{version.id}.pdf"'
         return response
+
+
+class CardFontAssetViewSet(viewsets.ModelViewSet):
+    serializer_class = CardFontAssetSerializer
+    permission_classes = [IsLtfAdminOnly]
+    queryset = CardFontAsset.objects.all()
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return CardFontAsset.objects.none()
+        return CardFontAsset.objects.order_by("name", "-created_at")
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
+
+
+class CardImageAssetViewSet(viewsets.ModelViewSet):
+    serializer_class = CardImageAssetSerializer
+    permission_classes = [IsLtfAdminOnly]
+    queryset = CardImageAsset.objects.all()
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return CardImageAsset.objects.none()
+        return CardImageAsset.objects.order_by("name", "-created_at")
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
 
 
 class PrintJobViewSet(
@@ -838,6 +1054,132 @@ class PrintJobViewSet(
         )
         serializer = PrintJobHistoryEventSerializer(events, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+def _read_lookup_limit(raw_value: str | None, *, default: int = 20, max_value: int = 100) -> int:
+    try:
+        parsed = int(str(raw_value or default).strip())
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(parsed, max_value))
+
+
+class CardDesignerMembersLookupView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("q", str, OpenApiParameter.QUERY),
+            OpenApiParameter("limit", int, OpenApiParameter.QUERY),
+        ],
+        responses=CardDesignerLookupItemSerializer(many=True),
+    )
+    def get(self, request):
+        if not _is_ltf_admin(request.user):
+            raise PermissionDenied("Only LTF Admin can access designer lookups.")
+
+        query = (request.query_params.get("q") or "").strip()
+        limit = _read_lookup_limit(request.query_params.get("limit"))
+        queryset = Member.objects.select_related("club").all()
+        if query:
+            queryset = queryset.filter(
+                Q(first_name__icontains=query)
+                | Q(last_name__icontains=query)
+                | Q(ltf_licenseid__icontains=query)
+                | Q(club__name__icontains=query)
+            )
+        members = queryset.order_by("last_name", "first_name", "id")[:limit]
+        payload = [
+            {
+                "id": int(member.id),
+                "label": f"{member.first_name} {member.last_name}".strip(),
+                "subtitle": f"{member.club.name} · {member.ltf_licenseid or 'No LTF ID'}",
+            }
+            for member in members
+        ]
+        return Response(payload, status=status.HTTP_200_OK)
+
+
+class CardDesignerLicensesLookupView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("q", str, OpenApiParameter.QUERY),
+            OpenApiParameter("limit", int, OpenApiParameter.QUERY),
+        ],
+        responses=CardDesignerLookupItemSerializer(many=True),
+    )
+    def get(self, request):
+        if not _is_ltf_admin(request.user):
+            raise PermissionDenied("Only LTF Admin can access designer lookups.")
+
+        query = (request.query_params.get("q") or "").strip()
+        limit = _read_lookup_limit(request.query_params.get("limit"))
+        queryset = License.objects.select_related("member", "club", "license_type").all()
+        if query:
+            search_filter = (
+                Q(member__first_name__icontains=query)
+                | Q(member__last_name__icontains=query)
+                | Q(member__ltf_licenseid__icontains=query)
+                | Q(club__name__icontains=query)
+                | Q(license_type__name__icontains=query)
+            )
+            if query.isdigit():
+                search_filter = search_filter | Q(year=int(query))
+            queryset = queryset.filter(search_filter)
+        licenses = queryset.order_by("-year", "member__last_name", "member__first_name", "id")[:limit]
+        payload = [
+            {
+                "id": int(license_record.id),
+                "label": (
+                    f"{license_record.member.first_name} {license_record.member.last_name}"
+                    f" · {license_record.license_type.name} {license_record.year}"
+                ),
+                "subtitle": f"{license_record.club.name} · {license_record.status}",
+            }
+            for license_record in licenses
+        ]
+        return Response(payload, status=status.HTTP_200_OK)
+
+
+class CardDesignerClubsLookupView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("q", str, OpenApiParameter.QUERY),
+            OpenApiParameter("limit", int, OpenApiParameter.QUERY),
+        ],
+        responses=CardDesignerLookupItemSerializer(many=True),
+    )
+    def get(self, request):
+        if not _is_ltf_admin(request.user):
+            raise PermissionDenied("Only LTF Admin can access designer lookups.")
+
+        query = (request.query_params.get("q") or "").strip()
+        limit = _read_lookup_limit(request.query_params.get("limit"))
+        queryset = Club.objects.all()
+        if query:
+            queryset = queryset.filter(
+                Q(name__icontains=query)
+                | Q(city__icontains=query)
+                | Q(locality__icontains=query)
+                | Q(postal_code__icontains=query)
+            )
+        clubs = queryset.order_by("name", "id")[:limit]
+        payload = []
+        for club in clubs:
+            location_parts = [part for part in [club.postal_code, club.locality, club.city] if part]
+            subtitle = " · ".join(location_parts).strip()
+            payload.append(
+                {
+                    "id": int(club.id),
+                    "label": str(club.name),
+                    "subtitle": subtitle,
+                }
+            )
+        return Response(payload, status=status.HTTP_200_OK)
 
 
 class MergeFieldRegistryView(APIView):

@@ -51,6 +51,11 @@ from licenses.views import (
 )
 from licenses.card_views import (
     CardFormatPresetViewSet,
+    CardFontAssetViewSet,
+    CardImageAssetViewSet,
+    CardDesignerClubsLookupView,
+    CardDesignerLicensesLookupView,
+    CardDesignerMembersLookupView,
     CardTemplateViewSet,
     CardTemplateVersionViewSet,
     MergeFieldRegistryView,
@@ -73,6 +78,8 @@ router.register(r"club-orders", ClubOrderViewSet, basename="club-order")
 router.register(r"club-invoices", ClubInvoiceViewSet, basename="club-invoice")
 router.register(r"finance-audit-logs", FinanceAuditLogViewSet, basename="finance-audit-log")
 router.register(r"card-formats", CardFormatPresetViewSet, basename="card-format")
+router.register(r"card-font-assets", CardFontAssetViewSet, basename="card-font-asset")
+router.register(r"card-image-assets", CardImageAssetViewSet, basename="card-image-asset")
 router.register(r"paper-profiles", PaperProfileViewSet, basename="paper-profile")
 router.register(r"card-templates", CardTemplateViewSet, basename="card-template")
 router.register(
@@ -145,6 +152,21 @@ urlpatterns = [
     path("api/stripe/webhook/", StripeWebhookView.as_view(), name="stripe-webhook"),
     path("api/invoices/<int:invoice_id>/pdf/", InvoicePdfView.as_view(), name="invoice-pdf"),
     path("api/merge-fields/", MergeFieldRegistryView.as_view(), name="merge-fields"),
+    path(
+        "api/card-designer/lookups/members/",
+        CardDesignerMembersLookupView.as_view(),
+        name="card-designer-lookups-members",
+    ),
+    path(
+        "api/card-designer/lookups/licenses/",
+        CardDesignerLicensesLookupView.as_view(),
+        name="card-designer-lookups-licenses",
+    ),
+    path(
+        "api/card-designer/lookups/clubs/",
+        CardDesignerClubsLookupView.as_view(),
+        name="card-designer-lookups-clubs",
+    ),
     path("api/", include(router.urls)),
     path("api/schema/", schema_view, name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="docs"),

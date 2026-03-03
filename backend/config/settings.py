@@ -221,6 +221,14 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = max(
     config("FILE_UPLOAD_MAX_MEMORY_SIZE", cast=int, default=MIN_PHOTO_UPLOAD_LIMIT_BYTES),
     MIN_PHOTO_UPLOAD_LIMIT_BYTES,
 )
+CARD_FONT_ASSET_MAX_BYTES = max(
+    1024,
+    config("CARD_FONT_ASSET_MAX_BYTES", cast=int, default=5 * 1024 * 1024),
+)
+CARD_IMAGE_ASSET_MAX_BYTES = max(
+    1024,
+    config("CARD_IMAGE_ASSET_MAX_BYTES", cast=int, default=8 * 1024 * 1024),
+)
 STORAGES = {
     "default": {
         "BACKEND": "django.core.files.storage.FileSystemStorage",

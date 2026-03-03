@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
+from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
@@ -12,10 +14,13 @@ from members.models import Member
 from .card_registry import (
     ALLOWED_MERGE_FIELDS,
     MERGE_FIELD_REGISTRY,
+    normalize_design_payload,
     validate_design_payload_schema,
 )
 from .models import (
     CardFormatPreset,
+    CardFontAsset,
+    CardImageAsset,
     CardTemplate,
     CardTemplateVersion,
     FinanceAuditLog,
@@ -24,6 +29,9 @@ from .models import (
     PrintJob,
     PrintJobItem,
 )
+
+ALLOWED_FONT_EXTENSIONS = {".ttf", ".otf", ".woff", ".woff2"}
+ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"}
 
 
 class CardFormatPresetSerializer(serializers.ModelSerializer):
@@ -57,6 +65,7 @@ class PaperProfileSerializer(serializers.ModelSerializer):
             "sheet_height_mm",
             "card_width_mm",
             "card_height_mm",
+            "card_corner_radius_mm",
             "margin_top_mm",
             "margin_bottom_mm",
             "margin_left_mm",
@@ -161,6 +170,36 @@ class CardTemplateCloneSerializer(serializers.Serializer):
     source_version_id = serializers.IntegerField(required=False)
 
 
+class CardTemplateDeleteSerializer(serializers.Serializer):
+    class DeleteMode:
+        AUTO = "auto"
+        SOFT = "soft"
+        HARD = "hard"
+        CHOICES = (
+            (AUTO, "Auto"),
+            (SOFT, "Soft"),
+            (HARD, "Hard"),
+        )
+
+    confirm_name = serializers.CharField(max_length=120)
+    mode = serializers.ChoiceField(
+        choices=DeleteMode.CHOICES,
+        default=DeleteMode.AUTO,
+    )
+
+
+class CardTemplateDeleteResultSerializer(serializers.Serializer):
+    template_id = serializers.IntegerField()
+    template_name = serializers.CharField()
+    requested_mode = serializers.ChoiceField(choices=CardTemplateDeleteSerializer.DeleteMode.CHOICES)
+    applied_mode = serializers.ChoiceField(choices=CardTemplateDeleteSerializer.DeleteMode.CHOICES)
+    referenced_by_print_jobs = serializers.BooleanField()
+    was_default = serializers.BooleanField()
+    deleted = serializers.BooleanField()
+    deactivated = serializers.BooleanField()
+    reassigned_default_template_id = serializers.IntegerField(allow_null=True)
+
+
 class CardTemplateVersionSerializer(serializers.ModelSerializer):
     class Meta:
         model = CardTemplateVersion
@@ -211,14 +250,14 @@ class CardTemplateVersionSerializer(serializers.ModelSerializer):
             design_payload = instance.design_payload
         if design_payload is None:
             design_payload = {"elements": []}
-            attrs["design_payload"] = design_payload
 
         if card_format is None:
             raise serializers.ValidationError({"card_format": "Card format is required."})
 
         try:
+            normalized_payload = normalize_design_payload(design_payload)
             validate_design_payload_schema(
-                design_payload,
+                normalized_payload,
                 canvas_width_mm=Decimal(str(card_format.width_mm)),
                 canvas_height_mm=Decimal(str(card_format.height_mm)),
             )
@@ -226,13 +265,94 @@ class CardTemplateVersionSerializer(serializers.ModelSerializer):
             if hasattr(exc, "message_dict"):
                 raise serializers.ValidationError(exc.message_dict) from exc
             raise serializers.ValidationError(exc.messages) from exc
+        attrs["design_payload"] = normalized_payload
         return attrs
+
+
+class CardFontAssetSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CardFontAsset
+        fields = [
+            "id",
+            "name",
+            "file",
+            "is_active",
+            "metadata",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["created_by", "created_at", "updated_at"]
+
+    def validate_file(self, value):
+        suffix = Path(str(getattr(value, "name", ""))).suffix.lower()
+        if suffix not in ALLOWED_FONT_EXTENSIONS:
+            raise serializers.ValidationError(
+                "Unsupported font extension. Allowed: "
+                + ", ".join(sorted(ALLOWED_FONT_EXTENSIONS))
+            )
+        max_bytes = int(getattr(settings, "CARD_FONT_ASSET_MAX_BYTES", 5 * 1024 * 1024))
+        if int(getattr(value, "size", 0)) > max_bytes:
+            raise serializers.ValidationError(
+                f"Font file exceeds max size ({max_bytes} bytes)."
+            )
+        return value
+
+    def validate_metadata(self, value):
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("metadata must be an object.")
+        return value
+
+
+class CardImageAssetSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CardImageAsset
+        fields = [
+            "id",
+            "name",
+            "image",
+            "is_active",
+            "metadata",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["created_by", "created_at", "updated_at"]
+
+    def validate_image(self, value):
+        suffix = Path(str(getattr(value, "name", ""))).suffix.lower()
+        if suffix not in ALLOWED_IMAGE_EXTENSIONS:
+            raise serializers.ValidationError(
+                "Unsupported image extension. Allowed: "
+                + ", ".join(sorted(ALLOWED_IMAGE_EXTENSIONS))
+            )
+        max_bytes = int(getattr(settings, "CARD_IMAGE_ASSET_MAX_BYTES", 8 * 1024 * 1024))
+        if int(getattr(value, "size", 0)) > max_bytes:
+            raise serializers.ValidationError(
+                f"Image file exceeds max size ({max_bytes} bytes)."
+            )
+        return value
+
+    def validate_metadata(self, value):
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("metadata must be an object.")
+        return value
 
 
 class MergeFieldSerializer(serializers.Serializer):
     key = serializers.CharField()
     label = serializers.CharField()
     description = serializers.CharField()
+
+
+class CardDesignerLookupItemSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    label = serializers.CharField()
+    subtitle = serializers.CharField(allow_blank=True)
 
 
 class PrintJobItemSerializer(serializers.ModelSerializer):

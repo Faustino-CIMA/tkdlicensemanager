@@ -11,13 +11,15 @@ from typing import Any
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.http import HttpRequest
+from django.utils import timezone
 
-from clubs.models import Club
+from clubs.models import BrandingAsset, Club
 from members.models import Member
 
 from .card_registry import (
     ALLOWED_MERGE_FIELDS,
     MERGE_FIELD_PATTERN,
+    normalize_design_payload,
     validate_design_payload_schema,
 )
 from .models import CardTemplateVersion, License, PaperProfile
@@ -146,6 +148,69 @@ def _default_validation_url(license_record: License | None) -> str:
     return f"{base}/verify-license/sample"
 
 
+def _calculate_member_age(member: Member | None) -> str:
+    if member is None or member.date_of_birth is None:
+        return ""
+    today = timezone.localdate()
+    years = today.year - member.date_of_birth.year
+    has_had_birthday = (today.month, today.day) >= (
+        member.date_of_birth.month,
+        member.date_of_birth.day,
+    )
+    if not has_had_birthday:
+        years -= 1
+    return str(max(0, years))
+
+
+def _compute_validity_badge(license_record: License | None) -> str:
+    if license_record is None:
+        return ""
+    today = timezone.localdate()
+    if license_record.end_date and license_record.end_date < today:
+        return "expired"
+    if license_record.end_date:
+        remaining_days = (license_record.end_date - today).days
+        if remaining_days <= 30:
+            return "expiring"
+    if license_record.status == License.Status.ACTIVE:
+        return "valid"
+    return str(license_record.status or "")
+
+
+def _resolve_club_logo_print_url(club: Club | None) -> str:
+    if club is None:
+        return ""
+    logo_asset = (
+        BrandingAsset.objects.filter(
+            scope_type=BrandingAsset.ScopeType.CLUB,
+            asset_type=BrandingAsset.AssetType.LOGO,
+            usage_type=BrandingAsset.UsageType.PRINT,
+            club_id=club.id,
+            is_selected=True,
+        )
+        .order_by("-updated_at", "-id")
+        .first()
+    )
+    if logo_asset is None:
+        logo_asset = (
+            BrandingAsset.objects.filter(
+                scope_type=BrandingAsset.ScopeType.CLUB,
+                asset_type=BrandingAsset.AssetType.LOGO,
+                usage_type=BrandingAsset.UsageType.GENERAL,
+                club_id=club.id,
+                is_selected=True,
+            )
+            .order_by("-updated_at", "-id")
+            .first()
+        )
+    if logo_asset is None or not logo_asset.file:
+        return ""
+    try:
+        return str(logo_asset.file.url)
+    except Exception:  # pragma: no cover - storage backend dependent
+        return ""
+
+
 def _resolve_entities(
     *,
     member_id: int | None,
@@ -205,12 +270,17 @@ def _build_context(
         ),
         "member.ltf_licenseid": member.ltf_licenseid if member else "",
         "member.sex": member.sex if member else "",
+        "member.date_of_birth": (
+            member.date_of_birth.isoformat() if member and member.date_of_birth else ""
+        ),
+        "member.age": _calculate_member_age(member),
         "member.profile_picture_processed": (
             member.profile_picture_processed.url
             if member and getattr(member, "profile_picture_processed", None)
             else ""
         ),
         "club.name": club.name if club else "",
+        "club.logo_print_url": _resolve_club_logo_print_url(club),
         "license.type_name": (
             license_record.license_type.name
             if license_record and license_record.license_type_id
@@ -223,6 +293,8 @@ def _build_context(
         "license.end_date": (
             license_record.end_date.isoformat() if license_record and license_record.end_date else ""
         ),
+        "license.status": str(license_record.status) if license_record else "",
+        "license.validity_badge": _compute_validity_badge(license_record),
         "qr.validation_url": _default_validation_url(license_record),
     }
 
@@ -517,8 +589,11 @@ def build_preview_data(
         raise CardRenderError("Template version must have a card format.")
 
     try:
+        normalized_design_payload = normalize_design_payload(
+            template_version.design_payload
+        )
         validate_design_payload_schema(
-            template_version.design_payload,
+            normalized_design_payload,
             canvas_width_mm=Decimal(str(template_version.card_format.width_mm)),
             canvas_height_mm=Decimal(str(template_version.card_format.height_mm)),
         )
@@ -541,7 +616,7 @@ def build_preview_data(
         sample_data=sample_data,
     )
     resolved_elements = _resolve_elements(
-        design_payload=template_version.design_payload,
+        design_payload=normalized_design_payload,
         context=context,
         member=member,
         request=request,
@@ -582,6 +657,11 @@ def build_preview_data(
             "sheet_height_mm": _format_mm(Decimal(str(paper_profile.sheet_height_mm))),
             "card_width_mm": _format_mm(Decimal(str(paper_profile.card_width_mm))),
             "card_height_mm": _format_mm(Decimal(str(paper_profile.card_height_mm))),
+            "card_corner_radius_mm": (
+                _format_mm(Decimal(str(paper_profile.card_corner_radius_mm)))
+                if paper_profile.card_corner_radius_mm is not None
+                else None
+            ),
             "rows": int(paper_profile.rows),
             "columns": int(paper_profile.columns),
             "slot_count": int(paper_profile.slot_count),

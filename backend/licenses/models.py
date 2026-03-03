@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
@@ -511,6 +512,13 @@ class PaperProfile(models.Model):
         decimal_places=2,
         validators=[MinValueValidator(Decimal("0.01"))],
     )
+    card_corner_radius_mm = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0.00"))],
+    )
     margin_top_mm = models.DecimalField(
         max_digits=8,
         decimal_places=2,
@@ -606,6 +614,66 @@ class CardTemplate(models.Model):
             )
         ]
         ordering = ["name", "-created_at"]
+
+    def __str__(self) -> str:
+        return str(self.name)
+
+
+def card_font_asset_upload_to(instance: "CardFontAsset", filename: str) -> str:
+    extension = Path(filename or "").suffix.lower()
+    return f"card_assets/fonts/{uuid4().hex}{extension}"
+
+
+def card_image_asset_upload_to(instance: "CardImageAsset", filename: str) -> str:
+    extension = Path(filename or "").suffix.lower()
+    return f"card_assets/images/{uuid4().hex}{extension}"
+
+
+class CardFontAsset(models.Model):
+    name = models.CharField(max_length=120)
+    file = models.FileField(upload_to=card_font_asset_upload_to, max_length=500)
+    is_active = models.BooleanField(default=True)  # pyright: ignore[reportArgumentType]
+    metadata = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="card_font_assets_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name", "-created_at"]
+        indexes = [
+            models.Index(fields=["is_active", "name"], name="cardfont_active_name_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return str(self.name)
+
+
+class CardImageAsset(models.Model):
+    name = models.CharField(max_length=120)
+    image = models.ImageField(upload_to=card_image_asset_upload_to, max_length=500)
+    is_active = models.BooleanField(default=True)  # pyright: ignore[reportArgumentType]
+    metadata = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="card_image_assets_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name", "-created_at"]
+        indexes = [
+            models.Index(fields=["is_active", "name"], name="cardimg_active_name_idx"),
+        ]
 
     def __str__(self) -> str:
         return str(self.name)

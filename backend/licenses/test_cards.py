@@ -19,6 +19,8 @@ from members.models import Member
 
 from .models import (
     CardFormatPreset,
+    CardFontAsset,
+    CardImageAsset,
     CardTemplate,
     CardTemplateVersion,
     FinanceAuditLog,
@@ -115,6 +117,15 @@ def _build_uploaded_png(name: str = "preview-photo.png") -> SimpleUploadedFile:
     image.save(buffer, format="PNG")
     buffer.seek(0)
     return SimpleUploadedFile(name, buffer.getvalue(), content_type="image/png")
+
+
+def _build_uploaded_font(name: str = "preview-font.ttf") -> SimpleUploadedFile:
+    # Minimal deterministic fake payload for extension/size validation tests.
+    return SimpleUploadedFile(
+        name,
+        b"\x00\x01\x00\x00fake-font-binary",
+        content_type="font/ttf",
+    )
 
 
 class LicenseCardRoleAccessTests(TestCase):
@@ -546,6 +557,46 @@ class LicenseCardValidationTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("Unknown merge field", str(response.data))
 
+    def test_accepts_v2_payload_and_normalizes_schema(self):
+        response = self.client.post(
+            "/api/card-template-versions/",
+            {
+                "template": self.template.id,
+                "label": "V2 payload",
+                "card_format": self.card_format.id,
+                "paper_profile": self.paper_profile.id,
+                "design_payload": {
+                    "schema_version": "v2",
+                    "layers": [
+                        {
+                            "id": "v2-text",
+                            "kind": "text",
+                            "x": "2.00",
+                            "y": "2.00",
+                            "width": "35.00",
+                            "height": "8.00",
+                            "content": "{{member.first_name}}",
+                            "styles": {
+                                "font_family": "Inter",
+                                "letter_spacing_mm": "0.15",
+                                "text_align": "left",
+                            },
+                        }
+                    ],
+                    "canvas": {"unit": "mm"},
+                    "metadata": {"source": "test-v2"},
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        payload = response.data["design_payload"]
+        self.assertEqual(payload["schema_version"], 2)
+        self.assertIn("elements", payload)
+        self.assertEqual(payload["elements"][0]["type"], "text")
+        self.assertEqual(payload["elements"][0]["x_mm"], "2.00")
+        self.assertEqual(payload["elements"][0]["text"], "{{member.first_name}}")
+
     def test_reject_out_of_bounds_coordinates(self):
         response = self.client.post(
             "/api/card-template-versions/",
@@ -583,6 +634,293 @@ class LicenseCardValidationTests(TestCase):
         self.assertIsNotNone(profile)
         self.assertEqual(profile.slot_count, 10)
         self.assertEqual(profile.card_width_mm, Decimal("85.60"))
+        self.assertEqual(profile.card_corner_radius_mm, Decimal("3.18"))
+
+
+class LicenseCardDesignerV2FoundationApiTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.ltf_admin = User.objects.create_user(
+            username="cards-v2-admin",
+            password="pass12345",
+            role=User.Roles.LTF_ADMIN,
+        )
+        self.club_admin = User.objects.create_user(
+            username="cards-v2-club-admin",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+        )
+        self.club = Club.objects.create(name="V2 Foundation Club", created_by=self.ltf_admin)
+        self.club.admins.add(self.club_admin)
+
+        self.card_format = CardFormatPreset.objects.get(code="3c")
+        self.paper_profile = PaperProfile.objects.get(code="sigel-lp798")
+        self.default_template = CardTemplate.objects.create(
+            name="V2 Default Template",
+            is_default=True,
+            is_active=True,
+            created_by=self.ltf_admin,
+            updated_by=self.ltf_admin,
+        )
+        self.fallback_template = CardTemplate.objects.create(
+            name="V2 Fallback Template",
+            is_default=False,
+            is_active=True,
+            created_by=self.ltf_admin,
+            updated_by=self.ltf_admin,
+        )
+        self.default_template_version = CardTemplateVersion.objects.create(
+            template=self.default_template,
+            version_number=1,
+            status=CardTemplateVersion.Status.PUBLISHED,
+            card_format=self.card_format,
+            paper_profile=self.paper_profile,
+            design_payload=_sample_design_payload(),
+            created_by=self.ltf_admin,
+            published_by=self.ltf_admin,
+            published_at=timezone.now(),
+        )
+        CardTemplateVersion.objects.create(
+            template=self.fallback_template,
+            version_number=1,
+            status=CardTemplateVersion.Status.PUBLISHED,
+            card_format=self.card_format,
+            paper_profile=self.paper_profile,
+            design_payload=_sample_design_payload(),
+            created_by=self.ltf_admin,
+            published_by=self.ltf_admin,
+            published_at=timezone.now(),
+        )
+
+        self.member = Member.objects.create(
+            club=self.club,
+            first_name="Lookup",
+            last_name="Member",
+            ltf_licenseid="LTF-V2-001",
+        )
+        self.license_type = LicenseType.objects.create(name="Lookup License", code="lookup-license")
+        self.license = License.objects.create(
+            member=self.member,
+            club=self.club,
+            license_type=self.license_type,
+            year=timezone.localdate().year,
+            status=License.Status.ACTIVE,
+        )
+
+    def _create_template_with_version(self, *, name: str) -> tuple[CardTemplate, CardTemplateVersion]:
+        template = CardTemplate.objects.create(
+            name=name,
+            is_default=False,
+            is_active=True,
+            created_by=self.ltf_admin,
+            updated_by=self.ltf_admin,
+        )
+        version = CardTemplateVersion.objects.create(
+            template=template,
+            version_number=1,
+            status=CardTemplateVersion.Status.PUBLISHED,
+            card_format=self.card_format,
+            paper_profile=self.paper_profile,
+            design_payload=_sample_design_payload(),
+            created_by=self.ltf_admin,
+            published_by=self.ltf_admin,
+            published_at=timezone.now(),
+        )
+        return template, version
+
+    def test_safe_delete_requires_exact_name_confirmation(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            f"/api/card-templates/{self.default_template.id}/delete/",
+            {"confirm_name": "Wrong Name", "mode": "soft"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("confirm_name", response.data)
+
+    def test_safe_delete_hard_for_unreferenced_template(self):
+        template, _ = self._create_template_with_version(name="Hard Delete Template")
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            f"/api/card-templates/{template.id}/delete/",
+            {"confirm_name": template.name, "mode": "hard"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["applied_mode"], "hard")
+        self.assertTrue(response.data["deleted"])
+        self.assertFalse(CardTemplate.objects.filter(id=template.id).exists())
+        self.assertTrue(
+            FinanceAuditLog.objects.filter(
+                action="card_template.deleted_hard",
+                metadata__template_id=template.id,
+            ).exists()
+        )
+
+    def test_safe_delete_auto_soft_for_referenced_template(self):
+        template, version = self._create_template_with_version(name="Referenced Template")
+        PrintJob.objects.create(
+            club=self.club,
+            template_version=version,
+            paper_profile=self.paper_profile,
+            total_items=1,
+            requested_by=self.ltf_admin,
+        )
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            f"/api/card-templates/{template.id}/delete/",
+            {"confirm_name": template.name, "mode": "auto"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["applied_mode"], "soft")
+        self.assertTrue(response.data["referenced_by_print_jobs"])
+        template.refresh_from_db()
+        self.assertFalse(template.is_active)
+
+    def test_safe_delete_hard_rejected_for_referenced_template_and_audited(self):
+        template, version = self._create_template_with_version(name="Referenced Hard Reject")
+        PrintJob.objects.create(
+            club=self.club,
+            template_version=version,
+            paper_profile=self.paper_profile,
+            total_items=1,
+            requested_by=self.ltf_admin,
+        )
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            f"/api/card-templates/{template.id}/delete/",
+            {"confirm_name": template.name, "mode": "hard"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(CardTemplate.objects.filter(id=template.id).exists())
+        self.assertTrue(
+            FinanceAuditLog.objects.filter(
+                action="card_template.delete_rejected_referenced",
+                metadata__template_id=template.id,
+            ).exists()
+        )
+
+    def test_safe_delete_auto_soft_for_default_reassigns_default(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            f"/api/card-templates/{self.default_template.id}/delete/",
+            {"confirm_name": self.default_template.name, "mode": "auto"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["applied_mode"], "soft")
+        self.default_template.refresh_from_db()
+        self.fallback_template.refresh_from_db()
+        self.assertFalse(self.default_template.is_active)
+        self.assertFalse(self.default_template.is_default)
+        self.assertTrue(self.fallback_template.is_default)
+        self.assertEqual(response.data["reassigned_default_template_id"], self.fallback_template.id)
+
+    def test_safe_delete_permissions_and_legacy_delete_blocked(self):
+        self.client.force_authenticate(user=self.club_admin)
+        forbidden_response = self.client.post(
+            f"/api/card-templates/{self.default_template.id}/delete/",
+            {"confirm_name": self.default_template.name, "mode": "soft"},
+            format="json",
+        )
+        self.assertEqual(forbidden_response.status_code, status.HTTP_403_FORBIDDEN)
+
+        self.client.force_authenticate(user=self.ltf_admin)
+        blocked_response = self.client.delete(f"/api/card-templates/{self.default_template.id}/")
+        self.assertEqual(blocked_response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    def test_asset_upload_endpoints_and_validation(self):
+        with tempfile.TemporaryDirectory() as temp_media_root:
+            with self.settings(MEDIA_ROOT=temp_media_root):
+                self.client.force_authenticate(user=self.ltf_admin)
+                font_response = self.client.post(
+                    "/api/card-font-assets/",
+                    {
+                        "name": "Inter Regular",
+                        "file": _build_uploaded_font("inter-regular.ttf"),
+                    },
+                    format="multipart",
+                )
+                self.assertEqual(font_response.status_code, status.HTTP_201_CREATED)
+                self.assertEqual(CardFontAsset.objects.count(), 1)
+
+                image_response = self.client.post(
+                    "/api/card-image-assets/",
+                    {
+                        "name": "Logo Sample",
+                        "image": _build_uploaded_png("logo-sample.png"),
+                    },
+                    format="multipart",
+                )
+                self.assertEqual(image_response.status_code, status.HTTP_201_CREATED)
+                self.assertEqual(CardImageAsset.objects.count(), 1)
+
+                invalid_font_response = self.client.post(
+                    "/api/card-font-assets/",
+                    {
+                        "name": "Invalid Font",
+                        "file": _build_uploaded_font("invalid-font.txt"),
+                    },
+                    format="multipart",
+                )
+                self.assertEqual(invalid_font_response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.client.force_authenticate(user=self.club_admin)
+        denied_response = self.client.post(
+            "/api/card-image-assets/",
+            {"name": "Denied", "image": _build_uploaded_png("denied.png")},
+            format="multipart",
+        )
+        self.assertEqual(denied_response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_lookup_endpoints_return_frontend_friendly_payload(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+
+        members_response = self.client.get(
+            "/api/card-designer/lookups/members/",
+            {"q": "Lookup", "limit": 5},
+        )
+        self.assertEqual(members_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(members_response.data)
+        self.assertSetEqual(set(members_response.data[0].keys()), {"id", "label", "subtitle"})
+
+        licenses_response = self.client.get(
+            "/api/card-designer/lookups/licenses/",
+            {"q": "Lookup", "limit": 5},
+        )
+        self.assertEqual(licenses_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(licenses_response.data)
+        self.assertSetEqual(set(licenses_response.data[0].keys()), {"id", "label", "subtitle"})
+
+        clubs_response = self.client.get(
+            "/api/card-designer/lookups/clubs/",
+            {"q": "Foundation", "limit": 5},
+        )
+        self.assertEqual(clubs_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(clubs_response.data)
+        self.assertSetEqual(set(clubs_response.data[0].keys()), {"id", "label", "subtitle"})
+
+    def test_lookup_endpoints_are_ltf_admin_only(self):
+        self.client.force_authenticate(user=self.club_admin)
+        for path in (
+            "/api/card-designer/lookups/members/",
+            "/api/card-designer/lookups/licenses/",
+            "/api/card-designer/lookups/clubs/",
+        ):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_merge_field_registry_contains_v2_foundation_keys(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.get("/api/merge-fields/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        keys = {item["key"] for item in response.data}
+        self.assertIn("member.age", keys)
+        self.assertIn("license.validity_badge", keys)
+        self.assertIn("club.logo_print_url", keys)
 
 
 class LicenseCardPreviewApiTests(TestCase):
