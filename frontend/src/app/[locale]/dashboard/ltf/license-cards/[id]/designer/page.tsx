@@ -67,10 +67,48 @@ type EditableDesignPayload = Omit<CardDesignPayload, "elements"> & {
   elements: EditableDesignElement[];
 };
 
+type ElementBounds = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  centerX: number;
+  centerY: number;
+  width: number;
+  height: number;
+};
+
+type SnapGuideLine = {
+  orientation: "vertical" | "horizontal";
+  value_mm: number;
+  source: "grid" | "element";
+};
+
 type DragState = {
   elementId: string;
-  offsetX: number;
-  offsetY: number;
+  targetIds: string[];
+  pointerOffsetX: number;
+  pointerOffsetY: number;
+  startPositions: Record<string, { x_mm: number; y_mm: number }>;
+  startSelectionBounds: ElementBounds;
+  snapTargets: {
+    vertical: number[];
+    horizontal: number[];
+  };
+} | null;
+
+type ResizeState = {
+  elementId: string;
+  startX_mm: number;
+  startY_mm: number;
+  startWidth_mm: number;
+  startHeight_mm: number;
+  startPointerX: number;
+  startPointerY: number;
+  snapTargets: {
+    vertical: number[];
+    horizontal: number[];
+  };
 } | null;
 
 const ALLOWED_ELEMENT_TYPES: CardElementType[] = [
@@ -85,6 +123,10 @@ const DEFAULT_SAFE_AREA_MM = "3.00";
 const TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE = "template-default";
 const MERGE_FIELD_TOKEN_REGEX = /\{\{\s*([^{}\s]+)\s*\}\}/g;
 const PREVIEW_LOOKUP_LIMIT = 20;
+const HISTORY_STACK_LIMIT = 250;
+const DEFAULT_GRID_SIZE_MM = "1.00";
+const DEFAULT_SNAP_THRESHOLD_MM = "1.20";
+const RULER_SIZE_PX = 24;
 
 function toFiniteNumber(value: unknown, fallback: number) {
   const parsed = Number(value);
@@ -251,6 +293,179 @@ function DesignerLookupField({
   );
 }
 
+function cloneEditableDesignPayload(payload: EditableDesignPayload): EditableDesignPayload {
+  return JSON.parse(JSON.stringify(payload)) as EditableDesignPayload;
+}
+
+function getElementGroupId(element: EditableDesignElement): string | null {
+  const groupId = element.metadata?.group_id;
+  if (typeof groupId !== "string") {
+    return null;
+  }
+  const normalized = groupId.trim();
+  return normalized ? normalized : null;
+}
+
+function withGroupId(element: EditableDesignElement, groupId: string | null): EditableDesignElement {
+  const metadata = isPlainObject(element.metadata) ? { ...element.metadata } : {};
+  if (groupId) {
+    metadata.group_id = groupId;
+  } else {
+    delete metadata.group_id;
+  }
+  return {
+    ...element,
+    metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+  };
+}
+
+function createGroupId() {
+  return `group-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+}
+
+function getElementBounds(element: EditableDesignElement): ElementBounds {
+  const left = element.x_mm;
+  const top = element.y_mm;
+  const width = Math.max(0, element.width_mm);
+  const height = Math.max(0, element.height_mm);
+  const right = left + width;
+  const bottom = top + height;
+  return {
+    left,
+    top,
+    right,
+    bottom,
+    centerX: left + width / 2,
+    centerY: top + height / 2,
+    width,
+    height,
+  };
+}
+
+function getBoundsForElements(elements: EditableDesignElement[]): ElementBounds | null {
+  if (elements.length === 0) {
+    return null;
+  }
+  let left = Number.POSITIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+  for (const element of elements) {
+    const bounds = getElementBounds(element);
+    left = Math.min(left, bounds.left);
+    top = Math.min(top, bounds.top);
+    right = Math.max(right, bounds.right);
+    bottom = Math.max(bottom, bounds.bottom);
+  }
+  const width = Math.max(0, right - left);
+  const height = Math.max(0, bottom - top);
+  return {
+    left,
+    top,
+    right,
+    bottom,
+    centerX: left + width / 2,
+    centerY: top + height / 2,
+    width,
+    height,
+  };
+}
+
+function shiftBounds(bounds: ElementBounds, deltaX: number, deltaY: number): ElementBounds {
+  return {
+    left: bounds.left + deltaX,
+    top: bounds.top + deltaY,
+    right: bounds.right + deltaX,
+    bottom: bounds.bottom + deltaY,
+    centerX: bounds.centerX + deltaX,
+    centerY: bounds.centerY + deltaY,
+    width: bounds.width,
+    height: bounds.height,
+  };
+}
+
+function toUniqueSortedNumbers(values: number[]): number[] {
+  const unique = new Set<number>();
+  for (const value of values) {
+    if (Number.isFinite(value)) {
+      unique.add(roundMm(value));
+    }
+  }
+  return Array.from(unique.values()).sort((a, b) => a - b);
+}
+
+function buildSnapTargets(
+  elements: EditableDesignElement[],
+  excludedIds: Set<string>
+): { vertical: number[]; horizontal: number[] } {
+  const vertical: number[] = [];
+  const horizontal: number[] = [];
+  for (const element of elements) {
+    if (excludedIds.has(element.id)) {
+      continue;
+    }
+    const bounds = getElementBounds(element);
+    vertical.push(bounds.left, bounds.centerX, bounds.right);
+    horizontal.push(bounds.top, bounds.centerY, bounds.bottom);
+  }
+  return {
+    vertical: toUniqueSortedNumbers(vertical),
+    horizontal: toUniqueSortedNumbers(horizontal),
+  };
+}
+
+function nearestGridValue(value: number, gridSizeMm: number): number {
+  if (!Number.isFinite(gridSizeMm) || gridSizeMm <= 0) {
+    return value;
+  }
+  const quotient = Math.round(value / gridSizeMm);
+  return roundMm(quotient * gridSizeMm);
+}
+
+function findBestSnapAdjustment(
+  candidateValues: number[],
+  targetValues: number[],
+  thresholdMm: number
+): { adjustment: number; lineValueMm: number } | null {
+  let bestAdjustment = Number.POSITIVE_INFINITY;
+  let bestLineValue = 0;
+  for (const candidate of candidateValues) {
+    for (const target of targetValues) {
+      const delta = target - candidate;
+      if (Math.abs(delta) > thresholdMm) {
+        continue;
+      }
+      if (Math.abs(delta) < Math.abs(bestAdjustment)) {
+        bestAdjustment = delta;
+        bestLineValue = target;
+      }
+    }
+  }
+  if (!Number.isFinite(bestAdjustment)) {
+    return null;
+  }
+  return {
+    adjustment: bestAdjustment,
+    lineValueMm: bestLineValue,
+  };
+}
+
+function isEventFromEditableField(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  if (target.isContentEditable) {
+    return true;
+  }
+  const tagName = target.tagName.toLowerCase();
+  return (
+    tagName === "input" ||
+    tagName === "textarea" ||
+    tagName === "select" ||
+    Boolean(target.closest("input, textarea, select, [contenteditable='true']"))
+  );
+}
+
 function clampElementToCanvas(
   element: EditableDesignElement,
   canvasWidthMm: number,
@@ -413,7 +628,18 @@ export default function LtfAdminLicenseCardDesignerPage() {
     metadata: { unit: "mm" },
   });
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
+  const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
   const [dragState, setDragState] = useState<DragState>(null);
+  const [resizeState, setResizeState] = useState<ResizeState>(null);
+  const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
+  const [snapGuideLines, setSnapGuideLines] = useState<SnapGuideLine[]>([]);
+  const [liveMeasurementBounds, setLiveMeasurementBounds] = useState<ElementBounds | null>(null);
+  const [showRulers, setShowRulers] = useState(true);
+  const [showGrid, setShowGrid] = useState(true);
+  const [gridSizeMmInput, setGridSizeMmInput] = useState(DEFAULT_GRID_SIZE_MM);
+  const [snapToGrid, setSnapToGrid] = useState(true);
+  const [snapToElements, setSnapToElements] = useState(true);
+  const [snapThresholdMmInput, setSnapThresholdMmInput] = useState(DEFAULT_SNAP_THRESHOLD_MM);
   const [showBleedGuide, setShowBleedGuide] = useState(true);
   const [showSafeAreaGuide, setShowSafeAreaGuide] = useState(true);
   const [bleedGuideMmInput, setBleedGuideMmInput] = useState(DEFAULT_BLEED_MM);
@@ -459,6 +685,9 @@ export default function LtfAdminLicenseCardDesignerPage() {
   const [isOpeningCardPreviewPdf, setIsOpeningCardPreviewPdf] = useState(false);
   const [isOpeningSheetPreviewPdf, setIsOpeningSheetPreviewPdf] = useState(false);
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  const historyPastRef = useRef<EditableDesignPayload[]>([]);
+  const historyFutureRef = useRef<EditableDesignPayload[]>([]);
+  const [historyRevision, setHistoryRevision] = useState(0);
 
   const canManageDesigner = currentRole === "ltf_admin";
   const fallbackRoute = getDashboardRouteForRole(currentRole ?? "", locale) ?? `/${locale}/dashboard`;
@@ -540,6 +769,12 @@ export default function LtfAdminLicenseCardDesignerPage() {
   );
   const bleedPx = bleedGuideMm * canvasScale;
   const safeAreaPx = safeAreaGuideMm * canvasScale;
+  const gridSizeMm = Math.max(0.1, toFiniteNumber(gridSizeMmInput, Number(DEFAULT_GRID_SIZE_MM)));
+  const snapThresholdMm = Math.max(
+    0.2,
+    toFiniteNumber(snapThresholdMmInput, Number(DEFAULT_SNAP_THRESHOLD_MM))
+  );
+  const gridSpacingPx = Math.max(2, gridSizeMm * canvasScale);
 
   const effectiveSlotCount = useMemo(() => {
     if (previewData?.paper_profile?.slot_count) {
@@ -561,18 +796,105 @@ export default function LtfAdminLicenseCardDesignerPage() {
     return 1;
   }, [effectivePreviewPaperProfile, previewData?.paper_profile?.columns]);
 
+  const allElementIds = useMemo(() => {
+    return new Set(designPayload.elements.map((element) => element.id));
+  }, [designPayload.elements]);
+
+  const effectiveSelectedElementIds = useMemo(() => {
+    const fromMulti = selectedElementIds.filter((id) => allElementIds.has(id));
+    if (fromMulti.length > 0) {
+      return fromMulti;
+    }
+    if (selectedElementId && allElementIds.has(selectedElementId)) {
+      return [selectedElementId];
+    }
+    return [];
+  }, [allElementIds, selectedElementId, selectedElementIds]);
+
+  const selectedElements = useMemo(() => {
+    if (effectiveSelectedElementIds.length === 0) {
+      return [];
+    }
+    const selectedSet = new Set(effectiveSelectedElementIds);
+    return designPayload.elements.filter((element) => selectedSet.has(element.id));
+  }, [designPayload.elements, effectiveSelectedElementIds]);
+
   const selectedElement = useMemo(() => {
     if (!selectedElementId) {
-      return null;
+      return selectedElements[0] ?? null;
     }
-    return designPayload.elements.find((element) => element.id === selectedElementId) ?? null;
-  }, [designPayload.elements, selectedElementId]);
+    return (
+      designPayload.elements.find((element) => element.id === selectedElementId) ??
+      selectedElements[0] ??
+      null
+    );
+  }, [designPayload.elements, selectedElementId, selectedElements]);
 
   const mergeFieldKeySet = useMemo(() => {
     return new Set(mergeFields.map((field) => field.key));
   }, [mergeFields]);
 
   const isEditableDraft = canManageDesigner && selectedVersion?.status === "draft";
+  const canUndo = historyRevision >= 0 && historyPastRef.current.length > 0;
+  const canRedo = historyRevision >= 0 && historyFutureRef.current.length > 0;
+
+  const resetHistory = useCallback(() => {
+    historyPastRef.current = [];
+    historyFutureRef.current = [];
+    setHistoryRevision((value) => value + 1);
+  }, []);
+
+  const pushHistorySnapshot = useCallback((payload: EditableDesignPayload) => {
+    historyPastRef.current.push(cloneEditableDesignPayload(payload));
+    if (historyPastRef.current.length > HISTORY_STACK_LIMIT) {
+      historyPastRef.current.shift();
+    }
+    historyFutureRef.current = [];
+    setHistoryRevision((value) => value + 1);
+  }, []);
+
+  const applyDesignMutation = useCallback(
+    (
+      updater: (payload: EditableDesignPayload) => EditableDesignPayload,
+      options?: { recordHistory?: boolean }
+    ) => {
+      setDesignPayload((previousPayload) => {
+        const nextPayload = updater(previousPayload);
+        if (nextPayload === previousPayload) {
+          return previousPayload;
+        }
+        if (options?.recordHistory !== false) {
+          pushHistorySnapshot(previousPayload);
+        }
+        return nextPayload;
+      });
+    },
+    [pushHistorySnapshot]
+  );
+
+  const clearElementSelection = useCallback(() => {
+    setSelectedElementIds([]);
+    setSelectedElementId(null);
+  }, []);
+
+  const setSingleElementSelection = useCallback((elementId: string) => {
+    setSelectedElementIds([elementId]);
+    setSelectedElementId(elementId);
+  }, []);
+
+  const toggleElementSelection = useCallback((elementId: string) => {
+    setSelectedElementIds((previousSelectedIds) => {
+      const selectedSet = new Set(previousSelectedIds);
+      if (selectedSet.has(elementId)) {
+        selectedSet.delete(elementId);
+      } else {
+        selectedSet.add(elementId);
+      }
+      const nextIds = Array.from(selectedSet.values());
+      setSelectedElementId(nextIds.length > 0 ? elementId : null);
+      return nextIds;
+    });
+  }, []);
 
   const loadDesignerData = useCallback(
     async (preferredVersionId?: number) => {
@@ -649,15 +971,23 @@ export default function LtfAdminLicenseCardDesignerPage() {
   useEffect(() => {
     if (!selectedVersion) {
       setDesignPayload({ elements: [], metadata: { unit: "mm" } });
+      setSelectedElementIds([]);
       setSelectedElementId(null);
       setPreviewData(null);
       setPreviewSelectedSlots([]);
       setPreviewPaperProfileValue(TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE);
+      resetHistory();
       return;
     }
     setDesignPayload(normalizeDesignPayload(selectedVersion.design_payload));
+    setSelectedElementIds([]);
     setSelectedElementId(null);
     setPreviewData(null);
+    setDragState(null);
+    setResizeState(null);
+    setSnapGuideLines([]);
+    setLiveMeasurementBounds(null);
+    resetHistory();
     setPreviewPaperProfileValue((previousValue) => {
       if (previousValue === TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE) {
         return previousValue;
@@ -668,7 +998,23 @@ export default function LtfAdminLicenseCardDesignerPage() {
       );
       return matchesCardFormat ? previousValue : TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE;
     });
-  }, [paperProfilesForSelectedCardFormat, selectedVersion]);
+  }, [paperProfilesForSelectedCardFormat, resetHistory, selectedVersion]);
+
+  useEffect(() => {
+    setSelectedElementIds((previousIds) => {
+      const filteredIds = previousIds.filter((id) => allElementIds.has(id));
+      setSelectedElementId((previousId) => {
+        if (previousId && allElementIds.has(previousId)) {
+          return previousId;
+        }
+        return filteredIds[filteredIds.length - 1] ?? null;
+      });
+      if (filteredIds.length === previousIds.length) {
+        return previousIds;
+      }
+      return filteredIds;
+    });
+  }, [allElementIds]);
 
   useEffect(() => {
     if (effectiveSlotCount <= 0) {
@@ -817,33 +1163,134 @@ export default function LtfAdminLicenseCardDesignerPage() {
       if (!canvasRect) {
         return;
       }
-      const xPx = event.clientX - canvasRect.left - dragState.offsetX;
-      const yPx = event.clientY - canvasRect.top - dragState.offsetY;
+      const activeStartPosition = dragState.startPositions[dragState.elementId];
+      if (!activeStartPosition) {
+        return;
+      }
 
-      setDesignPayload((previousPayload) => {
-        const nextElements = previousPayload.elements.map((element) => {
-          if (element.id !== dragState.elementId) {
-            return element;
-          }
-          return clampElementToCanvas(
-            {
-              ...element,
-              x_mm: xPx / canvasScale,
-              y_mm: yPx / canvasScale,
-            },
-            canvasWidthMm,
-            canvasHeightMm
-          );
+      const pointerX = event.clientX - canvasRect.left;
+      const pointerY = event.clientY - canvasRect.top;
+      const rawActiveX_mm = (pointerX - dragState.pointerOffsetX) / canvasScale;
+      const rawActiveY_mm = (pointerY - dragState.pointerOffsetY) / canvasScale;
+      let deltaX = rawActiveX_mm - activeStartPosition.x_mm;
+      let deltaY = rawActiveY_mm - activeStartPosition.y_mm;
+
+      const bounds = dragState.startSelectionBounds;
+      deltaX = clamp(deltaX, -bounds.left, canvasWidthMm - bounds.right);
+      deltaY = clamp(deltaY, -bounds.top, canvasHeightMm - bounds.bottom);
+
+      const candidateBounds = shiftBounds(bounds, deltaX, deltaY);
+      const nextGuideLines: SnapGuideLine[] = [];
+
+      const xCandidates: Array<{ adjustment: number; line: SnapGuideLine }> = [];
+      if (snapToGrid) {
+        const snappedGridX = nearestGridValue(candidateBounds.left, gridSizeMm);
+        xCandidates.push({
+          adjustment: snappedGridX - candidateBounds.left,
+          line: {
+            orientation: "vertical",
+            value_mm: snappedGridX,
+            source: "grid",
+          },
         });
-        return {
-          ...previousPayload,
-          elements: nextElements,
-        };
-      });
+      }
+      if (snapToElements) {
+        const elementSnap = findBestSnapAdjustment(
+          [candidateBounds.left, candidateBounds.centerX, candidateBounds.right],
+          dragState.snapTargets.vertical,
+          snapThresholdMm
+        );
+        if (elementSnap) {
+          xCandidates.push({
+            adjustment: elementSnap.adjustment,
+            line: {
+              orientation: "vertical",
+              value_mm: elementSnap.lineValueMm,
+              source: "element",
+            },
+          });
+        }
+      }
+      if (xCandidates.length > 0) {
+        const bestX = xCandidates.reduce((best, candidate) =>
+          Math.abs(candidate.adjustment) < Math.abs(best.adjustment) ? candidate : best
+        );
+        deltaX += bestX.adjustment;
+        nextGuideLines.push(bestX.line);
+      }
+
+      const yCandidates: Array<{ adjustment: number; line: SnapGuideLine }> = [];
+      if (snapToGrid) {
+        const snappedGridY = nearestGridValue(candidateBounds.top, gridSizeMm);
+        yCandidates.push({
+          adjustment: snappedGridY - candidateBounds.top,
+          line: {
+            orientation: "horizontal",
+            value_mm: snappedGridY,
+            source: "grid",
+          },
+        });
+      }
+      if (snapToElements) {
+        const elementSnap = findBestSnapAdjustment(
+          [candidateBounds.top, candidateBounds.centerY, candidateBounds.bottom],
+          dragState.snapTargets.horizontal,
+          snapThresholdMm
+        );
+        if (elementSnap) {
+          yCandidates.push({
+            adjustment: elementSnap.adjustment,
+            line: {
+              orientation: "horizontal",
+              value_mm: elementSnap.lineValueMm,
+              source: "element",
+            },
+          });
+        }
+      }
+      if (yCandidates.length > 0) {
+        const bestY = yCandidates.reduce((best, candidate) =>
+          Math.abs(candidate.adjustment) < Math.abs(best.adjustment) ? candidate : best
+        );
+        deltaY += bestY.adjustment;
+        nextGuideLines.push(bestY.line);
+      }
+
+      deltaX = clamp(deltaX, -bounds.left, canvasWidthMm - bounds.right);
+      deltaY = clamp(deltaY, -bounds.top, canvasHeightMm - bounds.bottom);
+
+      applyDesignMutation(
+        (previousPayload) => {
+          const nextElements = previousPayload.elements.map((element) => {
+            const startPosition = dragState.startPositions[element.id];
+            if (!startPosition) {
+              return element;
+            }
+            return clampElementToCanvas(
+              {
+                ...element,
+                x_mm: startPosition.x_mm + deltaX,
+                y_mm: startPosition.y_mm + deltaY,
+              },
+              canvasWidthMm,
+              canvasHeightMm
+            );
+          });
+          return {
+            ...previousPayload,
+            elements: nextElements,
+          };
+        },
+        { recordHistory: false }
+      );
+      setLiveMeasurementBounds(shiftBounds(bounds, deltaX, deltaY));
+      setSnapGuideLines(nextGuideLines);
     };
 
     const handleMouseUp = () => {
       setDragState(null);
+      setSnapGuideLines([]);
+      setLiveMeasurementBounds(null);
     };
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -852,14 +1299,191 @@ export default function LtfAdminLicenseCardDesignerPage() {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [canvasHeightMm, canvasScale, canvasWidthMm, dragState, isEditableDraft]);
+  }, [
+    applyDesignMutation,
+    canvasHeightMm,
+    canvasScale,
+    canvasWidthMm,
+    dragState,
+    gridSizeMm,
+    isEditableDraft,
+    snapThresholdMm,
+    snapToElements,
+    snapToGrid,
+  ]);
+
+  useEffect(() => {
+    if (!resizeState || !isEditableDraft) {
+      return;
+    }
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const deltaX_mm = (event.clientX - resizeState.startPointerX) / canvasScale;
+      const deltaY_mm = (event.clientY - resizeState.startPointerY) / canvasScale;
+
+      let width = clamp(
+        resizeState.startWidth_mm + deltaX_mm,
+        0.5,
+        canvasWidthMm - resizeState.startX_mm
+      );
+      let height = clamp(
+        resizeState.startHeight_mm + deltaY_mm,
+        0.5,
+        canvasHeightMm - resizeState.startY_mm
+      );
+
+      const rawRight = resizeState.startX_mm + width;
+      const rawBottom = resizeState.startY_mm + height;
+      const nextGuideLines: SnapGuideLine[] = [];
+
+      const xCandidates: Array<{ adjustment: number; line: SnapGuideLine }> = [];
+      if (snapToGrid) {
+        const snappedGridX = nearestGridValue(rawRight, gridSizeMm);
+        xCandidates.push({
+          adjustment: snappedGridX - rawRight,
+          line: {
+            orientation: "vertical",
+            value_mm: snappedGridX,
+            source: "grid",
+          },
+        });
+      }
+      if (snapToElements) {
+        const elementSnap = findBestSnapAdjustment(
+          [rawRight],
+          resizeState.snapTargets.vertical,
+          snapThresholdMm
+        );
+        if (elementSnap) {
+          xCandidates.push({
+            adjustment: elementSnap.adjustment,
+            line: {
+              orientation: "vertical",
+              value_mm: elementSnap.lineValueMm,
+              source: "element",
+            },
+          });
+        }
+      }
+      if (xCandidates.length > 0) {
+        const bestX = xCandidates.reduce((best, candidate) =>
+          Math.abs(candidate.adjustment) < Math.abs(best.adjustment) ? candidate : best
+        );
+        width = clamp(
+          rawRight + bestX.adjustment - resizeState.startX_mm,
+          0.5,
+          canvasWidthMm - resizeState.startX_mm
+        );
+        nextGuideLines.push(bestX.line);
+      }
+
+      const yCandidates: Array<{ adjustment: number; line: SnapGuideLine }> = [];
+      if (snapToGrid) {
+        const snappedGridY = nearestGridValue(rawBottom, gridSizeMm);
+        yCandidates.push({
+          adjustment: snappedGridY - rawBottom,
+          line: {
+            orientation: "horizontal",
+            value_mm: snappedGridY,
+            source: "grid",
+          },
+        });
+      }
+      if (snapToElements) {
+        const elementSnap = findBestSnapAdjustment(
+          [rawBottom],
+          resizeState.snapTargets.horizontal,
+          snapThresholdMm
+        );
+        if (elementSnap) {
+          yCandidates.push({
+            adjustment: elementSnap.adjustment,
+            line: {
+              orientation: "horizontal",
+              value_mm: elementSnap.lineValueMm,
+              source: "element",
+            },
+          });
+        }
+      }
+      if (yCandidates.length > 0) {
+        const bestY = yCandidates.reduce((best, candidate) =>
+          Math.abs(candidate.adjustment) < Math.abs(best.adjustment) ? candidate : best
+        );
+        height = clamp(
+          rawBottom + bestY.adjustment - resizeState.startY_mm,
+          0.5,
+          canvasHeightMm - resizeState.startY_mm
+        );
+        nextGuideLines.push(bestY.line);
+      }
+
+      const measuredBounds: ElementBounds = {
+        left: resizeState.startX_mm,
+        top: resizeState.startY_mm,
+        width,
+        height,
+        right: resizeState.startX_mm + width,
+        bottom: resizeState.startY_mm + height,
+        centerX: resizeState.startX_mm + width / 2,
+        centerY: resizeState.startY_mm + height / 2,
+      };
+
+      applyDesignMutation(
+        (previousPayload) => ({
+          ...previousPayload,
+          elements: previousPayload.elements.map((element) => {
+            if (element.id !== resizeState.elementId) {
+              return element;
+            }
+            return clampElementToCanvas(
+              {
+                ...element,
+                width_mm: width,
+                height_mm: height,
+              },
+              canvasWidthMm,
+              canvasHeightMm
+            );
+          }),
+        }),
+        { recordHistory: false }
+      );
+      setSnapGuideLines(nextGuideLines);
+      setLiveMeasurementBounds(measuredBounds);
+    };
+
+    const handleMouseUp = () => {
+      setResizeState(null);
+      setSnapGuideLines([]);
+      setLiveMeasurementBounds(null);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [
+    applyDesignMutation,
+    canvasHeightMm,
+    canvasScale,
+    canvasWidthMm,
+    gridSizeMm,
+    isEditableDraft,
+    resizeState,
+    snapThresholdMm,
+    snapToElements,
+    snapToGrid,
+  ]);
 
   const updateSelectedElement = useCallback(
     (updater: (element: EditableDesignElement) => EditableDesignElement) => {
       if (!selectedElementId) {
         return;
       }
-      setDesignPayload((previousPayload) => {
+      applyDesignMutation((previousPayload) => {
         const nextElements = previousPayload.elements.map((element) => {
           if (element.id !== selectedElementId) {
             return element;
@@ -873,19 +1497,20 @@ export default function LtfAdminLicenseCardDesignerPage() {
         };
       });
     },
-    [canvasHeightMm, canvasWidthMm, selectedElementId]
+    [applyDesignMutation, canvasHeightMm, canvasWidthMm, selectedElementId]
   );
 
-  const removeSelectedElement = () => {
-    if (!selectedElementId || !isEditableDraft) {
+  const removeSelectedElement = useCallback(() => {
+    if (!isEditableDraft || effectiveSelectedElementIds.length === 0) {
       return;
     }
-    setDesignPayload((previousPayload) => ({
+    const selectedSet = new Set(effectiveSelectedElementIds);
+    applyDesignMutation((previousPayload) => ({
       ...previousPayload,
-      elements: previousPayload.elements.filter((element) => element.id !== selectedElementId),
+      elements: previousPayload.elements.filter((element) => !selectedSet.has(element.id)),
     }));
-    setSelectedElementId(null);
-  };
+    clearElementSelection();
+  }, [applyDesignMutation, clearElementSelection, effectiveSelectedElementIds, isEditableDraft]);
 
   const createElement = useCallback(
     (type: CardElementType, xMm: number, yMm: number): EditableDesignElement => {
@@ -972,11 +1597,11 @@ export default function LtfAdminLicenseCardDesignerPage() {
 
   const applyToolDrop = (elementType: CardElementType, xMm: number, yMm: number) => {
     const newElement = createElement(elementType, xMm, yMm);
-    setDesignPayload((previousPayload) => ({
+    applyDesignMutation((previousPayload) => ({
       ...previousPayload,
       elements: [...previousPayload.elements, newElement],
     }));
-    setSelectedElementId(newElement.id);
+    setSingleElementSelection(newElement.id);
   };
 
   const onCanvasDrop: React.DragEventHandler<HTMLDivElement> = (event) => {
@@ -1004,12 +1629,53 @@ export default function LtfAdminLicenseCardDesignerPage() {
     event.preventDefault();
   };
 
+  const resolveMoveTargetIds = useCallback(
+    (elementId: string, payload: EditableDesignPayload, selectedIds: string[]) => {
+      const selectedSet = new Set(selectedIds);
+      const filteredSelectedIds = payload.elements
+        .map((element) => element.id)
+        .filter((id) => selectedSet.has(id));
+      if (filteredSelectedIds.length > 1 && selectedSet.has(elementId)) {
+        return filteredSelectedIds;
+      }
+      const element = payload.elements.find((entry) => entry.id === elementId);
+      if (!element) {
+        return [elementId];
+      }
+      const groupId = getElementGroupId(element);
+      if (!groupId) {
+        return [elementId];
+      }
+      const groupedIds = payload.elements
+        .filter((entry) => getElementGroupId(entry) === groupId)
+        .map((entry) => entry.id);
+      return groupedIds.length > 1 ? groupedIds : [elementId];
+    },
+    []
+  );
+
   const handleElementMouseDown = (
     event: React.MouseEvent<HTMLDivElement>,
     element: EditableDesignElement
   ) => {
+    if (event.button !== 0) {
+      return;
+    }
     event.stopPropagation();
-    setSelectedElementId(element.id);
+    if (event.shiftKey) {
+      toggleElementSelection(element.id);
+      return;
+    }
+
+    const selectionForMove =
+      effectiveSelectedElementIds.length > 1 && effectiveSelectedElementIds.includes(element.id)
+        ? effectiveSelectedElementIds
+        : [element.id];
+    if (selectionForMove.length === 1) {
+      setSingleElementSelection(element.id);
+    } else {
+      setSelectedElementId(element.id);
+    }
     if (!isEditableDraft) {
       return;
     }
@@ -1017,14 +1683,63 @@ export default function LtfAdminLicenseCardDesignerPage() {
     if (!canvasRect) {
       return;
     }
+    const targetIds = resolveMoveTargetIds(element.id, designPayload, selectionForMove);
+    const targetIdSet = new Set(targetIds);
+    const targetElements = designPayload.elements.filter((entry) => targetIdSet.has(entry.id));
+    const startSelectionBounds = getBoundsForElements(targetElements);
+    if (!startSelectionBounds) {
+      return;
+    }
+    const startPositions: Record<string, { x_mm: number; y_mm: number }> = {};
+    for (const targetElement of targetElements) {
+      startPositions[targetElement.id] = {
+        x_mm: targetElement.x_mm,
+        y_mm: targetElement.y_mm,
+      };
+    }
+
+    pushHistorySnapshot(designPayload);
     const elementX = element.x_mm * canvasScale;
     const elementY = element.y_mm * canvasScale;
     const pointerX = event.clientX - canvasRect.left;
     const pointerY = event.clientY - canvasRect.top;
+    setResizeState(null);
+    setSnapGuideLines([]);
+    setLiveMeasurementBounds(startSelectionBounds);
     setDragState({
       elementId: element.id,
-      offsetX: pointerX - elementX,
-      offsetY: pointerY - elementY,
+      targetIds,
+      pointerOffsetX: pointerX - elementX,
+      pointerOffsetY: pointerY - elementY,
+      startPositions,
+      startSelectionBounds,
+      snapTargets: buildSnapTargets(designPayload.elements, targetIdSet),
+    });
+  };
+
+  const handleResizeHandleMouseDown = (
+    event: React.MouseEvent<HTMLButtonElement>,
+    element: EditableDesignElement
+  ) => {
+    if (event.button !== 0 || !isEditableDraft) {
+      return;
+    }
+    event.stopPropagation();
+    event.preventDefault();
+    setSingleElementSelection(element.id);
+    pushHistorySnapshot(designPayload);
+    setDragState(null);
+    setSnapGuideLines([]);
+    setLiveMeasurementBounds(getElementBounds(element));
+    setResizeState({
+      elementId: element.id,
+      startX_mm: element.x_mm,
+      startY_mm: element.y_mm,
+      startWidth_mm: element.width_mm,
+      startHeight_mm: element.height_mm,
+      startPointerX: event.clientX,
+      startPointerY: event.clientY,
+      snapTargets: buildSnapTargets(designPayload.elements, new Set([element.id])),
     });
   };
 
@@ -1325,6 +2040,471 @@ export default function LtfAdminLicenseCardDesignerPage() {
     });
   };
 
+  const alignSelectedElements = useCallback(
+    (mode: "left" | "center" | "right" | "top" | "middle" | "bottom") => {
+      if (!isEditableDraft || selectedElements.length < 2) {
+        return;
+      }
+      const selectedSet = new Set(effectiveSelectedElementIds);
+      const selectionBounds = getBoundsForElements(selectedElements);
+      if (!selectionBounds) {
+        return;
+      }
+      applyDesignMutation((previousPayload) => ({
+        ...previousPayload,
+        elements: previousPayload.elements.map((element) => {
+          if (!selectedSet.has(element.id)) {
+            return element;
+          }
+          if (mode === "left") {
+            return clampElementToCanvas(
+              { ...element, x_mm: selectionBounds.left },
+              canvasWidthMm,
+              canvasHeightMm
+            );
+          }
+          if (mode === "center") {
+            return clampElementToCanvas(
+              {
+                ...element,
+                x_mm: selectionBounds.centerX - element.width_mm / 2,
+              },
+              canvasWidthMm,
+              canvasHeightMm
+            );
+          }
+          if (mode === "right") {
+            return clampElementToCanvas(
+              {
+                ...element,
+                x_mm: selectionBounds.right - element.width_mm,
+              },
+              canvasWidthMm,
+              canvasHeightMm
+            );
+          }
+          if (mode === "top") {
+            return clampElementToCanvas(
+              { ...element, y_mm: selectionBounds.top },
+              canvasWidthMm,
+              canvasHeightMm
+            );
+          }
+          if (mode === "middle") {
+            return clampElementToCanvas(
+              {
+                ...element,
+                y_mm: selectionBounds.centerY - element.height_mm / 2,
+              },
+              canvasWidthMm,
+              canvasHeightMm
+            );
+          }
+          return clampElementToCanvas(
+            {
+              ...element,
+              y_mm: selectionBounds.bottom - element.height_mm,
+            },
+            canvasWidthMm,
+            canvasHeightMm
+          );
+        }),
+      }));
+    },
+    [
+      applyDesignMutation,
+      canvasHeightMm,
+      canvasWidthMm,
+      effectiveSelectedElementIds,
+      isEditableDraft,
+      selectedElements,
+    ]
+  );
+
+  const distributeSelectedElements = useCallback(
+    (axis: "horizontal" | "vertical") => {
+      if (!isEditableDraft || selectedElements.length < 3) {
+        return;
+      }
+      const sorted = [...selectedElements].sort((a, b) =>
+        axis === "horizontal" ? a.x_mm - b.x_mm : a.y_mm - b.y_mm
+      );
+      const first = sorted[0];
+      const last = sorted[sorted.length - 1];
+      if (!first || !last) {
+        return;
+      }
+      const totalSize = sorted.reduce((sum, element) => {
+        return sum + (axis === "horizontal" ? element.width_mm : element.height_mm);
+      }, 0);
+      const rangeStart = axis === "horizontal" ? first.x_mm : first.y_mm;
+      const rangeEnd =
+        axis === "horizontal" ? last.x_mm + last.width_mm : last.y_mm + last.height_mm;
+      const availableGap = rangeEnd - rangeStart - totalSize;
+      if (!Number.isFinite(availableGap)) {
+        return;
+      }
+      const gap = availableGap / Math.max(sorted.length - 1, 1);
+      const nextPositionById = new Map<string, number>();
+      let cursor = rangeStart;
+      for (const element of sorted) {
+        nextPositionById.set(element.id, cursor);
+        cursor += (axis === "horizontal" ? element.width_mm : element.height_mm) + gap;
+      }
+      const selectedSet = new Set(effectiveSelectedElementIds);
+      applyDesignMutation((previousPayload) => ({
+        ...previousPayload,
+        elements: previousPayload.elements.map((element) => {
+          if (!selectedSet.has(element.id)) {
+            return element;
+          }
+          const nextPosition = nextPositionById.get(element.id);
+          if (!Number.isFinite(nextPosition)) {
+            return element;
+          }
+          if (axis === "horizontal") {
+            return clampElementToCanvas(
+              {
+                ...element,
+                x_mm: Number(nextPosition),
+              },
+              canvasWidthMm,
+              canvasHeightMm
+            );
+          }
+          return clampElementToCanvas(
+            {
+              ...element,
+              y_mm: Number(nextPosition),
+            },
+            canvasWidthMm,
+            canvasHeightMm
+          );
+        }),
+      }));
+    },
+    [
+      applyDesignMutation,
+      canvasHeightMm,
+      canvasWidthMm,
+      effectiveSelectedElementIds,
+      isEditableDraft,
+      selectedElements,
+    ]
+  );
+
+  const groupSelectedElements = useCallback(() => {
+    if (!isEditableDraft || effectiveSelectedElementIds.length < 2) {
+      return;
+    }
+    const groupId = createGroupId();
+    const selectedSet = new Set(effectiveSelectedElementIds);
+    applyDesignMutation((previousPayload) => ({
+      ...previousPayload,
+      elements: previousPayload.elements.map((element) =>
+        selectedSet.has(element.id) ? withGroupId(element, groupId) : element
+      ),
+    }));
+  }, [applyDesignMutation, effectiveSelectedElementIds, isEditableDraft]);
+
+  const ungroupSelectedElements = useCallback(() => {
+    if (!isEditableDraft || effectiveSelectedElementIds.length === 0) {
+      return;
+    }
+    const selectedSet = new Set(effectiveSelectedElementIds);
+    applyDesignMutation((previousPayload) => ({
+      ...previousPayload,
+      elements: previousPayload.elements.map((element) =>
+        selectedSet.has(element.id) ? withGroupId(element, null) : element
+      ),
+    }));
+  }, [applyDesignMutation, effectiveSelectedElementIds, isEditableDraft]);
+
+  const duplicateSelectedElements = useCallback(() => {
+    if (!isEditableDraft || effectiveSelectedElementIds.length === 0) {
+      return;
+    }
+    const selectedSet = new Set(effectiveSelectedElementIds);
+    const groupRemap = new Map<string, string>();
+    const duplicatedIds: string[] = [];
+    applyDesignMutation((previousPayload) => {
+      const duplicated = previousPayload.elements
+        .filter((element) => selectedSet.has(element.id))
+        .map((element) => {
+          const currentGroupId = getElementGroupId(element);
+          let nextGroupId: string | null = null;
+          if (currentGroupId) {
+            nextGroupId = groupRemap.get(currentGroupId) ?? createGroupId();
+            groupRemap.set(currentGroupId, nextGroupId);
+          }
+          const duplicatedElement = clampElementToCanvas(
+            withGroupId(
+              {
+                ...element,
+                id: generateElementId(),
+                x_mm: element.x_mm + 2,
+                y_mm: element.y_mm + 2,
+              },
+              nextGroupId
+            ),
+            canvasWidthMm,
+            canvasHeightMm
+          );
+          duplicatedIds.push(duplicatedElement.id);
+          return duplicatedElement;
+        });
+      return {
+        ...previousPayload,
+        elements: [...previousPayload.elements, ...duplicated],
+      };
+    });
+    if (duplicatedIds.length > 0) {
+      setSelectedElementIds(duplicatedIds);
+      setSelectedElementId(duplicatedIds[duplicatedIds.length - 1] ?? null);
+    }
+  }, [
+    applyDesignMutation,
+    canvasHeightMm,
+    canvasWidthMm,
+    effectiveSelectedElementIds,
+    isEditableDraft,
+  ]);
+
+  const nudgeSelectedElements = useCallback(
+    (deltaX_mm: number, deltaY_mm: number) => {
+      if (!isEditableDraft || effectiveSelectedElementIds.length === 0) {
+        return;
+      }
+      const selectedSet = new Set(effectiveSelectedElementIds);
+      applyDesignMutation((previousPayload) => ({
+        ...previousPayload,
+        elements: previousPayload.elements.map((element) => {
+          if (!selectedSet.has(element.id)) {
+            return element;
+          }
+          return clampElementToCanvas(
+            {
+              ...element,
+              x_mm: element.x_mm + deltaX_mm,
+              y_mm: element.y_mm + deltaY_mm,
+            },
+            canvasWidthMm,
+            canvasHeightMm
+          );
+        }),
+      }));
+    },
+    [applyDesignMutation, canvasHeightMm, canvasWidthMm, effectiveSelectedElementIds, isEditableDraft]
+  );
+
+  const moveSelectedLayers = useCallback(
+    (direction: "forward" | "backward") => {
+      if (!isEditableDraft || effectiveSelectedElementIds.length === 0) {
+        return;
+      }
+      const selectedSet = new Set(effectiveSelectedElementIds);
+      applyDesignMutation((previousPayload) => {
+        const nextElements = [...previousPayload.elements];
+        if (direction === "forward") {
+          for (let index = nextElements.length - 2; index >= 0; index -= 1) {
+            if (selectedSet.has(nextElements[index].id) && !selectedSet.has(nextElements[index + 1].id)) {
+              [nextElements[index], nextElements[index + 1]] = [
+                nextElements[index + 1],
+                nextElements[index],
+              ];
+            }
+          }
+        } else {
+          for (let index = 1; index < nextElements.length; index += 1) {
+            if (selectedSet.has(nextElements[index].id) && !selectedSet.has(nextElements[index - 1].id)) {
+              [nextElements[index], nextElements[index - 1]] = [
+                nextElements[index - 1],
+                nextElements[index],
+              ];
+            }
+          }
+        }
+        return {
+          ...previousPayload,
+          elements: nextElements,
+        };
+      });
+    },
+    [applyDesignMutation, effectiveSelectedElementIds, isEditableDraft]
+  );
+
+  const moveSingleLayer = useCallback(
+    (elementId: string, direction: "forward" | "backward") => {
+      if (!isEditableDraft) {
+        return;
+      }
+      applyDesignMutation((previousPayload) => {
+        const nextElements = [...previousPayload.elements];
+        const currentIndex = nextElements.findIndex((element) => element.id === elementId);
+        if (currentIndex < 0) {
+          return previousPayload;
+        }
+        const targetIndex =
+          direction === "forward" ? Math.min(nextElements.length - 1, currentIndex + 1) : Math.max(0, currentIndex - 1);
+        if (targetIndex === currentIndex) {
+          return previousPayload;
+        }
+        const [movedElement] = nextElements.splice(currentIndex, 1);
+        nextElements.splice(targetIndex, 0, movedElement);
+        return {
+          ...previousPayload,
+          elements: nextElements,
+        };
+      });
+    },
+    [applyDesignMutation, isEditableDraft]
+  );
+
+  const reorderLayersByDrag = useCallback(
+    (sourceId: string, targetId: string) => {
+      if (!isEditableDraft || sourceId === targetId) {
+        return;
+      }
+      applyDesignMutation((previousPayload) => {
+        const topOrdered = [...previousPayload.elements].reverse();
+        const sourceIndex = topOrdered.findIndex((element) => element.id === sourceId);
+        const targetIndex = topOrdered.findIndex((element) => element.id === targetId);
+        if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+          return previousPayload;
+        }
+        const nextTopOrdered = [...topOrdered];
+        const [movedElement] = nextTopOrdered.splice(sourceIndex, 1);
+        nextTopOrdered.splice(targetIndex, 0, movedElement);
+        return {
+          ...previousPayload,
+          elements: [...nextTopOrdered].reverse(),
+        };
+      });
+    },
+    [applyDesignMutation, isEditableDraft]
+  );
+
+  const handleUndo = useCallback(() => {
+    if (historyPastRef.current.length === 0) {
+      return;
+    }
+    const previousPayload = historyPastRef.current.pop();
+    if (!previousPayload) {
+      return;
+    }
+    historyFutureRef.current.push(cloneEditableDesignPayload(designPayload));
+    setDesignPayload(cloneEditableDesignPayload(previousPayload));
+    const previousIds = new Set(previousPayload.elements.map((element) => element.id));
+    const nextSelectedIds = effectiveSelectedElementIds.filter((id) => previousIds.has(id));
+    setSelectedElementIds(nextSelectedIds);
+    setSelectedElementId(nextSelectedIds[nextSelectedIds.length - 1] ?? null);
+    setDragState(null);
+    setResizeState(null);
+    setSnapGuideLines([]);
+    setLiveMeasurementBounds(null);
+    setHistoryRevision((value) => value + 1);
+  }, [designPayload, effectiveSelectedElementIds]);
+
+  const handleRedo = useCallback(() => {
+    if (historyFutureRef.current.length === 0) {
+      return;
+    }
+    const nextPayload = historyFutureRef.current.pop();
+    if (!nextPayload) {
+      return;
+    }
+    historyPastRef.current.push(cloneEditableDesignPayload(designPayload));
+    if (historyPastRef.current.length > HISTORY_STACK_LIMIT) {
+      historyPastRef.current.shift();
+    }
+    setDesignPayload(cloneEditableDesignPayload(nextPayload));
+    const nextIds = new Set(nextPayload.elements.map((element) => element.id));
+    const nextSelectedIds = effectiveSelectedElementIds.filter((id) => nextIds.has(id));
+    setSelectedElementIds(nextSelectedIds);
+    setSelectedElementId(nextSelectedIds[nextSelectedIds.length - 1] ?? null);
+    setDragState(null);
+    setResizeState(null);
+    setSnapGuideLines([]);
+    setLiveMeasurementBounds(null);
+    setHistoryRevision((value) => value + 1);
+  }, [designPayload, effectiveSelectedElementIds]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!isEditableDraft || isEventFromEditableField(event.target)) {
+        return;
+      }
+      const commandPressed = event.metaKey || event.ctrlKey;
+      const key = event.key.toLowerCase();
+
+      if (commandPressed && key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+        return;
+      }
+      if (commandPressed && key === "y") {
+        event.preventDefault();
+        handleRedo();
+        return;
+      }
+      if (commandPressed && key === "d") {
+        event.preventDefault();
+        duplicateSelectedElements();
+        return;
+      }
+      if (commandPressed && key === "g") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          ungroupSelectedElements();
+        } else {
+          groupSelectedElements();
+        }
+        return;
+      }
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        removeSelectedElement();
+        return;
+      }
+      const nudgeStep = event.shiftKey ? 2 : 0.5;
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        nudgeSelectedElements(0, -nudgeStep);
+      } else if (event.key === "ArrowDown") {
+        event.preventDefault();
+        nudgeSelectedElements(0, nudgeStep);
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        nudgeSelectedElements(-nudgeStep, 0);
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        nudgeSelectedElements(nudgeStep, 0);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [
+    duplicateSelectedElements,
+    groupSelectedElements,
+    handleRedo,
+    handleUndo,
+    isEditableDraft,
+    nudgeSelectedElements,
+    removeSelectedElement,
+    ungroupSelectedElements,
+  ]);
+
+  const layersTopToBottom = useMemo(() => {
+    return [...designPayload.elements].reverse();
+  }, [designPayload.elements]);
+
   const toolLabelByType = {
     text: t("licenseCardDesignerToolText"),
     image: t("licenseCardDesignerToolImage"),
@@ -1332,6 +2512,15 @@ export default function LtfAdminLicenseCardDesignerPage() {
     qr: t("licenseCardDesignerToolQr"),
     barcode: t("licenseCardDesignerToolBarcode"),
   } satisfies Record<CardElementType, string>;
+  const selectedCount = effectiveSelectedElementIds.length;
+  const rulerMarksX = useMemo(
+    () => Array.from({ length: Math.floor(canvasWidthMm) + 1 }, (_, index) => index),
+    [canvasWidthMm]
+  );
+  const rulerMarksY = useMemo(
+    () => Array.from({ length: Math.floor(canvasHeightMm) + 1 }, (_, index) => index),
+    [canvasHeightMm]
+  );
 
   const pageTitle = template
     ? t("licenseCardDesignerTitle", { name: template.name })
@@ -1483,6 +2672,191 @@ export default function LtfAdminLicenseCardDesignerPage() {
               ? t("licenseCardDesignerPublishingDraftAction")
               : t("licenseCardDesignerPublishDraftAction")}
           </Button>
+        </div>
+      </section>
+
+      <section className="mb-4 space-y-3 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-zinc-900">{t("licenseCardEditorToolsTitle")}</h2>
+          <p className="text-xs text-zinc-500">
+            {t("licenseCardEditorSelectionCountLabel", { count: selectedCount })}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!canUndo}
+            onClick={handleUndo}
+          >
+            {t("licenseCardEditorUndoAction")}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!canRedo}
+            onClick={handleRedo}
+          >
+            {t("licenseCardEditorRedoAction")}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!isEditableDraft || selectedCount < 2}
+            onClick={() => alignSelectedElements("left")}
+          >
+            {t("licenseCardEditorAlignLeftAction")}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!isEditableDraft || selectedCount < 2}
+            onClick={() => alignSelectedElements("center")}
+          >
+            {t("licenseCardEditorAlignCenterAction")}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!isEditableDraft || selectedCount < 2}
+            onClick={() => alignSelectedElements("right")}
+          >
+            {t("licenseCardEditorAlignRightAction")}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!isEditableDraft || selectedCount < 2}
+            onClick={() => alignSelectedElements("top")}
+          >
+            {t("licenseCardEditorAlignTopAction")}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!isEditableDraft || selectedCount < 2}
+            onClick={() => alignSelectedElements("middle")}
+          >
+            {t("licenseCardEditorAlignMiddleAction")}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!isEditableDraft || selectedCount < 2}
+            onClick={() => alignSelectedElements("bottom")}
+          >
+            {t("licenseCardEditorAlignBottomAction")}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!isEditableDraft || selectedCount < 3}
+            onClick={() => distributeSelectedElements("horizontal")}
+          >
+            {t("licenseCardEditorDistributeHorizontalAction")}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!isEditableDraft || selectedCount < 3}
+            onClick={() => distributeSelectedElements("vertical")}
+          >
+            {t("licenseCardEditorDistributeVerticalAction")}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!isEditableDraft || selectedCount < 2}
+            onClick={groupSelectedElements}
+          >
+            {t("licenseCardEditorGroupAction")}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!isEditableDraft || selectedCount === 0}
+            onClick={ungroupSelectedElements}
+          >
+            {t("licenseCardEditorUngroupAction")}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!isEditableDraft || selectedCount === 0}
+            onClick={() => moveSelectedLayers("forward")}
+          >
+            {t("licenseCardEditorBringForwardAction")}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!isEditableDraft || selectedCount === 0}
+            onClick={() => moveSelectedLayers("backward")}
+          >
+            {t("licenseCardEditorSendBackwardAction")}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!isEditableDraft || selectedCount === 0}
+            onClick={duplicateSelectedElements}
+          >
+            {t("licenseCardEditorDuplicateAction")}
+          </Button>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
+          <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
+            <Checkbox
+              checked={showRulers}
+              onCheckedChange={(checked) => setShowRulers(Boolean(checked))}
+            />
+            {t("licenseCardEditorShowRulersToggle")}
+          </label>
+          <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
+            <Checkbox
+              checked={showGrid}
+              onCheckedChange={(checked) => setShowGrid(Boolean(checked))}
+            />
+            {t("licenseCardEditorShowGridToggle")}
+          </label>
+          <div className="space-y-1">
+            <label className="text-xs font-medium uppercase text-zinc-500">
+              {t("licenseCardEditorGridSizeLabel")}
+            </label>
+            <Input
+              type="number"
+              min="0.1"
+              step="0.1"
+              value={gridSizeMmInput}
+              onChange={(event) => setGridSizeMmInput(event.target.value)}
+            />
+          </div>
+          <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
+            <Checkbox
+              checked={snapToGrid}
+              onCheckedChange={(checked) => setSnapToGrid(Boolean(checked))}
+            />
+            {t("licenseCardEditorSnapToGridToggle")}
+          </label>
+          <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
+            <Checkbox
+              checked={snapToElements}
+              onCheckedChange={(checked) => setSnapToElements(Boolean(checked))}
+            />
+            {t("licenseCardEditorSnapToElementsToggle")}
+          </label>
+          <div className="space-y-1">
+            <label className="text-xs font-medium uppercase text-zinc-500">
+              {t("licenseCardEditorSnapThresholdLabel")}
+            </label>
+            <Input
+              type="number"
+              min="0.1"
+              step="0.1"
+              value={snapThresholdMmInput}
+              onChange={(event) => setSnapThresholdMmInput(event.target.value)}
+            />
+          </div>
         </div>
       </section>
 
@@ -1934,82 +3308,329 @@ export default function LtfAdminLicenseCardDesignerPage() {
           ) : (
             <div className="overflow-auto rounded-2xl border border-zinc-200 bg-zinc-100 p-4">
               <div
-                ref={canvasRef}
-                className="relative mx-auto bg-white shadow-md"
-                style={{ width: canvasWidthPx, height: canvasHeightPx }}
-                onDragOver={onCanvasDragOver}
-                onDrop={onCanvasDrop}
-                onClick={() => setSelectedElementId(null)}
+                className="relative mx-auto"
+                style={{
+                  width: canvasWidthPx + (showRulers ? RULER_SIZE_PX : 0),
+                  height: canvasHeightPx + (showRulers ? RULER_SIZE_PX : 0),
+                }}
               >
-                {showBleedGuide ? (
-                  <div
-                    className="pointer-events-none absolute inset-0"
-                    style={{
-                      boxShadow: `inset 0 0 0 ${bleedPx}px rgba(244, 63, 94, 0.18)`,
-                    }}
-                  />
-                ) : null}
-                {showSafeAreaGuide ? (
-                  <div
-                    className="pointer-events-none absolute border border-dashed border-emerald-500/80"
-                    style={{
-                      left: safeAreaPx,
-                      top: safeAreaPx,
-                      width: Math.max(canvasWidthPx - safeAreaPx * 2, 0),
-                      height: Math.max(canvasHeightPx - safeAreaPx * 2, 0),
-                    }}
-                  />
-                ) : null}
-
-                {designPayload.elements.map((element) => {
-                  const isSelected = selectedElementId === element.id;
-                  let elementContent = "";
-                  if (element.type === "text") {
-                    elementContent = element.text || "{{member.full_name}}";
-                  } else if (element.type === "shape") {
-                    elementContent = t("licenseCardDesignerToolShape");
-                  } else if (element.type === "image") {
-                    elementContent = t("licenseCardDesignerToolImage");
-                  } else if (element.type === "qr") {
-                    elementContent = `QR: ${element.merge_field || "qr.validation_url"}`;
-                  } else {
-                    elementContent = `BAR: ${element.merge_field || "member.ltf_licenseid"}`;
-                  }
-
-                  return (
+                {showRulers ? (
+                  <>
                     <div
-                      key={element.id}
-                      className={`absolute flex select-none items-center justify-center rounded border px-1 text-center text-[10px] ${
-                        isSelected
-                          ? "border-blue-500 bg-blue-50 text-blue-700"
-                          : "border-zinc-300 bg-white/85 text-zinc-700"
-                      }`}
+                      className="pointer-events-none absolute left-0 top-0 border-b border-r border-zinc-300 bg-zinc-100"
+                      style={{ width: RULER_SIZE_PX, height: RULER_SIZE_PX }}
+                    />
+                    <div
+                      className="pointer-events-none absolute top-0 border-b border-zinc-300 bg-zinc-100"
                       style={{
-                        left: element.x_mm * canvasScale,
-                        top: element.y_mm * canvasScale,
-                        width: element.width_mm * canvasScale,
-                        height: element.height_mm * canvasScale,
-                        backgroundColor:
-                          element.type === "shape"
-                            ? "rgba(59, 130, 246, 0.15)"
-                            : undefined,
-                      }}
-                      onMouseDown={(event) => handleElementMouseDown(event, element)}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setSelectedElementId(element.id);
+                        left: RULER_SIZE_PX,
+                        width: canvasWidthPx,
+                        height: RULER_SIZE_PX,
                       }}
                     >
-                      <span className="pointer-events-none line-clamp-2">{elementContent}</span>
+                      {rulerMarksX.map((mark) => (
+                        <div
+                          key={`ruler-x-${mark}`}
+                          className="absolute bottom-0"
+                          style={{ left: mark * canvasScale }}
+                        >
+                          <div
+                            className="w-px bg-zinc-500"
+                            style={{
+                              height: mark % 10 === 0 ? 12 : mark % 5 === 0 ? 8 : 5,
+                            }}
+                          />
+                          {mark % 10 === 0 ? (
+                            <span className="absolute -top-4 left-1 text-[9px] text-zinc-500">
+                              {mark}
+                            </span>
+                          ) : null}
+                        </div>
+                      ))}
                     </div>
-                  );
-                })}
+                    <div
+                      className="pointer-events-none absolute left-0 border-r border-zinc-300 bg-zinc-100"
+                      style={{
+                        top: RULER_SIZE_PX,
+                        width: RULER_SIZE_PX,
+                        height: canvasHeightPx,
+                      }}
+                    >
+                      {rulerMarksY.map((mark) => (
+                        <div
+                          key={`ruler-y-${mark}`}
+                          className="absolute right-0"
+                          style={{ top: mark * canvasScale }}
+                        >
+                          <div
+                            className="h-px bg-zinc-500"
+                            style={{
+                              width: mark % 10 === 0 ? 12 : mark % 5 === 0 ? 8 : 5,
+                            }}
+                          />
+                          {mark % 10 === 0 ? (
+                            <span className="absolute -left-5 -top-1 text-[9px] text-zinc-500">
+                              {mark}
+                            </span>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : null}
+
+                <div
+                  ref={canvasRef}
+                  className="relative bg-white shadow-md"
+                  style={{
+                    width: canvasWidthPx,
+                    height: canvasHeightPx,
+                    marginLeft: showRulers ? RULER_SIZE_PX : 0,
+                    marginTop: showRulers ? RULER_SIZE_PX : 0,
+                  }}
+                  onDragOver={onCanvasDragOver}
+                  onDrop={onCanvasDrop}
+                  onClick={() => {
+                    clearElementSelection();
+                    setSnapGuideLines([]);
+                    setLiveMeasurementBounds(null);
+                  }}
+                >
+                  {showGrid ? (
+                    <div
+                      className="pointer-events-none absolute inset-0"
+                      style={{
+                        backgroundImage:
+                          "linear-gradient(to right, rgba(148, 163, 184, 0.35) 1px, transparent 1px), linear-gradient(to bottom, rgba(148, 163, 184, 0.35) 1px, transparent 1px)",
+                        backgroundSize: `${gridSpacingPx}px ${gridSpacingPx}px`,
+                      }}
+                    />
+                  ) : null}
+                  {showBleedGuide ? (
+                    <div
+                      className="pointer-events-none absolute inset-0"
+                      style={{
+                        boxShadow: `inset 0 0 0 ${bleedPx}px rgba(244, 63, 94, 0.18)`,
+                      }}
+                    />
+                  ) : null}
+                  {showSafeAreaGuide ? (
+                    <div
+                      className="pointer-events-none absolute border border-dashed border-emerald-500/80"
+                      style={{
+                        left: safeAreaPx,
+                        top: safeAreaPx,
+                        width: Math.max(canvasWidthPx - safeAreaPx * 2, 0),
+                        height: Math.max(canvasHeightPx - safeAreaPx * 2, 0),
+                      }}
+                    />
+                  ) : null}
+                  {snapGuideLines.map((line, index) => {
+                    if (line.orientation === "vertical") {
+                      return (
+                        <div
+                          key={`snap-line-v-${index}`}
+                          className={`pointer-events-none absolute inset-y-0 w-px ${
+                            line.source === "element" ? "bg-blue-500/80" : "bg-emerald-500/70"
+                          }`}
+                          style={{ left: line.value_mm * canvasScale }}
+                        />
+                      );
+                    }
+                    return (
+                      <div
+                        key={`snap-line-h-${index}`}
+                        className={`pointer-events-none absolute inset-x-0 h-px ${
+                          line.source === "element" ? "bg-blue-500/80" : "bg-emerald-500/70"
+                        }`}
+                        style={{ top: line.value_mm * canvasScale }}
+                      />
+                    );
+                  })}
+                  {liveMeasurementBounds ? (
+                    <>
+                      <div
+                        className="pointer-events-none absolute border border-dashed border-blue-500/80"
+                        style={{
+                          left: liveMeasurementBounds.left * canvasScale,
+                          top: liveMeasurementBounds.top * canvasScale,
+                          width: liveMeasurementBounds.width * canvasScale,
+                          height: liveMeasurementBounds.height * canvasScale,
+                        }}
+                      />
+                      <div className="pointer-events-none absolute left-2 top-2 rounded-md bg-zinc-900/85 px-2 py-1 text-[10px] text-white">
+                        {t("licenseCardEditorMeasurementReadout", {
+                          x: liveMeasurementBounds.left.toFixed(2),
+                          y: liveMeasurementBounds.top.toFixed(2),
+                          width: liveMeasurementBounds.width.toFixed(2),
+                          height: liveMeasurementBounds.height.toFixed(2),
+                        })}
+                      </div>
+                    </>
+                  ) : null}
+
+                  {designPayload.elements.map((element) => {
+                    const isSelected = effectiveSelectedElementIds.includes(element.id);
+                    const groupId = getElementGroupId(element);
+                    let elementContent = "";
+                    if (element.type === "text") {
+                      elementContent = element.text || "{{member.full_name}}";
+                    } else if (element.type === "shape") {
+                      elementContent = t("licenseCardDesignerToolShape");
+                    } else if (element.type === "image") {
+                      elementContent = t("licenseCardDesignerToolImage");
+                    } else if (element.type === "qr") {
+                      elementContent = `QR: ${element.merge_field || "qr.validation_url"}`;
+                    } else {
+                      elementContent = `BAR: ${element.merge_field || "member.ltf_licenseid"}`;
+                    }
+
+                    return (
+                      <div
+                        key={element.id}
+                        className={`absolute flex select-none items-center justify-center rounded border px-1 text-center text-[10px] ${
+                          isSelected
+                            ? "border-blue-500 bg-blue-50 text-blue-700"
+                            : "border-zinc-300 bg-white/85 text-zinc-700"
+                        }`}
+                        style={{
+                          left: element.x_mm * canvasScale,
+                          top: element.y_mm * canvasScale,
+                          width: element.width_mm * canvasScale,
+                          height: element.height_mm * canvasScale,
+                          backgroundColor:
+                            element.type === "shape"
+                              ? "rgba(59, 130, 246, 0.15)"
+                              : undefined,
+                        }}
+                        onMouseDown={(event) => handleElementMouseDown(event, element)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                        }}
+                      >
+                        <span className="pointer-events-none line-clamp-2">{elementContent}</span>
+                        {groupId ? (
+                          <span className="pointer-events-none absolute left-1 top-0 rounded bg-zinc-800/80 px-1 text-[9px] text-white">
+                            G
+                          </span>
+                        ) : null}
+                        {isSelected && isEditableDraft && selectedCount === 1 ? (
+                          <button
+                            type="button"
+                            className="absolute -bottom-1 -right-1 h-3 w-3 rounded-full border border-blue-600 bg-blue-200 shadow-sm"
+                            onMouseDown={(event) => handleResizeHandleMouseDown(event, element)}
+                            aria-label={t("licenseCardEditorResizeHandleLabel")}
+                          />
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
         </section>
 
         <section className="space-y-4 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+          <div className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-zinc-900">
+                {t("licenseCardEditorLayerPanelTitle")}
+              </h2>
+              <span className="text-xs text-zinc-500">
+                {t("licenseCardEditorLayerCountLabel", { count: designPayload.elements.length })}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!isEditableDraft || selectedCount === 0}
+                onClick={() => moveSelectedLayers("forward")}
+              >
+                {t("licenseCardEditorBringForwardAction")}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!isEditableDraft || selectedCount === 0}
+                onClick={() => moveSelectedLayers("backward")}
+              >
+                {t("licenseCardEditorSendBackwardAction")}
+              </Button>
+            </div>
+            <div className="max-h-72 space-y-1 overflow-auto">
+              {layersTopToBottom.length === 0 ? (
+                <p className="text-xs text-zinc-500">{t("licenseCardEditorLayerPanelEmpty")}</p>
+              ) : (
+                layersTopToBottom.map((element, index) => {
+                  const isSelected = effectiveSelectedElementIds.includes(element.id);
+                  const groupId = getElementGroupId(element);
+                  return (
+                    <div
+                      key={`layer-${element.id}`}
+                      className={`flex items-center gap-2 rounded-md border px-2 py-1 text-xs ${
+                        isSelected
+                          ? "border-blue-400 bg-blue-50 text-blue-700"
+                          : "border-zinc-200 bg-white text-zinc-700"
+                      }`}
+                      draggable={isEditableDraft}
+                      onDragStart={() => setDraggedLayerId(element.id)}
+                      onDragEnd={() => setDraggedLayerId(null)}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                      }}
+                      onDrop={() => {
+                        if (draggedLayerId) {
+                          reorderLayersByDrag(draggedLayerId, element.id);
+                        }
+                        setDraggedLayerId(null);
+                      }}
+                    >
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 text-left"
+                        onClick={(event) => {
+                          if (event.shiftKey) {
+                            toggleElementSelection(element.id);
+                            return;
+                          }
+                          setSingleElementSelection(element.id);
+                        }}
+                      >
+                        <p className="truncate font-medium">
+                          {index + 1}. {toolLabelByType[element.type]}
+                        </p>
+                        <p className="truncate text-[10px] text-zinc-500">{element.id}</p>
+                      </button>
+                      {groupId ? (
+                        <span className="rounded bg-zinc-800 px-1 text-[9px] text-white">G</span>
+                      ) : null}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-[10px]"
+                        disabled={!isEditableDraft}
+                        onClick={() => moveSingleLayer(element.id, "forward")}
+                      >
+                        {t("licenseCardEditorLayerUpAction")}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-[10px]"
+                        disabled={!isEditableDraft}
+                        onClick={() => moveSingleLayer(element.id, "backward")}
+                      >
+                        {t("licenseCardEditorLayerDownAction")}
+                      </Button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
           <h2 className="text-sm font-semibold text-zinc-900">
             {t("licenseCardDesignerInspectorTitle")}
           </h2>
@@ -2019,6 +3640,11 @@ export default function LtfAdminLicenseCardDesignerPage() {
             </p>
           ) : (
             <div className="space-y-4">
+              {selectedCount > 1 ? (
+                <p className="rounded-md border border-blue-100 bg-blue-50 px-2 py-1 text-xs text-blue-700">
+                  {t("licenseCardEditorMultiSelectionInspectorHint", { count: selectedCount })}
+                </p>
+              ) : null}
               <div className="space-y-2">
                 <label className="text-xs font-medium uppercase text-zinc-500">
                   {t("licenseCardDesignerElementTypeLabel")}
