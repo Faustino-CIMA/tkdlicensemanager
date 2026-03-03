@@ -13,6 +13,7 @@ from django.utils import timezone
 
 from .card_rendering import (
     CardRenderError,
+    build_embedded_font_face_css_from_payloads,
     build_preview_data,
     build_sheet_slots,
     render_card_fragment_html,
@@ -56,6 +57,7 @@ def _render_card_pages_html(preview_payloads: list[dict[str, Any]]) -> tuple[str
     first_card_format = preview_payloads[0]["card_format"]
     width_mm = str(first_card_format["width_mm"])
     height_mm = str(first_card_format["height_mm"])
+    font_face_css = build_embedded_font_face_css_from_payloads(preview_payloads)
 
     pages_markup: list[str] = []
     for preview_payload in preview_payloads:
@@ -75,6 +77,7 @@ def _render_card_pages_html(preview_payloads: list[dict[str, Any]]) -> tuple[str
         f"@page {{ size: {width_mm}mm {height_mm}mm; margin: 0; }}"
         "html,body{margin:0;padding:0;}"
         "body{font-family:Inter,Arial,sans-serif;}"
+        f"{font_face_css}"
         ".print-page{page-break-after:always;}"
         ".print-page:last-child{page-break-after:auto;}"
         "</style>"
@@ -96,6 +99,7 @@ def _render_sheet_pages_html(
         raise CardRenderError("Sheet rendering requires a paper profile.")
     if not preview_payloads:
         raise CardRenderError("Print job has no resolved preview payloads.")
+    font_face_css = build_embedded_font_face_css_from_payloads(preview_payloads)
 
     slot_layout, _ = build_sheet_slots(
         paper_profile=paper_profile,
@@ -172,6 +176,7 @@ def _render_sheet_pages_html(
         f"@page {{ size: {paper_profile.sheet_width_mm}mm {paper_profile.sheet_height_mm}mm; margin: 0; }}"
         "html,body{margin:0;padding:0;}"
         "body{font-family:Inter,Arial,sans-serif;}"
+        f"{font_face_css}"
         ".print-page{page-break-after:always;}"
         ".print-page:last-child{page-break-after:auto;}"
         "</style>"

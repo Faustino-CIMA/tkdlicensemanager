@@ -120,6 +120,7 @@ ALLOWED_COMMON_STYLE_KEYS = {
     "border_width_mm",
     "border_radius_mm",
     "corner_radius_mm",
+    "transform_origin",
 }
 ALLOWED_TEXT_STYLE_KEYS = {
     "color",
@@ -137,6 +138,13 @@ ALLOWED_TEXT_STYLE_KEYS = {
     "vertical_align",
     "auto_fit",
     "max_lines",
+    "italic",
+    "shadow_color",
+    "shadow_offset_x_mm",
+    "shadow_offset_y_mm",
+    "shadow_blur_mm",
+    "stroke_color",
+    "stroke_width_mm",
 }
 ALLOWED_IMAGE_STYLE_KEYS = {
     "object_fit",
@@ -145,11 +153,30 @@ ALLOWED_IMAGE_STYLE_KEYS = {
     "grayscale",
     "brightness_pct",
     "contrast_pct",
+    "border_color",
+    "border_width_mm",
+    "radius_top_left_mm",
+    "radius_top_right_mm",
+    "radius_bottom_right_mm",
+    "radius_bottom_left_mm",
+    "object_position_x_pct",
+    "object_position_y_pct",
 }
 ALLOWED_SHAPE_STYLE_KEYS = {
     "fill_color",
     "stroke_color",
     "stroke_width_mm",
+    "shape_kind",
+    "shape_points",
+    "polygon_sides",
+    "inner_radius_pct",
+    "arrow_head_pct",
+    "arrow_shaft_pct",
+    "fill_gradient",
+    "fill_gradient_start",
+    "fill_gradient_end",
+    "fill_gradient_angle_deg",
+    "border_style",
 }
 ALLOWED_QR_STYLE_KEYS = {
     "foreground_color",
@@ -157,6 +184,10 @@ ALLOWED_QR_STYLE_KEYS = {
     "quiet_zone_modules",
     "error_correction_level",
     "logo_image_asset_id",
+    "data_mode",
+    "custom_data",
+    "merge_fields",
+    "separator",
 }
 ALLOWED_BARCODE_STYLE_KEYS = {
     "foreground_color",
@@ -180,16 +211,39 @@ STYLE_MM_KEYS = {
     "corner_radius_mm",
     "clip_radius_mm",
     "stroke_width_mm",
+    "shadow_offset_x_mm",
+    "shadow_offset_y_mm",
+    "shadow_blur_mm",
+    "radius_top_left_mm",
+    "radius_top_right_mm",
+    "radius_bottom_right_mm",
+    "radius_bottom_left_mm",
 }
-STYLE_BOOL_KEYS = {"visible", "locked", "auto_fit", "grayscale", "show_value"}
+STYLE_BOOL_KEYS = {
+    "visible",
+    "locked",
+    "auto_fit",
+    "grayscale",
+    "show_value",
+    "italic",
+}
 STYLE_INT_KEYS = {
     "max_lines",
     "quiet_zone_modules",
     "font_asset_id",
     "image_asset_id",
     "logo_image_asset_id",
+    "polygon_sides",
 }
-STYLE_PERCENT_KEYS = {"brightness_pct", "contrast_pct"}
+STYLE_PERCENT_KEYS = {
+    "brightness_pct",
+    "contrast_pct",
+    "inner_radius_pct",
+    "arrow_head_pct",
+    "arrow_shaft_pct",
+    "object_position_x_pct",
+    "object_position_y_pct",
+}
 STYLE_ENUMS: dict[str, set[str]] = {
     "text_align": {"left", "center", "right", "justify"},
     "text_transform": {"none", "uppercase", "lowercase", "capitalize"},
@@ -197,6 +251,20 @@ STYLE_ENUMS: dict[str, set[str]] = {
     "vertical_align": {"top", "middle", "bottom"},
     "object_fit": {"contain", "cover", "fill", "scale-down", "none"},
     "error_correction_level": {"l", "m", "q", "h"},
+    "shape_kind": {"rectangle", "circle", "ellipse", "line", "star", "arrow", "polygon"},
+    "border_style": {"solid", "dashed", "dotted"},
+    "data_mode": {"single_merge", "multi_merge", "custom"},
+    "transform_origin": {
+        "center center",
+        "top left",
+        "top center",
+        "top right",
+        "center left",
+        "center right",
+        "bottom left",
+        "bottom center",
+        "bottom right",
+    },
 }
 
 
@@ -300,6 +368,77 @@ def _validate_style_scaffolding(
                 raise ValidationError(
                     {f"{element_path}.style.{key}": "Must be <= 100."}
                 )
+    if "shape_points" in style:
+        points = style.get("shape_points")
+        if not isinstance(points, list) or not points:
+            raise ValidationError(
+                {f"{element_path}.style.shape_points": "Must be a non-empty list of points."}
+            )
+        for point_index, point in enumerate(points):
+            point_path = f"{element_path}.style.shape_points[{point_index}]"
+            if not isinstance(point, dict):
+                raise ValidationError({point_path: "Each point must be an object."})
+            if "x_pct" not in point or "y_pct" not in point:
+                raise ValidationError({point_path: "Each point must include x_pct and y_pct."})
+            x_pct = _to_decimal(
+                point.get("x_pct"),
+                field_name=f"{point_path}.x_pct",
+                allow_zero=True,
+                minimum=Decimal("0.00"),
+            )
+            y_pct = _to_decimal(
+                point.get("y_pct"),
+                field_name=f"{point_path}.y_pct",
+                allow_zero=True,
+                minimum=Decimal("0.00"),
+            )
+            if x_pct > Decimal("100.00") or y_pct > Decimal("100.00"):
+                raise ValidationError({point_path: "x_pct and y_pct must be <= 100."})
+    if "fill_gradient" in style:
+        fill_gradient = style.get("fill_gradient")
+        if not isinstance(fill_gradient, dict):
+            raise ValidationError(
+                {f"{element_path}.style.fill_gradient": "Must be an object with gradient configuration."}
+            )
+        for required_gradient_key in {"start_color", "end_color"}:
+            if required_gradient_key not in fill_gradient:
+                raise ValidationError(
+                    {
+                        f"{element_path}.style.fill_gradient": (
+                            f"Missing '{required_gradient_key}'."
+                        )
+                    }
+                )
+        if "angle_deg" in fill_gradient:
+            _to_decimal(
+                fill_gradient.get("angle_deg"),
+                field_name=f"{element_path}.style.fill_gradient.angle_deg",
+                allow_zero=True,
+                minimum=Decimal("-360.00"),
+            )
+    if "merge_fields" in style:
+        merge_fields = style.get("merge_fields")
+        if not isinstance(merge_fields, list) or not merge_fields:
+            raise ValidationError(
+                {f"{element_path}.style.merge_fields": "Must be a non-empty list."}
+            )
+        for merge_index, merge_key in enumerate(merge_fields):
+            normalized_merge_key = str(merge_key).strip()
+            if normalized_merge_key not in ALLOWED_MERGE_FIELDS:
+                raise ValidationError(
+                    {
+                        f"{element_path}.style.merge_fields[{merge_index}]": (
+                            f"Unknown merge field '{normalized_merge_key}'."
+                        )
+                    }
+                )
+    if "fill_gradient_angle_deg" in style:
+        _to_decimal(
+            style.get("fill_gradient_angle_deg"),
+            field_name=f"{element_path}.style.fill_gradient_angle_deg",
+            allow_zero=True,
+            minimum=Decimal("-360.00"),
+        )
     for key, allowed_values in STYLE_ENUMS.items():
         if key in style:
             normalized_value = str(style.get(key)).strip().lower()
@@ -338,6 +477,27 @@ def _validate_merge_fields(element: dict[str, Any], *, element_path: str) -> Non
                 raise ValidationError(
                     {f"{element_path}.source": f"Unknown merge field '{match}'."}
                 )
+    merge_fields = element.get("merge_fields")
+    if merge_fields is not None:
+        if not isinstance(merge_fields, list) or not merge_fields:
+            raise ValidationError({f"{element_path}.merge_fields": "Must be a non-empty list."})
+        for merge_index, merge_key in enumerate(merge_fields):
+            normalized_merge_key = str(merge_key).strip()
+            if normalized_merge_key not in ALLOWED_MERGE_FIELDS:
+                raise ValidationError(
+                    {
+                        f"{element_path}.merge_fields[{merge_index}]": (
+                            f"Unknown merge field '{normalized_merge_key}'."
+                        )
+                    }
+                )
+    qr_data = element.get("qr_data")
+    if isinstance(qr_data, str):
+        for match in MERGE_FIELD_PATTERN.findall(qr_data):
+            if match not in ALLOWED_MERGE_FIELDS:
+                raise ValidationError(
+                    {f"{element_path}.qr_data": f"Unknown merge field '{match}'."}
+                )
 
 
 def _normalize_element(raw_element: dict[str, Any], *, index: int) -> dict[str, Any]:
@@ -356,6 +516,12 @@ def _normalize_element(raw_element: dict[str, Any], *, index: int) -> dict[str, 
         element["text"] = element.get("content")
     if "style" not in element and "styles" in element:
         element["style"] = element.get("styles")
+    if "merge_fields" not in element and "mergeKeys" in element:
+        element["merge_fields"] = element.get("mergeKeys")
+    if "qr_data" not in element and "custom_data" in element:
+        element["qr_data"] = element.get("custom_data")
+    if "qr_data" not in element and "data" in element and str(element.get("type", "")).lower() == "qr":
+        element["qr_data"] = element.get("data")
     if element.get("style") is None:
         element["style"] = {}
     if element.get("metadata") is None:
@@ -382,6 +548,10 @@ def _normalize_element(raw_element: dict[str, Any], *, index: int) -> dict[str, 
         "visible",
         "anchor",
         "fit_mode",
+        "merge_fields",
+        "qr_data",
+        "qr_separator",
+        "qr_mode",
     }
     for key in optional_keys:
         if key in element:
@@ -482,6 +652,10 @@ def validate_design_payload_schema(
         "visible",
         "anchor",
         "fit_mode",
+        "merge_fields",
+        "qr_data",
+        "qr_separator",
+        "qr_mode",
     }
     for index, element in enumerate(elements):
         element_path = f"design_payload.elements[{index}]"

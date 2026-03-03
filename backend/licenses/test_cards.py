@@ -111,6 +111,94 @@ def _sample_render_design_payload() -> dict:
     }
 
 
+def _sample_v2_advanced_design_payload(*, font_asset_id: int, image_asset_id: int) -> dict:
+    return {
+        "schema_version": "v2",
+        "layers": [
+            {
+                "id": "advanced-text",
+                "kind": "text",
+                "x": "4.00",
+                "y": "4.00",
+                "width": "50.00",
+                "height": "10.00",
+                "content": "{{member.full_name}}",
+                "rotation_deg": "2.00",
+                "styles": {
+                    "font_asset_id": font_asset_id,
+                    "font_family": "Fallback Sans",
+                    "font_size_mm": "4.20",
+                    "color": "#0f172a",
+                    "font_weight": "700",
+                    "italic": True,
+                    "line_height": "1.15",
+                    "text_align": "center",
+                    "shadow_color": "rgba(0,0,0,0.35)",
+                    "shadow_offset_x_mm": "0.20",
+                    "shadow_offset_y_mm": "0.20",
+                    "shadow_blur_mm": "0.20",
+                    "stroke_color": "#ffffff",
+                    "stroke_width_mm": "0.10",
+                    "transform_origin": "top left",
+                },
+            },
+            {
+                "id": "advanced-image",
+                "kind": "image",
+                "x": "60.00",
+                "y": "4.00",
+                "width": "20.00",
+                "height": "20.00",
+                "styles": {
+                    "image_asset_id": image_asset_id,
+                    "object_fit": "cover",
+                    "border_color": "#1d4ed8",
+                    "border_width_mm": "0.25",
+                    "radius_top_left_mm": "1.00",
+                    "radius_top_right_mm": "2.00",
+                    "radius_bottom_right_mm": "3.00",
+                    "radius_bottom_left_mm": "4.00",
+                },
+            },
+            {
+                "id": "advanced-shape",
+                "kind": "shape",
+                "x": "4.00",
+                "y": "18.00",
+                "width": "20.00",
+                "height": "20.00",
+                "styles": {
+                    "shape_kind": "star",
+                    "fill_gradient_start": "#ef4444",
+                    "fill_gradient_end": "#3b82f6",
+                    "fill_gradient_angle_deg": "45",
+                    "stroke_color": "#1f2937",
+                    "stroke_width_mm": "0.25",
+                    "border_style": "dashed",
+                },
+            },
+            {
+                "id": "advanced-qr",
+                "kind": "qr",
+                "x": "60.00",
+                "y": "30.00",
+                "width": "20.00",
+                "height": "20.00",
+                "styles": {
+                    "data_mode": "multi_merge",
+                    "merge_fields": ["member.ltf_licenseid", "license.year"],
+                    "separator": "|",
+                    "foreground_color": "#111827",
+                    "background_color": "#ffffff",
+                    "quiet_zone_modules": 2,
+                },
+            },
+        ],
+        "metadata": {"unit": "mm"},
+        "canvas": {"unit": "mm"},
+    }
+
+
 def _build_uploaded_png(name: str = "preview-photo.png") -> SimpleUploadedFile:
     buffer = BytesIO()
     image = Image.new("RGB", (32, 32), color=(16, 185, 129))
@@ -1030,6 +1118,133 @@ class LicenseCardPreviewApiTests(TestCase):
         self.assertTrue(qr_element["resolved_value"])
         self.assertTrue(qr_element["qr_data_uri"].startswith("data:image/png;base64,"))
 
+    def test_preview_data_renders_v2_styles_with_assets_and_qr_multi_merge(self):
+        with tempfile.TemporaryDirectory() as temp_media_root:
+            with self.settings(MEDIA_ROOT=temp_media_root):
+                font_asset = CardFontAsset.objects.create(
+                    name="Preview Font",
+                    file=_build_uploaded_font("preview-font.ttf"),
+                    created_by=self.ltf_admin,
+                )
+                image_asset = CardImageAsset.objects.create(
+                    name="Preview Image",
+                    image=_build_uploaded_png("preview-image.png"),
+                    created_by=self.ltf_admin,
+                )
+                self.template_version.design_payload = _sample_v2_advanced_design_payload(
+                    font_asset_id=font_asset.id,
+                    image_asset_id=image_asset.id,
+                )
+                self.template_version.save(update_fields=["design_payload", "updated_at"])
+
+                self.client.force_authenticate(user=self.ltf_admin)
+                response = self.client.post(
+                    self.preview_data_url,
+                    {
+                        "member_id": self.member.id,
+                        "license_id": self.license.id,
+                        "paper_profile_id": self.paper_profile.id,
+                        "selected_slots": [0, 1, 2, 3],
+                    },
+                    format="json",
+                )
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.assertEqual(response.data["schema_version"], 2)
+
+                render_metadata = response.data["render_metadata"]
+                self.assertIn(font_asset.id, render_metadata["font_assets"]["requested_ids"])
+                self.assertIn(font_asset.id, render_metadata["font_assets"]["resolved_ids"])
+                self.assertIn(image_asset.id, render_metadata["image_assets"]["requested_ids"])
+                self.assertIn(image_asset.id, render_metadata["image_assets"]["resolved_ids"])
+                self.assertTrue(render_metadata["font_assets"]["embedded_faces"])
+
+                text_element = next(
+                    item for item in response.data["elements"] if item["id"] == "advanced-text"
+                )
+                self.assertEqual(text_element["resolved_text"], "Preview MEMBER")
+                self.assertEqual(text_element["resolved_font"]["status"], "embedded")
+                self.assertEqual(text_element["transform_origin"], "top left")
+
+                image_element = next(
+                    item for item in response.data["elements"] if item["id"] == "advanced-image"
+                )
+                self.assertEqual(
+                    image_element["resolved_source_meta"]["resolved_via"], "style.image_asset_id"
+                )
+                self.assertTrue(image_element["resolved_source"].startswith("data:image/"))
+
+                shape_element = next(
+                    item for item in response.data["elements"] if item["id"] == "advanced-shape"
+                )
+                self.assertEqual(shape_element["shape_kind"], "star")
+
+                qr_element = next(item for item in response.data["elements"] if item["id"] == "advanced-qr")
+                self.assertEqual(qr_element["qr_mode"], "multi_merge")
+                self.assertEqual(qr_element["resolved_value"], f"{self.member.ltf_licenseid}|{self.license.year}")
+                self.assertTrue(qr_element["qr_data_uri"].startswith("data:image/png;base64,"))
+
+    def test_preview_data_missing_font_asset_falls_back_without_error(self):
+        self.template_version.design_payload = {
+            "elements": [
+                {
+                    "id": "text-fallback",
+                    "type": "text",
+                    "x_mm": "2.00",
+                    "y_mm": "2.00",
+                    "width_mm": "30.00",
+                    "height_mm": "8.00",
+                    "text": "{{member.first_name}}",
+                    "style": {
+                        "font_asset_id": 999999,
+                        "font_family": "Fallback Sans",
+                    },
+                }
+            ]
+        }
+        self.template_version.save(update_fields=["design_payload", "updated_at"])
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            self.preview_data_url,
+            {"member_id": self.member.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        text_element = response.data["elements"][0]
+        self.assertEqual(text_element["resolved_font"]["status"], "missing")
+        self.assertEqual(text_element["resolved_font"]["font_family"], "Fallback Sans")
+
+    def test_qr_custom_mode_supports_tokenized_custom_payload(self):
+        self.template_version.design_payload = {
+            "schema_version": "v2",
+            "layers": [
+                {
+                    "id": "qr-custom",
+                    "kind": "qr",
+                    "x": "5.00",
+                    "y": "5.00",
+                    "width": "20.00",
+                    "height": "20.00",
+                    "styles": {
+                        "data_mode": "custom",
+                        "custom_data": "LTF|{{member.ltf_licenseid}}|{{license.year}}",
+                    },
+                }
+            ],
+        }
+        self.template_version.save(update_fields=["design_payload", "updated_at"])
+
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            self.preview_data_url,
+            {"member_id": self.member.id, "license_id": self.license.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        qr_element = response.data["elements"][0]
+        self.assertEqual(qr_element["id"], "qr-custom")
+        self.assertEqual(qr_element["qr_mode"], "custom")
+        self.assertEqual(qr_element["resolved_value"], f"LTF|{self.member.ltf_licenseid}|{self.license.year}")
+
     def test_preview_card_pdf_returns_pdf_bytes(self):
         self.client.force_authenticate(user=self.ltf_admin)
         response = self.client.post(
@@ -1062,6 +1277,41 @@ class LicenseCardPreviewApiTests(TestCase):
         self.assertEqual(response["Content-Type"], "application/pdf")
         self.assertIn("sheet-preview", response["Content-Disposition"])
         self.assertTrue(response.content.startswith(b"%PDF"))
+
+    def test_lp798_geometry_contract_and_bounds(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            self.preview_data_url,
+            {
+                "member_id": self.member.id,
+                "license_id": self.license.id,
+                "paper_profile_id": self.paper_profile.id,
+                "selected_slots": [0, 9],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["paper_profile"]["code"], "sigel-lp798")
+        self.assertEqual(response.data["paper_profile"]["card_corner_radius_mm"], "3.18")
+        slots = response.data["slots"]
+        self.assertEqual(len(slots), 10)
+
+        slot_0 = next(slot for slot in slots if slot["slot_index"] == 0)
+        slot_2 = next(slot for slot in slots if slot["slot_index"] == 2)
+        slot_9 = next(slot for slot in slots if slot["slot_index"] == 9)
+        self.assertEqual(slot_0["x_mm"], "19.40")
+        self.assertEqual(slot_0["y_mm"], "13.55")
+        self.assertEqual(slot_2["x_mm"], "19.40")
+        self.assertEqual(slot_2["y_mm"], "67.53")
+        self.assertEqual(slot_9["x_mm"], "105.00")
+        self.assertEqual(slot_9["y_mm"], "229.47")
+
+        self.assertTrue(response.data["layout_metadata"]["within_sheet_bounds"])
+        self.assertEqual(response.data["layout_metadata"]["max_x_mm"], "190.60")
+        self.assertEqual(response.data["layout_metadata"]["max_y_mm"], "283.45")
+        for slot in slots:
+            self.assertLessEqual(Decimal(slot["x_end_mm"]), Decimal("210.00"))
+            self.assertLessEqual(Decimal(slot["y_end_mm"]), Decimal("297.00"))
 
     def test_preview_sheet_rejects_out_of_range_slots(self):
         self.client.force_authenticate(user=self.ltf_admin)
