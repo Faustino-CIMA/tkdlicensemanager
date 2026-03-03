@@ -138,6 +138,25 @@ export type CardTemplateCloneInput = {
   source_version_id?: number;
 };
 
+export type CardTemplateDeleteMode = "auto" | "soft" | "hard";
+
+export type CardTemplateDeleteInput = {
+  confirm_name: string;
+  mode?: CardTemplateDeleteMode;
+};
+
+export type CardTemplateDeleteResult = {
+  template_id: number;
+  template_name: string;
+  requested_mode: CardTemplateDeleteMode;
+  applied_mode: CardTemplateDeleteMode;
+  referenced_by_print_jobs: boolean;
+  was_default: boolean;
+  deleted: boolean;
+  deactivated: boolean;
+  reassigned_default_template_id: number | null;
+};
+
 export type CardTemplateVersion = {
   id: number;
   template: number;
@@ -265,6 +284,7 @@ export type CardSheetPreviewRequestInput = CardPreviewRequestInput & {
 export type CardPreviewDataResponse = {
   template_version_id: number;
   template_id: number;
+  schema_version?: number;
   card_format: {
     id: number;
     code: string;
@@ -280,6 +300,7 @@ export type CardPreviewDataResponse = {
     sheet_height_mm: string;
     card_width_mm: string;
     card_height_mm: string;
+    card_corner_radius_mm?: string | null;
     rows: number;
     columns: number;
     slot_count: number;
@@ -291,6 +312,7 @@ export type CardPreviewDataResponse = {
     safe_area_mm: string;
   };
   context: Record<string, string>;
+  background?: Record<string, unknown>;
   selected_slots: number[];
   slots: Array<{
     slot_index: number;
@@ -300,6 +322,9 @@ export type CardPreviewDataResponse = {
     y_mm: string;
     width_mm: string;
     height_mm: string;
+    x_end_mm?: string;
+    y_end_mm?: string;
+    card_corner_radius_mm?: string | null;
     selected: boolean;
   }>;
   elements: Array<
@@ -316,16 +341,68 @@ export type CardPreviewDataResponse = {
       barcode_placeholder?: string;
     }
   >;
+  layout_metadata?: {
+    max_x_mm: string;
+    max_y_mm: string;
+    sheet_width_mm: string;
+    sheet_height_mm: string;
+    within_sheet_bounds: boolean;
+  } | null;
+  render_metadata?: {
+    engine_version?: string;
+    unit?: string;
+    precision_mm?: string;
+    geometry_rounding?: string;
+    font_assets?: {
+      requested_ids: number[];
+      resolved_ids: number[];
+      missing_ids: number[];
+      unavailable_ids: number[];
+      embedded_faces?: Array<{
+        id: number;
+        css_family: string;
+        source_data_uri: string;
+      }>;
+    };
+    image_assets?: {
+      requested_ids: number[];
+      resolved_ids: number[];
+      missing_ids: number[];
+      unavailable_ids: number[];
+    };
+  };
+};
+
+export type CardDesignerLookupItem = {
+  id: number;
+  label: string;
+  subtitle: string;
 };
 
 type CardTemplateVersionListQuery = {
   templateId?: number;
 };
 
+type CardDesignerLookupQuery = {
+  q?: string;
+  limit?: number;
+};
+
 function buildTemplateVersionQuery(params?: CardTemplateVersionListQuery) {
   const search = new URLSearchParams();
   if (typeof params?.templateId === "number") {
     search.set("template_id", String(params.templateId));
+  }
+  return search;
+}
+
+function buildDesignerLookupQuery(params?: CardDesignerLookupQuery) {
+  const search = new URLSearchParams();
+  if (params?.q) {
+    search.set("q", params.q);
+  }
+  if (typeof params?.limit === "number" && Number.isFinite(params.limit)) {
+    search.set("limit", String(Math.trunc(params.limit)));
   }
   return search;
 }
@@ -426,6 +503,16 @@ export function deleteCardTemplate(id: number) {
   });
 }
 
+export function deleteCardTemplateSafely(
+  id: number,
+  input: CardTemplateDeleteInput
+) {
+  return apiRequest<CardTemplateDeleteResult>(`/api/card-templates/${id}/delete/`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export function setDefaultCardTemplate(id: number) {
   return apiRequest<CardTemplate>(`/api/card-templates/${id}/set-default/`, {
     method: "POST",
@@ -488,6 +575,48 @@ export function getMergeFields(options?: ApiCallOptions) {
   return apiRequest<MergeField[]>("/api/merge-fields/", {
     signal: options?.signal,
   });
+}
+
+export function getCardDesignerMemberLookups(
+  params?: CardDesignerLookupQuery,
+  options?: ApiCallOptions
+) {
+  const search = buildDesignerLookupQuery(params);
+  const suffix = search.toString();
+  return apiRequest<CardDesignerLookupItem[]>(
+    `/api/card-designer/lookups/members/${suffix ? `?${suffix}` : ""}`,
+    {
+      signal: options?.signal,
+    }
+  );
+}
+
+export function getCardDesignerLicenseLookups(
+  params?: CardDesignerLookupQuery,
+  options?: ApiCallOptions
+) {
+  const search = buildDesignerLookupQuery(params);
+  const suffix = search.toString();
+  return apiRequest<CardDesignerLookupItem[]>(
+    `/api/card-designer/lookups/licenses/${suffix ? `?${suffix}` : ""}`,
+    {
+      signal: options?.signal,
+    }
+  );
+}
+
+export function getCardDesignerClubLookups(
+  params?: CardDesignerLookupQuery,
+  options?: ApiCallOptions
+) {
+  const search = buildDesignerLookupQuery(params);
+  const suffix = search.toString();
+  return apiRequest<CardDesignerLookupItem[]>(
+    `/api/card-designer/lookups/clubs/${suffix ? `?${suffix}` : ""}`,
+    {
+      signal: options?.signal,
+    }
+  );
 }
 
 export function getPrintJobs(options?: ApiCallOptions) {

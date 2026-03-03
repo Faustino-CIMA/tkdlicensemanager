@@ -19,6 +19,7 @@ import {
   CardTemplate,
   cloneCardTemplate,
   createCardTemplate,
+  deleteCardTemplateSafely,
   getCardTemplates,
   setDefaultCardTemplate,
 } from "@/lib/license-card-api";
@@ -49,6 +50,9 @@ export default function LtfAdminLicenseCardsPage() {
   const [cloneTemplateName, setCloneTemplateName] = useState("");
   const [cloneTemplateDescription, setCloneTemplateDescription] = useState("");
   const [isCloningTemplate, setIsCloningTemplate] = useState(false);
+  const [deleteTargetTemplate, setDeleteTargetTemplate] = useState<CardTemplate | null>(null);
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
+  const [isDeletingTemplate, setIsDeletingTemplate] = useState(false);
 
   const canManageTemplates = currentRole === "ltf_admin";
   const fallbackRoute = getDashboardRouteForRole(currentRole ?? "", locale) ?? `/${locale}/dashboard`;
@@ -207,6 +211,66 @@ export default function LtfAdminLicenseCardsPage() {
     }
   };
 
+  const startDeleteTemplate = (template: CardTemplate) => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setDeleteTargetTemplate(template);
+    setDeleteConfirmName("");
+  };
+
+  const closeDeleteTemplateModal = () => {
+    if (isDeletingTemplate) {
+      return;
+    }
+    setDeleteTargetTemplate(null);
+    setDeleteConfirmName("");
+  };
+
+  const isDeleteConfirmNameValid = deleteTargetTemplate
+    ? deleteConfirmName.trim() === deleteTargetTemplate.name
+    : false;
+
+  const submitDeleteTemplate = async () => {
+    if (!deleteTargetTemplate) {
+      return;
+    }
+    if (!isDeleteConfirmNameValid) {
+      setErrorMessage(t("licenseCardsTemplateDeleteConfirmNameMismatchError"));
+      return;
+    }
+    setIsDeletingTemplate(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      const result = await deleteCardTemplateSafely(deleteTargetTemplate.id, {
+        confirm_name: deleteConfirmName.trim(),
+        mode: "auto",
+      });
+      setDeleteTargetTemplate(null);
+      setDeleteConfirmName("");
+      if (result.deleted) {
+        setSuccessMessage(
+          t("licenseCardsTemplateDeleteHardSuccess", { name: result.template_name })
+        );
+      } else if (result.reassigned_default_template_id) {
+        setSuccessMessage(
+          t("licenseCardsTemplateDeleteSoftReassignedSuccess", { name: result.template_name })
+        );
+      } else {
+        setSuccessMessage(
+          t("licenseCardsTemplateDeleteSoftSuccess", { name: result.template_name })
+        );
+      }
+      await loadTemplates();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : t("licenseCardsTemplateDeleteError")
+      );
+    } finally {
+      setIsDeletingTemplate(false);
+    }
+  };
+
   if (isRoleLoading) {
     return (
       <LtfAdminLayout title={t("licenseCardsTitle")} subtitle={t("licenseCardsSubtitle")}>
@@ -342,6 +406,14 @@ export default function LtfAdminLicenseCardsPage() {
                     >
                       {t("licenseCardsCloneAction")}
                     </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={busyTemplateId === template.id}
+                      onClick={() => startDeleteTemplate(template)}
+                    >
+                      {t("licenseCardsDeleteTemplateAction")}
+                    </Button>
                   </div>
                 ),
               },
@@ -453,6 +525,45 @@ export default function LtfAdminLicenseCardsPage() {
               variant="outline"
               disabled={isCloningTemplate}
               onClick={() => setCloneSourceTemplate(null)}
+            >
+              {t("cancelEdit")}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        title={t("licenseCardsDeleteModalTitle")}
+        description={t("licenseCardsDeleteModalSubtitle")}
+        isOpen={Boolean(deleteTargetTemplate)}
+        onClose={closeDeleteTemplateModal}
+      >
+        <div className="grid gap-4">
+          <p className="text-sm text-zinc-700">
+            {t("licenseCardsDeleteModalConfirmHint", {
+              name: deleteTargetTemplate?.name ?? "",
+            })}
+          </p>
+          <Input
+            placeholder={t("licenseCardsDeleteModalConfirmPlaceholder")}
+            value={deleteConfirmName}
+            onChange={(event) => setDeleteConfirmName(event.target.value)}
+            disabled={isDeletingTemplate}
+          />
+          <div className="flex items-center gap-3">
+            <Button
+              variant="destructive"
+              disabled={isDeletingTemplate || !isDeleteConfirmNameValid}
+              onClick={() => void submitDeleteTemplate()}
+            >
+              {isDeletingTemplate
+                ? t("licenseCardsDeletingTemplateAction")
+                : t("licenseCardsDeleteTemplateAction")}
+            </Button>
+            <Button
+              variant="outline"
+              disabled={isDeletingTemplate}
+              onClick={closeDeleteTemplateModal}
             >
               {t("cancelEdit")}
             </Button>

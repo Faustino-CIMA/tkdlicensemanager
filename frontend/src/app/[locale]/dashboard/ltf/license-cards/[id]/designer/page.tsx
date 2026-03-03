@@ -23,6 +23,7 @@ import { getDashboardRouteForRole } from "@/lib/dashboard-routing";
 import {
   CardDesignElement,
   CardDesignPayload,
+  CardDesignerLookupItem,
   CardElementType,
   CardFormat,
   CardPreviewDataResponse,
@@ -34,6 +35,9 @@ import {
   PaperProfile,
   createCardTemplateVersion,
   getCardFormats,
+  getCardDesignerClubLookups,
+  getCardDesignerLicenseLookups,
+  getCardDesignerMemberLookups,
   getCardTemplateVersionCardPreviewPdf,
   getCardTemplateVersionPreviewData,
   getCardTemplateVersionSheetPreviewPdf,
@@ -80,6 +84,7 @@ const DEFAULT_BLEED_MM = "2.00";
 const DEFAULT_SAFE_AREA_MM = "3.00";
 const TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE = "template-default";
 const MERGE_FIELD_TOKEN_REGEX = /\{\{\s*([^{}\s]+)\s*\}\}/g;
+const PREVIEW_LOOKUP_LIMIT = 20;
 
 function toFiniteNumber(value: unknown, fallback: number) {
   const parsed = Number(value);
@@ -110,18 +115,6 @@ function generateElementId() {
     return crypto.randomUUID();
   }
   return `element-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
-}
-
-function parseOptionalPositiveInt(rawValue: string) {
-  const normalized = rawValue.trim();
-  if (!normalized) {
-    return undefined;
-  }
-  const parsed = Number(normalized);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    return undefined;
-  }
-  return parsed;
 }
 
 function normalizeSlotSelection(selectedSlots: number[], slotCount: number) {
@@ -170,6 +163,92 @@ function getPreviewElementResolvedValue(
     return `{{${element.merge_field}}}`;
   }
   return "-";
+}
+
+type DesignerLookupFieldProps = {
+  label: string;
+  searchPlaceholder: string;
+  selectedPlaceholder: string;
+  loadingLabel: string;
+  noResultsLabel: string;
+  clearActionLabel: string;
+  query: string;
+  selectedItem: CardDesignerLookupItem | null;
+  options: CardDesignerLookupItem[];
+  isLoading: boolean;
+  onQueryChange: (value: string) => void;
+  onSelect: (item: CardDesignerLookupItem) => void;
+  onClear: () => void;
+};
+
+function DesignerLookupField({
+  label,
+  searchPlaceholder,
+  selectedPlaceholder,
+  loadingLabel,
+  noResultsLabel,
+  clearActionLabel,
+  query,
+  selectedItem,
+  options,
+  isLoading,
+  onQueryChange,
+  onSelect,
+  onClear,
+}: DesignerLookupFieldProps) {
+  return (
+    <div className="space-y-2">
+      <label className="text-xs font-medium uppercase text-zinc-500">{label}</label>
+      <Input
+        value={query}
+        placeholder={searchPlaceholder}
+        onChange={(event) => onQueryChange(event.target.value)}
+      />
+      <div className="max-h-36 space-y-1 overflow-auto rounded-md border border-zinc-200 bg-zinc-50 p-1">
+        {isLoading ? (
+          <p className="px-2 py-1 text-xs text-zinc-500">{loadingLabel}</p>
+        ) : options.length === 0 ? (
+          <p className="px-2 py-1 text-xs text-zinc-500">{noResultsLabel}</p>
+        ) : (
+          options.map((item) => {
+            const isSelected = selectedItem?.id === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={`w-full rounded-md border px-2 py-1 text-left text-xs transition ${
+                  isSelected
+                    ? "border-blue-500 bg-blue-50 text-blue-700"
+                    : "border-transparent bg-white text-zinc-700 hover:border-zinc-300"
+                }`}
+                onClick={() => onSelect(item)}
+              >
+                <p className="font-medium">{item.label}</p>
+                <p className="text-[11px] text-zinc-500">{item.subtitle || "-"}</p>
+              </button>
+            );
+          })
+        )}
+      </div>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[11px] text-zinc-600">
+          {selectedItem
+            ? `${selectedItem.label}${selectedItem.subtitle ? ` · ${selectedItem.subtitle}` : ""}`
+            : selectedPlaceholder}
+        </p>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-7 px-2 text-xs"
+          onClick={onClear}
+          disabled={!selectedItem && !query.trim()}
+        >
+          {clearActionLabel}
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function clampElementToCanvas(
@@ -339,9 +418,31 @@ export default function LtfAdminLicenseCardDesignerPage() {
   const [showSafeAreaGuide, setShowSafeAreaGuide] = useState(true);
   const [bleedGuideMmInput, setBleedGuideMmInput] = useState(DEFAULT_BLEED_MM);
   const [safeAreaGuideMmInput, setSafeAreaGuideMmInput] = useState(DEFAULT_SAFE_AREA_MM);
-  const [previewMemberIdInput, setPreviewMemberIdInput] = useState("");
-  const [previewLicenseIdInput, setPreviewLicenseIdInput] = useState("");
-  const [previewClubIdInput, setPreviewClubIdInput] = useState("");
+  const [previewMemberLookupQuery, setPreviewMemberLookupQuery] = useState("");
+  const [previewLicenseLookupQuery, setPreviewLicenseLookupQuery] = useState("");
+  const [previewClubLookupQuery, setPreviewClubLookupQuery] = useState("");
+  const [previewMemberLookupOptions, setPreviewMemberLookupOptions] = useState<
+    CardDesignerLookupItem[]
+  >([]);
+  const [previewLicenseLookupOptions, setPreviewLicenseLookupOptions] = useState<
+    CardDesignerLookupItem[]
+  >([]);
+  const [previewClubLookupOptions, setPreviewClubLookupOptions] = useState<
+    CardDesignerLookupItem[]
+  >([]);
+  const [previewSelectedMember, setPreviewSelectedMember] = useState<CardDesignerLookupItem | null>(
+    null
+  );
+  const [previewSelectedLicense, setPreviewSelectedLicense] = useState<
+    CardDesignerLookupItem | null
+  >(null);
+  const [previewSelectedClub, setPreviewSelectedClub] = useState<CardDesignerLookupItem | null>(
+    null
+  );
+  const [isLoadingMemberLookup, setIsLoadingMemberLookup] = useState(false);
+  const [isLoadingLicenseLookup, setIsLoadingLicenseLookup] = useState(false);
+  const [isLoadingClubLookup, setIsLoadingClubLookup] = useState(false);
+  const [isAdvancedPreviewMode, setIsAdvancedPreviewMode] = useState(false);
   const [previewSampleDataInput, setPreviewSampleDataInput] = useState("{}");
   const [previewPaperProfileValue, setPreviewPaperProfileValue] = useState(
     TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE
@@ -582,6 +683,129 @@ export default function LtfAdminLicenseCardDesignerPage() {
       return Array.from({ length: effectiveSlotCount }, (_, index) => index);
     });
   }, [effectiveSlotCount]);
+
+  useEffect(() => {
+    if (!canManageDesigner) {
+      setPreviewMemberLookupOptions([]);
+      setIsLoadingMemberLookup(false);
+      return;
+    }
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      const loadLookup = async () => {
+        setIsLoadingMemberLookup(true);
+        try {
+          const response = await getCardDesignerMemberLookups(
+            {
+              q: previewMemberLookupQuery.trim(),
+              limit: PREVIEW_LOOKUP_LIMIT,
+            },
+            { signal: controller.signal }
+          );
+          if (controller.signal.aborted) {
+            return;
+          }
+          setPreviewMemberLookupOptions(response);
+        } catch {
+          if (controller.signal.aborted) {
+            return;
+          }
+          setPreviewMemberLookupOptions([]);
+        } finally {
+          if (!controller.signal.aborted) {
+            setIsLoadingMemberLookup(false);
+          }
+        }
+      };
+      void loadLookup();
+    }, 250);
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [canManageDesigner, previewMemberLookupQuery]);
+
+  useEffect(() => {
+    if (!canManageDesigner) {
+      setPreviewLicenseLookupOptions([]);
+      setIsLoadingLicenseLookup(false);
+      return;
+    }
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      const loadLookup = async () => {
+        setIsLoadingLicenseLookup(true);
+        try {
+          const response = await getCardDesignerLicenseLookups(
+            {
+              q: previewLicenseLookupQuery.trim(),
+              limit: PREVIEW_LOOKUP_LIMIT,
+            },
+            { signal: controller.signal }
+          );
+          if (controller.signal.aborted) {
+            return;
+          }
+          setPreviewLicenseLookupOptions(response);
+        } catch {
+          if (controller.signal.aborted) {
+            return;
+          }
+          setPreviewLicenseLookupOptions([]);
+        } finally {
+          if (!controller.signal.aborted) {
+            setIsLoadingLicenseLookup(false);
+          }
+        }
+      };
+      void loadLookup();
+    }, 250);
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [canManageDesigner, previewLicenseLookupQuery]);
+
+  useEffect(() => {
+    if (!canManageDesigner) {
+      setPreviewClubLookupOptions([]);
+      setIsLoadingClubLookup(false);
+      return;
+    }
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      const loadLookup = async () => {
+        setIsLoadingClubLookup(true);
+        try {
+          const response = await getCardDesignerClubLookups(
+            {
+              q: previewClubLookupQuery.trim(),
+              limit: PREVIEW_LOOKUP_LIMIT,
+            },
+            { signal: controller.signal }
+          );
+          if (controller.signal.aborted) {
+            return;
+          }
+          setPreviewClubLookupOptions(response);
+        } catch {
+          if (controller.signal.aborted) {
+            return;
+          }
+          setPreviewClubLookupOptions([]);
+        } finally {
+          if (!controller.signal.aborted) {
+            setIsLoadingClubLookup(false);
+          }
+        }
+      };
+      void loadLookup();
+    }, 250);
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [canManageDesigner, previewClubLookupQuery]);
 
   useEffect(() => {
     if (!dragState || !isEditableDraft) {
@@ -918,33 +1142,52 @@ export default function LtfAdminLicenseCardDesignerPage() {
     }
   };
 
-  const buildPreviewSheetPayload = useCallback((): CardSheetPreviewRequestInput => {
-    let sampleData: Record<string, unknown> = {};
-    try {
-      sampleData = parsePreviewSampleData(previewSampleDataInput);
-    } catch {
-      throw new Error(t("licenseCardPreviewInvalidSampleDataError"));
-    }
+  const clearPreviewLookupSelections = () => {
+    setPreviewSelectedMember(null);
+    setPreviewSelectedLicense(null);
+    setPreviewSelectedClub(null);
+    setPreviewMemberLookupQuery("");
+    setPreviewLicenseLookupQuery("");
+    setPreviewClubLookupQuery("");
+  };
 
+  const resetPreviewControls = () => {
+    clearPreviewLookupSelections();
+    setIsAdvancedPreviewMode(false);
+    setPreviewSampleDataInput("{}");
+    setPreviewPaperProfileValue(TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE);
+    setPreviewData(null);
+    if (effectiveSlotCount > 0) {
+      setPreviewSelectedSlots(Array.from({ length: effectiveSlotCount }, (_, index) => index));
+    } else {
+      setPreviewSelectedSlots([]);
+    }
+  };
+
+  const buildPreviewSheetPayload = useCallback((): CardSheetPreviewRequestInput => {
     const payload: CardSheetPreviewRequestInput = {
       include_bleed_guide: showBleedGuide,
       include_safe_area_guide: showSafeAreaGuide,
       bleed_mm: toMmString(bleedGuideMm),
       safe_area_mm: toMmString(safeAreaGuideMm),
-      sample_data: sampleData,
     };
-
-    const memberId = parseOptionalPositiveInt(previewMemberIdInput);
-    if (typeof memberId === "number") {
-      payload.member_id = memberId;
+    if (previewSelectedMember) {
+      payload.member_id = previewSelectedMember.id;
     }
-    const licenseId = parseOptionalPositiveInt(previewLicenseIdInput);
-    if (typeof licenseId === "number") {
-      payload.license_id = licenseId;
+    if (previewSelectedLicense) {
+      payload.license_id = previewSelectedLicense.id;
     }
-    const clubId = parseOptionalPositiveInt(previewClubIdInput);
-    if (typeof clubId === "number") {
-      payload.club_id = clubId;
+    if (previewSelectedClub) {
+      payload.club_id = previewSelectedClub.id;
+    }
+    if (isAdvancedPreviewMode) {
+      let sampleData: Record<string, unknown> = {};
+      try {
+        sampleData = parsePreviewSampleData(previewSampleDataInput);
+      } catch {
+        throw new Error(t("licenseCardPreviewInvalidSampleDataError"));
+      }
+      payload.sample_data = sampleData;
     }
     if (previewPaperProfileValue !== TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE) {
       const paperProfileId = Number(previewPaperProfileValue);
@@ -962,10 +1205,11 @@ export default function LtfAdminLicenseCardDesignerPage() {
   }, [
     bleedGuideMm,
     effectiveSlotCount,
-    previewClubIdInput,
-    previewLicenseIdInput,
-    previewMemberIdInput,
+    isAdvancedPreviewMode,
     previewPaperProfileValue,
+    previewSelectedClub,
+    previewSelectedLicense,
+    previewSelectedMember,
     previewSampleDataInput,
     previewSelectedSlots,
     safeAreaGuideMm,
@@ -1250,41 +1494,71 @@ export default function LtfAdminLicenseCardDesignerPage() {
           <p className="mt-1 text-xs text-zinc-500">{t("licenseCardPreviewControlsSubtitle")}</p>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-          <div className="space-y-1">
-            <label className="text-xs font-medium uppercase text-zinc-500">
-              {t("licenseCardPreviewMemberIdLabel")}
-            </label>
-            <Input
-              type="number"
-              min="1"
-              value={previewMemberIdInput}
-              onChange={(event) => setPreviewMemberIdInput(event.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs font-medium uppercase text-zinc-500">
-              {t("licenseCardPreviewLicenseIdLabel")}
-            </label>
-            <Input
-              type="number"
-              min="1"
-              value={previewLicenseIdInput}
-              onChange={(event) => setPreviewLicenseIdInput(event.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs font-medium uppercase text-zinc-500">
-              {t("licenseCardPreviewClubIdLabel")}
-            </label>
-            <Input
-              type="number"
-              min="1"
-              value={previewClubIdInput}
-              onChange={(event) => setPreviewClubIdInput(event.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <DesignerLookupField
+            label={t("licenseCardPreviewMemberLookupLabel")}
+            searchPlaceholder={t("licenseCardPreviewMemberLookupSearchPlaceholder")}
+            selectedPlaceholder={t("licenseCardPreviewLookupSelectedPlaceholder")}
+            loadingLabel={t("licenseCardPreviewLookupLoading")}
+            noResultsLabel={t("licenseCardPreviewLookupNoResults")}
+            clearActionLabel={t("licenseCardPreviewLookupClearAction")}
+            query={previewMemberLookupQuery}
+            selectedItem={previewSelectedMember}
+            options={previewMemberLookupOptions}
+            isLoading={isLoadingMemberLookup}
+            onQueryChange={setPreviewMemberLookupQuery}
+            onSelect={(item) => {
+              setPreviewSelectedMember(item);
+              setPreviewMemberLookupQuery(item.label);
+            }}
+            onClear={() => {
+              setPreviewSelectedMember(null);
+              setPreviewMemberLookupQuery("");
+            }}
+          />
+          <DesignerLookupField
+            label={t("licenseCardPreviewLicenseLookupLabel")}
+            searchPlaceholder={t("licenseCardPreviewLicenseLookupSearchPlaceholder")}
+            selectedPlaceholder={t("licenseCardPreviewLookupSelectedPlaceholder")}
+            loadingLabel={t("licenseCardPreviewLookupLoading")}
+            noResultsLabel={t("licenseCardPreviewLookupNoResults")}
+            clearActionLabel={t("licenseCardPreviewLookupClearAction")}
+            query={previewLicenseLookupQuery}
+            selectedItem={previewSelectedLicense}
+            options={previewLicenseLookupOptions}
+            isLoading={isLoadingLicenseLookup}
+            onQueryChange={setPreviewLicenseLookupQuery}
+            onSelect={(item) => {
+              setPreviewSelectedLicense(item);
+              setPreviewLicenseLookupQuery(item.label);
+            }}
+            onClear={() => {
+              setPreviewSelectedLicense(null);
+              setPreviewLicenseLookupQuery("");
+            }}
+          />
+          <DesignerLookupField
+            label={t("licenseCardPreviewClubLookupLabel")}
+            searchPlaceholder={t("licenseCardPreviewClubLookupSearchPlaceholder")}
+            selectedPlaceholder={t("licenseCardPreviewLookupSelectedPlaceholder")}
+            loadingLabel={t("licenseCardPreviewLookupLoading")}
+            noResultsLabel={t("licenseCardPreviewLookupNoResults")}
+            clearActionLabel={t("licenseCardPreviewLookupClearAction")}
+            query={previewClubLookupQuery}
+            selectedItem={previewSelectedClub}
+            options={previewClubLookupOptions}
+            isLoading={isLoadingClubLookup}
+            onQueryChange={setPreviewClubLookupQuery}
+            onSelect={(item) => {
+              setPreviewSelectedClub(item);
+              setPreviewClubLookupQuery(item.label);
+            }}
+            onClear={() => {
+              setPreviewSelectedClub(null);
+              setPreviewClubLookupQuery("");
+            }}
+          />
+          <div className="space-y-2">
             <label className="text-xs font-medium uppercase text-zinc-500">
               {t("licenseCardPreviewPaperProfileOverrideLabel")}
             </label>
@@ -1305,7 +1579,17 @@ export default function LtfAdminLicenseCardDesignerPage() {
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-[11px] text-zinc-500">{t("licenseCardPreviewPaperProfileHint")}</p>
           </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="ghost" onClick={clearPreviewLookupSelections}>
+            {t("licenseCardPreviewClearLookupSelectionsAction")}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={resetPreviewControls}>
+            {t("licenseCardPreviewResetControlsAction")}
+          </Button>
         </div>
 
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
@@ -1349,16 +1633,30 @@ export default function LtfAdminLicenseCardDesignerPage() {
           </div>
         </div>
 
-        <div className="space-y-1">
-          <label className="text-xs font-medium uppercase text-zinc-500">
-            {t("licenseCardPreviewSampleDataLabel")}
+        <div className="space-y-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+          <label className="inline-flex items-center gap-2 text-xs font-medium text-zinc-700">
+            <Checkbox
+              checked={isAdvancedPreviewMode}
+              onCheckedChange={(checked) => setIsAdvancedPreviewMode(Boolean(checked))}
+            />
+            {t("licenseCardPreviewAdvancedModeToggleLabel")}
           </label>
-          <textarea
-            className="min-h-[132px] w-full rounded-md border border-zinc-300 px-3 py-2 font-mono text-xs outline-none focus:border-zinc-500"
-            value={previewSampleDataInput}
-            placeholder={t("licenseCardPreviewSampleDataPlaceholder")}
-            onChange={(event) => setPreviewSampleDataInput(event.target.value)}
-          />
+          <p className="text-xs text-zinc-500">{t("licenseCardPreviewAdvancedModeHint")}</p>
+          {isAdvancedPreviewMode ? (
+            <div className="space-y-1">
+              <label className="text-xs font-medium uppercase text-zinc-500">
+                {t("licenseCardPreviewSampleDataLabel")}
+              </label>
+              <textarea
+                className="min-h-[132px] w-full rounded-md border border-zinc-300 bg-white px-3 py-2 font-mono text-xs outline-none focus:border-zinc-500"
+                value={previewSampleDataInput}
+                placeholder={t("licenseCardPreviewSampleDataPlaceholder")}
+                onChange={(event) => setPreviewSampleDataInput(event.target.value)}
+              />
+            </div>
+          ) : (
+            <p className="text-xs text-zinc-500">{t("licenseCardPreviewSampleDataHiddenHint")}</p>
+          )}
         </div>
 
         <div className="space-y-2">
