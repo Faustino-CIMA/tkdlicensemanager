@@ -10,6 +10,7 @@ import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
 import {
   Select,
   SelectContent,
@@ -23,6 +24,10 @@ import { getDashboardRouteForRole } from "@/lib/dashboard-routing";
 import {
   CardDesignElement,
   CardDesignPayload,
+  CardFontAsset,
+  CardFontAssetUploadInput,
+  CardImageAsset,
+  CardImageAssetUploadInput,
   CardDesignerLookupItem,
   CardElementType,
   CardFormat,
@@ -33,8 +38,12 @@ import {
   CardTemplateVersion,
   MergeField,
   PaperProfile,
+  createCardFontAsset,
+  createCardImageAsset,
   createCardTemplateVersion,
   getCardFormats,
+  getCardFontAssets,
+  getCardImageAssets,
   getCardDesignerClubLookups,
   getCardDesignerLicenseLookups,
   getCardDesignerMemberLookups,
@@ -127,6 +136,21 @@ const HISTORY_STACK_LIMIT = 250;
 const DEFAULT_GRID_SIZE_MM = "1.00";
 const DEFAULT_SNAP_THRESHOLD_MM = "1.20";
 const RULER_SIZE_PX = 24;
+const TEXT_ALIGN_OPTIONS = ["left", "center", "right", "justify"] as const;
+const TEXT_TRANSFORM_OPTIONS = ["none", "uppercase", "lowercase", "capitalize"] as const;
+const TEXT_DECORATION_OPTIONS = ["none", "underline", "line-through"] as const;
+const OBJECT_FIT_OPTIONS = ["contain", "cover", "fill", "scale-down", "none"] as const;
+const BORDER_STYLE_OPTIONS = ["solid", "dashed", "dotted"] as const;
+const SHAPE_KIND_OPTIONS = [
+  "rectangle",
+  "circle",
+  "ellipse",
+  "line",
+  "star",
+  "arrow",
+  "polygon",
+] as const;
+const QR_DATA_MODE_OPTIONS = ["single_merge", "multi_merge", "custom"] as const;
 
 function toFiniteNumber(value: unknown, fallback: number) {
   const parsed = Number(value);
@@ -466,6 +490,75 @@ function isEventFromEditableField(target: EventTarget | null): boolean {
   );
 }
 
+function normalizeElementStyle(element: EditableDesignElement | null): Record<string, unknown> {
+  if (!element || !isPlainObject(element.style)) {
+    return {};
+  }
+  return { ...element.style };
+}
+
+function getStyleStringValue(
+  style: Record<string, unknown>,
+  key: string,
+  fallback = ""
+): string {
+  const value = style[key];
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return String(value);
+  }
+  return fallback;
+}
+
+function getStyleBooleanValue(
+  style: Record<string, unknown>,
+  key: string,
+  fallback = false
+): boolean {
+  const value = style[key];
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return normalized === "true" || normalized === "1" || normalized === "yes";
+  }
+  if (typeof value === "number") {
+    return value !== 0;
+  }
+  return fallback;
+}
+
+function sanitizeStyleValue(value: unknown): unknown {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (!normalized) {
+      return undefined;
+    }
+    return normalized;
+  }
+  return value;
+}
+
+function parseOptionalInt(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.trunc(value);
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (!normalized) {
+      return null;
+    }
+    const parsed = Number.parseInt(normalized, 10);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
 function clampElementToCanvas(
   element: EditableDesignElement,
   canvasWidthMm: number,
@@ -622,6 +715,16 @@ export default function LtfAdminLicenseCardDesignerPage() {
   const [cardFormats, setCardFormats] = useState<CardFormat[]>([]);
   const [paperProfiles, setPaperProfiles] = useState<PaperProfile[]>([]);
   const [mergeFields, setMergeFields] = useState<MergeField[]>([]);
+  const [fontAssets, setFontAssets] = useState<CardFontAsset[]>([]);
+  const [imageAssets, setImageAssets] = useState<CardImageAsset[]>([]);
+  const [isAssetLibraryOpen, setIsAssetLibraryOpen] = useState(false);
+  const [assetLibraryTab, setAssetLibraryTab] = useState<"fonts" | "images">("fonts");
+  const [newFontAssetName, setNewFontAssetName] = useState("");
+  const [newFontAssetFile, setNewFontAssetFile] = useState<File | null>(null);
+  const [isUploadingFontAsset, setIsUploadingFontAsset] = useState(false);
+  const [newImageAssetName, setNewImageAssetName] = useState("");
+  const [newImageAssetFile, setNewImageAssetFile] = useState<File | null>(null);
+  const [isUploadingImageAsset, setIsUploadingImageAsset] = useState(false);
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const [designPayload, setDesignPayload] = useState<EditableDesignPayload>({
     elements: [],
@@ -830,6 +933,62 @@ export default function LtfAdminLicenseCardDesignerPage() {
     );
   }, [designPayload.elements, selectedElementId, selectedElements]);
 
+  const selectedElementStyle = useMemo(
+    () => normalizeElementStyle(selectedElement),
+    [selectedElement]
+  );
+
+  const selectedFontAssetId = useMemo(
+    () => parseOptionalInt(selectedElementStyle.font_asset_id),
+    [selectedElementStyle]
+  );
+
+  const selectedImageAssetId = useMemo(
+    () => parseOptionalInt(selectedElementStyle.image_asset_id),
+    [selectedElementStyle]
+  );
+
+  const selectedQrMergeFields = useMemo(() => {
+    const rawValue = selectedElementStyle.merge_fields;
+    if (Array.isArray(rawValue)) {
+      return rawValue
+        .map((value) => String(value || "").trim())
+        .filter((value) => value.length > 0);
+    }
+    if (Array.isArray(selectedElement?.merge_fields)) {
+      return selectedElement.merge_fields
+        .map((value) => String(value || "").trim())
+        .filter((value) => value.length > 0);
+    }
+    return [];
+  }, [selectedElement, selectedElementStyle]);
+
+  const selectedImageSourceMode = useMemo(() => {
+    if (selectedImageAssetId && selectedImageAssetId > 0) {
+      return "asset";
+    }
+    if (selectedElement?.type === "image" && selectedElement.merge_field) {
+      return "merge";
+    }
+    return "source";
+  }, [selectedElement, selectedImageAssetId]);
+
+  const selectedShapeUsesGradient = useMemo(() => {
+    return (
+      getStyleBooleanValue(selectedElementStyle, "fill_gradient", false) ||
+      getStyleStringValue(selectedElementStyle, "fill_gradient_start").length > 0 ||
+      getStyleStringValue(selectedElementStyle, "fill_gradient_end").length > 0
+    );
+  }, [selectedElementStyle]);
+
+  const selectedQrDataMode = useMemo(() => {
+    const mode = getStyleStringValue(selectedElementStyle, "data_mode", "").toLowerCase();
+    if (QR_DATA_MODE_OPTIONS.includes(mode as (typeof QR_DATA_MODE_OPTIONS)[number])) {
+      return mode as (typeof QR_DATA_MODE_OPTIONS)[number];
+    }
+    return selectedQrMergeFields.length > 0 ? "multi_merge" : "single_merge";
+  }, [selectedElementStyle, selectedQrMergeFields.length]);
+
   const mergeFieldKeySet = useMemo(() => {
     return new Set(mergeFields.map((field) => field.key));
   }, [mergeFields]);
@@ -920,12 +1079,16 @@ export default function LtfAdminLicenseCardDesignerPage() {
           cardFormatResponse,
           paperProfileResponse,
           mergeFieldResponse,
+          fontAssetResponse,
+          imageAssetResponse,
         ] = await Promise.all([
           getCardTemplate(templateId),
           getCardTemplateVersions({ templateId }),
           getCardFormats(),
           getPaperProfiles(),
           getMergeFields(),
+          getCardFontAssets(),
+          getCardImageAssets(),
         ]);
 
         const versionsSorted = [...versionResponse].sort(versionSortDesc);
@@ -934,6 +1097,8 @@ export default function LtfAdminLicenseCardDesignerPage() {
         setCardFormats(cardFormatResponse);
         setPaperProfiles(paperProfileResponse);
         setMergeFields(mergeFieldResponse);
+        setFontAssets(fontAssetResponse);
+        setImageAssets(imageAssetResponse);
         setSelectedVersionId((previousVersionId) => {
           if (
             preferredVersionId &&
@@ -1500,6 +1665,62 @@ export default function LtfAdminLicenseCardDesignerPage() {
     [applyDesignMutation, canvasHeightMm, canvasWidthMm, selectedElementId]
   );
 
+  const setSelectedElementStylePatch = useCallback(
+    (patch: Record<string, unknown>) => {
+      updateSelectedElement((element) => {
+        const nextStyle = normalizeElementStyle(element);
+        for (const [key, rawValue] of Object.entries(patch)) {
+          const sanitized = sanitizeStyleValue(rawValue);
+          if (typeof sanitized === "undefined" || sanitized === null) {
+            delete nextStyle[key];
+          } else {
+            nextStyle[key] = sanitized;
+          }
+        }
+        return {
+          ...element,
+          style: Object.keys(nextStyle).length > 0 ? nextStyle : undefined,
+        };
+      });
+    },
+    [updateSelectedElement]
+  );
+
+  const setSelectedElementField = useCallback(
+    (key: keyof EditableDesignElement, value: unknown) => {
+      updateSelectedElement((element) => {
+        const nextElement = { ...element } as EditableDesignElement;
+        const normalized = sanitizeStyleValue(value);
+        if (typeof normalized === "undefined" || normalized === null) {
+          delete (nextElement as Record<string, unknown>)[key];
+        } else {
+          (nextElement as Record<string, unknown>)[key] = normalized;
+        }
+        return nextElement;
+      });
+    },
+    [updateSelectedElement]
+  );
+
+  const applyImageMergePreset = useCallback(
+    (mergeField: string) => {
+      updateSelectedElement((element) => {
+        if (element.type !== "image") {
+          return element;
+        }
+        const nextStyle = normalizeElementStyle(element);
+        delete nextStyle.image_asset_id;
+        return {
+          ...element,
+          merge_field: mergeField,
+          source: undefined,
+          style: Object.keys(nextStyle).length > 0 ? nextStyle : undefined,
+        };
+      });
+    },
+    [updateSelectedElement]
+  );
+
   const removeSelectedElement = useCallback(() => {
     if (!isEditableDraft || effectiveSelectedElementIds.length === 0) {
       return;
@@ -1856,6 +2077,75 @@ export default function LtfAdminLicenseCardDesignerPage() {
       setIsPublishingDraft(false);
     }
   };
+
+  const refreshAssetLibraries = useCallback(async () => {
+    const [fontAssetResponse, imageAssetResponse] = await Promise.all([
+      getCardFontAssets(),
+      getCardImageAssets(),
+    ]);
+    setFontAssets(fontAssetResponse);
+    setImageAssets(imageAssetResponse);
+  }, []);
+
+  const handleUploadFontAsset = useCallback(async () => {
+    if (!newFontAssetFile) {
+      setErrorMessage(t("licenseCardAssetLibraryFontFileRequiredError"));
+      return;
+    }
+    const trimmedName = newFontAssetName.trim();
+    const payload: CardFontAssetUploadInput = {
+      name: trimmedName || newFontAssetFile.name,
+      file: newFontAssetFile,
+    };
+    setIsUploadingFontAsset(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      const uploadedAsset = await createCardFontAsset(payload);
+      await refreshAssetLibraries();
+      setNewFontAssetName("");
+      setNewFontAssetFile(null);
+      setSuccessMessage(
+        t("licenseCardAssetLibraryFontUploadSuccess", { name: uploadedAsset.name })
+      );
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : t("licenseCardAssetLibraryFontUploadError")
+      );
+    } finally {
+      setIsUploadingFontAsset(false);
+    }
+  }, [newFontAssetFile, newFontAssetName, refreshAssetLibraries, t]);
+
+  const handleUploadImageAsset = useCallback(async () => {
+    if (!newImageAssetFile) {
+      setErrorMessage(t("licenseCardAssetLibraryImageFileRequiredError"));
+      return;
+    }
+    const trimmedName = newImageAssetName.trim();
+    const payload: CardImageAssetUploadInput = {
+      name: trimmedName || newImageAssetFile.name,
+      image: newImageAssetFile,
+    };
+    setIsUploadingImageAsset(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      const uploadedAsset = await createCardImageAsset(payload);
+      await refreshAssetLibraries();
+      setNewImageAssetName("");
+      setNewImageAssetFile(null);
+      setSuccessMessage(
+        t("licenseCardAssetLibraryImageUploadSuccess", { name: uploadedAsset.name })
+      );
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : t("licenseCardAssetLibraryImageUploadError")
+      );
+    } finally {
+      setIsUploadingImageAsset(false);
+    }
+  }, [newImageAssetFile, newImageAssetName, refreshAssetLibraries, t]);
 
   const clearPreviewLookupSelections = () => {
     setPreviewSelectedMember(null);
@@ -3631,6 +3921,92 @@ export default function LtfAdminLicenseCardDesignerPage() {
             </div>
           </div>
 
+          <div className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-zinc-900">
+                {t("licenseCardAssetLibraryTitle")}
+              </h2>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setIsAssetLibraryOpen(true)}
+              >
+                {t("licenseCardAssetLibraryManageAction")}
+              </Button>
+            </div>
+            <p className="text-xs text-zinc-500">
+              {t("licenseCardAssetLibrarySummary", {
+                fontCount: fontAssets.length,
+                imageCount: imageAssets.length,
+              })}
+            </p>
+            {selectedElement?.type === "text" ? (
+              <div className="space-y-1">
+                <label className="text-xs font-medium uppercase text-zinc-500">
+                  {t("licenseCardAssetLibraryFontQuickSelectLabel")}
+                </label>
+                <Select
+                  disabled={!isEditableDraft || fontAssets.length === 0}
+                  value={selectedFontAssetId ? String(selectedFontAssetId) : "none"}
+                  onValueChange={(value) => {
+                    setSelectedElementStylePatch({
+                      font_asset_id: value === "none" ? undefined : Number(value),
+                    });
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue
+                      placeholder={t("licenseCardAssetLibraryFontQuickSelectPlaceholder")}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">{t("licenseCardDesignerNoMergeFieldOption")}</SelectItem>
+                    {fontAssets.map((asset) => (
+                      <SelectItem key={asset.id} value={String(asset.id)}>
+                        {asset.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+            {selectedElement?.type === "image" ? (
+              <div className="space-y-1">
+                <label className="text-xs font-medium uppercase text-zinc-500">
+                  {t("licenseCardAssetLibraryImageQuickSelectLabel")}
+                </label>
+                <Select
+                  disabled={!isEditableDraft || imageAssets.length === 0}
+                  value={selectedImageAssetId ? String(selectedImageAssetId) : "none"}
+                  onValueChange={(value) => {
+                    const nextAssetId = value === "none" ? undefined : Number(value);
+                    setSelectedElementStylePatch({
+                      image_asset_id: nextAssetId,
+                    });
+                    if (nextAssetId) {
+                      setSelectedElementField("merge_field", undefined);
+                      setSelectedElementField("source", undefined);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue
+                      placeholder={t("licenseCardAssetLibraryImageQuickSelectPlaceholder")}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">{t("licenseCardDesignerNoMergeFieldOption")}</SelectItem>
+                    {imageAssets.map((asset) => (
+                      <SelectItem key={asset.id} value={String(asset.id)}>
+                        {asset.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+          </div>
+
           <h2 className="text-sm font-semibold text-zinc-900">
             {t("licenseCardDesignerInspectorTitle")}
           </h2>
@@ -3739,6 +4115,77 @@ export default function LtfAdminLicenseCardDesignerPage() {
                     }}
                   />
                 </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium uppercase text-zinc-500">
+                    {t("licenseCardDesignerRotationDegLabel")}
+                  </label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={selectedElement.rotation_deg ?? ""}
+                    disabled={!isEditableDraft}
+                    onChange={(event) => {
+                      const rawValue = event.target.value;
+                      if (!rawValue.trim()) {
+                        setSelectedElementField("rotation_deg", undefined);
+                        return;
+                      }
+                      const nextValue = Number(rawValue);
+                      if (!Number.isFinite(nextValue)) {
+                        return;
+                      }
+                      setSelectedElementField("rotation_deg", nextValue);
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium uppercase text-zinc-500">
+                    {t("licenseCardDesignerOpacityLabel")}
+                  </label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={selectedElement.opacity ?? ""}
+                    disabled={!isEditableDraft}
+                    onChange={(event) => {
+                      const rawValue = event.target.value;
+                      if (!rawValue.trim()) {
+                        setSelectedElementField("opacity", undefined);
+                        return;
+                      }
+                      const nextValue = Number(rawValue);
+                      if (!Number.isFinite(nextValue)) {
+                        return;
+                      }
+                      setSelectedElementField("opacity", Math.min(1, Math.max(0, nextValue)));
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium uppercase text-zinc-500">
+                  {t("licenseCardDesignerZIndexLabel")}
+                </label>
+                <Input
+                  type="number"
+                  step="1"
+                  value={selectedElement.z_index ?? ""}
+                  disabled={!isEditableDraft}
+                  onChange={(event) => {
+                    const rawValue = event.target.value;
+                    if (!rawValue.trim()) {
+                      setSelectedElementField("z_index", undefined);
+                      return;
+                    }
+                    const nextValue = Number.parseInt(rawValue, 10);
+                    if (!Number.isFinite(nextValue)) {
+                      return;
+                    }
+                    setSelectedElementField("z_index", nextValue);
+                  }}
+                />
               </div>
 
               {(selectedElement.type === "text" ||
@@ -3784,40 +4231,934 @@ export default function LtfAdminLicenseCardDesignerPage() {
               ) : null}
 
               {selectedElement.type === "text" ? (
-                <div className="space-y-1">
-                  <label className="text-xs font-medium uppercase text-zinc-500">
-                    {t("licenseCardDesignerTextLabel")}
+                <div className="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                  <h3 className="text-xs font-semibold uppercase text-zinc-600">
+                    {t("licenseCardInspectorTextAdvancedTitle")}
+                  </h3>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium uppercase text-zinc-500">
+                      {t("licenseCardDesignerTextLabel")}
+                    </label>
+                    <textarea
+                      className="min-h-[84px] w-full rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
+                      value={selectedElement.text || ""}
+                      disabled={!isEditableDraft}
+                      onChange={(event) => {
+                        setSelectedElementField("text", event.target.value);
+                      }}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorFontAssetLabel")}
+                      </label>
+                      <Select
+                        disabled={!isEditableDraft || fontAssets.length === 0}
+                        value={selectedFontAssetId ? String(selectedFontAssetId) : "none"}
+                        onValueChange={(value) => {
+                          setSelectedElementStylePatch({
+                            font_asset_id: value === "none" ? undefined : Number(value),
+                          });
+                        }}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder={t("licenseCardInspectorFontAssetPlaceholder")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">{t("licenseCardDesignerNoMergeFieldOption")}</SelectItem>
+                          {fontAssets.map((asset) => (
+                            <SelectItem key={asset.id} value={String(asset.id)}>
+                              {asset.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorFontFamilyLabel")}
+                      </label>
+                      <Input
+                        value={getStyleStringValue(selectedElementStyle, "font_family")}
+                        disabled={!isEditableDraft}
+                        placeholder="Inter"
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({
+                            font_family: event.target.value,
+                          });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorFontSizeLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={getStyleStringValue(selectedElementStyle, "font_size_mm")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({
+                            font_size_mm: event.target.value,
+                          });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorTextColorLabel")}
+                      </label>
+                      <Input
+                        value={getStyleStringValue(selectedElementStyle, "color")}
+                        disabled={!isEditableDraft}
+                        placeholder="#111827"
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({
+                            color: event.target.value,
+                          });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorFontWeightLabel")}
+                      </label>
+                      <Input
+                        value={getStyleStringValue(selectedElementStyle, "font_weight")}
+                        disabled={!isEditableDraft}
+                        placeholder="500"
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({
+                            font_weight: event.target.value,
+                          });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorLineHeightLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.05"
+                        value={getStyleStringValue(selectedElementStyle, "line_height", "1.2")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({
+                            line_height: event.target.value,
+                          });
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-zinc-600">
+                    <Checkbox
+                      checked={getStyleBooleanValue(selectedElementStyle, "italic", false)}
+                      onCheckedChange={(checked) => {
+                        setSelectedElementStylePatch({
+                          italic: Boolean(checked),
+                        });
+                      }}
+                      disabled={!isEditableDraft}
+                    />
+                    <span>{t("licenseCardInspectorItalicToggleLabel")}</span>
                   </label>
-                  <textarea
-                    className="min-h-[96px] w-full rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
-                    value={selectedElement.text || ""}
-                    disabled={!isEditableDraft}
-                    onChange={(event) => {
-                      updateSelectedElement((element) => ({
-                        ...element,
-                        text: event.target.value,
-                      }));
-                    }}
-                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorTextAlignLabel")}
+                      </label>
+                      <select
+                        className="w-full rounded-md border border-zinc-300 bg-white px-2 py-2 text-sm"
+                        value={getStyleStringValue(selectedElementStyle, "text_align", "left")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({
+                            text_align: event.target.value,
+                          });
+                        }}
+                      >
+                        {TEXT_ALIGN_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorLetterSpacingLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.05"
+                        value={getStyleStringValue(selectedElementStyle, "letter_spacing_mm")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({
+                            letter_spacing_mm: event.target.value,
+                          });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorTextTransformLabel")}
+                      </label>
+                      <select
+                        className="w-full rounded-md border border-zinc-300 bg-white px-2 py-2 text-sm"
+                        value={getStyleStringValue(selectedElementStyle, "text_transform", "none")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({
+                            text_transform: event.target.value,
+                          });
+                        }}
+                      >
+                        {TEXT_TRANSFORM_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorTextDecorationLabel")}
+                      </label>
+                      <select
+                        className="w-full rounded-md border border-zinc-300 bg-white px-2 py-2 text-sm"
+                        value={getStyleStringValue(selectedElementStyle, "text_decoration", "none")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({
+                            text_decoration: event.target.value,
+                          });
+                        }}
+                      >
+                        {TEXT_DECORATION_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorShadowColorLabel")}
+                      </label>
+                      <Input
+                        value={getStyleStringValue(selectedElementStyle, "shadow_color")}
+                        disabled={!isEditableDraft}
+                        placeholder="rgba(0,0,0,0.35)"
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({
+                            shadow_color: event.target.value,
+                          });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorShadowBlurLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.05"
+                        value={getStyleStringValue(selectedElementStyle, "shadow_blur_mm")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({
+                            shadow_blur_mm: event.target.value,
+                          });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorShadowOffsetXLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.05"
+                        value={getStyleStringValue(selectedElementStyle, "shadow_offset_x_mm")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({
+                            shadow_offset_x_mm: event.target.value,
+                          });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorShadowOffsetYLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.05"
+                        value={getStyleStringValue(selectedElementStyle, "shadow_offset_y_mm")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({
+                            shadow_offset_y_mm: event.target.value,
+                          });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorStrokeColorLabel")}
+                      </label>
+                      <Input
+                        value={getStyleStringValue(selectedElementStyle, "stroke_color")}
+                        disabled={!isEditableDraft}
+                        placeholder="#ffffff"
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({
+                            stroke_color: event.target.value,
+                          });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorStrokeWidthLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.05"
+                        value={getStyleStringValue(selectedElementStyle, "stroke_width_mm")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({
+                            stroke_width_mm: event.target.value,
+                          });
+                        }}
+                      />
+                    </div>
+                  </div>
                 </div>
               ) : null}
 
               {selectedElement.type === "image" ? (
-                <div className="space-y-1">
-                  <label className="text-xs font-medium uppercase text-zinc-500">
-                    {t("licenseCardDesignerImageSourceLabel")}
+                <div className="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                  <h3 className="text-xs font-semibold uppercase text-zinc-600">
+                    {t("licenseCardInspectorImageAdvancedTitle")}
+                  </h3>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium uppercase text-zinc-500">
+                      {t("licenseCardInspectorImageSourceModeLabel")}
+                    </label>
+                    <select
+                      className="w-full rounded-md border border-zinc-300 bg-white px-2 py-2 text-sm"
+                      value={selectedImageSourceMode}
+                      disabled={!isEditableDraft}
+                      onChange={(event) => {
+                        const nextMode = event.target.value;
+                        updateSelectedElement((element) => {
+                          if (element.type !== "image") {
+                            return element;
+                          }
+                          const nextStyle = normalizeElementStyle(element);
+                          if (nextMode === "asset") {
+                            const fallbackAssetId = selectedImageAssetId ?? imageAssets[0]?.id ?? null;
+                            if (fallbackAssetId) {
+                              nextStyle.image_asset_id = fallbackAssetId;
+                            }
+                            return {
+                              ...element,
+                              merge_field: undefined,
+                              source: undefined,
+                              style: Object.keys(nextStyle).length > 0 ? nextStyle : undefined,
+                            };
+                          }
+                          delete nextStyle.image_asset_id;
+                          if (nextMode === "merge") {
+                            const defaultMergeField = mergeFieldKeySet.has("member.profile_picture_processed")
+                              ? "member.profile_picture_processed"
+                              : "club.logo_print_url";
+                            return {
+                              ...element,
+                              merge_field: element.merge_field || defaultMergeField,
+                              source: undefined,
+                              style: Object.keys(nextStyle).length > 0 ? nextStyle : undefined,
+                            };
+                          }
+                          return {
+                            ...element,
+                            merge_field: undefined,
+                            source: element.source || "",
+                            style: Object.keys(nextStyle).length > 0 ? nextStyle : undefined,
+                          };
+                        });
+                      }}
+                    >
+                      <option value="source">{t("licenseCardInspectorImageSourceModeDirectOption")}</option>
+                      <option value="merge">{t("licenseCardInspectorImageSourceModeMergeOption")}</option>
+                      <option value="asset">{t("licenseCardInspectorImageSourceModeAssetOption")}</option>
+                    </select>
+                  </div>
+                  {selectedImageSourceMode === "source" ? (
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardDesignerImageSourceLabel")}
+                      </label>
+                      <Input
+                        value={selectedElement.source || ""}
+                        disabled={!isEditableDraft}
+                        placeholder={t("licenseCardDesignerImageSourcePlaceholder")}
+                        onChange={(event) => {
+                          setSelectedElementField("source", event.target.value);
+                        }}
+                      />
+                    </div>
+                  ) : null}
+                  {selectedImageSourceMode === "merge" ? (
+                    <div className="space-y-2">
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium uppercase text-zinc-500">
+                          {t("licenseCardDesignerMergeFieldLabel")}
+                        </label>
+                        <Select
+                          disabled={!isEditableDraft}
+                          value={selectedElement.merge_field || "none"}
+                          onValueChange={(value) => {
+                            setSelectedElementField(
+                              "merge_field",
+                              value === "none" ? undefined : value
+                            );
+                          }}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder={t("licenseCardDesignerMergeFieldPlaceholder")} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">
+                              {t("licenseCardDesignerNoMergeFieldOption")}
+                            </SelectItem>
+                            {mergeFields.map((field) => (
+                              <SelectItem key={field.key} value={field.key}>
+                                {field.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!isEditableDraft}
+                          onClick={() => applyImageMergePreset("member.profile_picture_processed")}
+                        >
+                          {t("licenseCardInspectorInsertMemberPhotoAction")}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!isEditableDraft}
+                          onClick={() => applyImageMergePreset("club.logo_print_url")}
+                        >
+                          {t("licenseCardInspectorInsertClubLogoAction")}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                  {selectedImageSourceMode === "asset" ? (
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorImageAssetLabel")}
+                      </label>
+                      <Select
+                        disabled={!isEditableDraft || imageAssets.length === 0}
+                        value={selectedImageAssetId ? String(selectedImageAssetId) : "none"}
+                        onValueChange={(value) => {
+                          setSelectedElementStylePatch({
+                            image_asset_id: value === "none" ? undefined : Number(value),
+                          });
+                        }}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder={t("licenseCardInspectorImageAssetPlaceholder")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">{t("licenseCardDesignerNoMergeFieldOption")}</SelectItem>
+                          {imageAssets.map((asset) => (
+                            <SelectItem key={asset.id} value={String(asset.id)}>
+                              {asset.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ) : null}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorObjectFitLabel")}
+                      </label>
+                      <select
+                        className="w-full rounded-md border border-zinc-300 bg-white px-2 py-2 text-sm"
+                        value={getStyleStringValue(selectedElementStyle, "object_fit", "contain")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({ object_fit: event.target.value });
+                        }}
+                      >
+                        {OBJECT_FIT_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorBorderColorLabel")}
+                      </label>
+                      <Input
+                        value={getStyleStringValue(selectedElementStyle, "border_color")}
+                        disabled={!isEditableDraft}
+                        placeholder="#1d4ed8"
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({ border_color: event.target.value });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorBorderWidthLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.05"
+                        value={getStyleStringValue(selectedElementStyle, "border_width_mm")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({ border_width_mm: event.target.value });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorRadiusTopLeftLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.05"
+                        value={getStyleStringValue(selectedElementStyle, "radius_top_left_mm")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({ radius_top_left_mm: event.target.value });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorRadiusTopRightLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.05"
+                        value={getStyleStringValue(selectedElementStyle, "radius_top_right_mm")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({ radius_top_right_mm: event.target.value });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorRadiusBottomRightLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.05"
+                        value={getStyleStringValue(selectedElementStyle, "radius_bottom_right_mm")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({
+                            radius_bottom_right_mm: event.target.value,
+                          });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorRadiusBottomLeftLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.05"
+                        value={getStyleStringValue(selectedElementStyle, "radius_bottom_left_mm")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({ radius_bottom_left_mm: event.target.value });
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {selectedElement.type === "shape" ? (
+                <div className="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                  <h3 className="text-xs font-semibold uppercase text-zinc-600">
+                    {t("licenseCardInspectorShapeAdvancedTitle")}
+                  </h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorShapeKindLabel")}
+                      </label>
+                      <select
+                        className="w-full rounded-md border border-zinc-300 bg-white px-2 py-2 text-sm"
+                        value={getStyleStringValue(selectedElementStyle, "shape_kind", "rectangle")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({ shape_kind: event.target.value });
+                        }}
+                      >
+                        {SHAPE_KIND_OPTIONS.map((kind) => (
+                          <option key={kind} value={kind}>
+                            {kind}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorBorderStyleLabel")}
+                      </label>
+                      <select
+                        className="w-full rounded-md border border-zinc-300 bg-white px-2 py-2 text-sm"
+                        value={getStyleStringValue(selectedElementStyle, "border_style", "solid")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({ border_style: event.target.value });
+                        }}
+                      >
+                        {BORDER_STYLE_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorFillColorLabel")}
+                      </label>
+                      <Input
+                        value={getStyleStringValue(selectedElementStyle, "fill_color")}
+                        disabled={!isEditableDraft}
+                        placeholder="#e2e8f0"
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({ fill_color: event.target.value });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorStrokeColorLabel")}
+                      </label>
+                      <Input
+                        value={getStyleStringValue(selectedElementStyle, "stroke_color")}
+                        disabled={!isEditableDraft}
+                        placeholder="#1f2937"
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({ stroke_color: event.target.value });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorStrokeWidthLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.05"
+                        value={getStyleStringValue(selectedElementStyle, "stroke_width_mm")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({ stroke_width_mm: event.target.value });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorBorderRadiusLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.05"
+                        value={getStyleStringValue(selectedElementStyle, "border_radius_mm")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({ border_radius_mm: event.target.value });
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-zinc-600">
+                    <Checkbox
+                      checked={selectedShapeUsesGradient}
+                      onCheckedChange={(checked) => {
+                        const enabled = Boolean(checked);
+                        setSelectedElementStylePatch({
+                          fill_gradient: enabled,
+                          fill_gradient_start: enabled
+                            ? getStyleStringValue(selectedElementStyle, "fill_gradient_start", "#ef4444")
+                            : undefined,
+                          fill_gradient_end: enabled
+                            ? getStyleStringValue(selectedElementStyle, "fill_gradient_end", "#3b82f6")
+                            : undefined,
+                        });
+                      }}
+                      disabled={!isEditableDraft}
+                    />
+                    <span>{t("licenseCardInspectorShapeGradientToggleLabel")}</span>
                   </label>
-                  <Input
-                    value={selectedElement.source || ""}
-                    disabled={!isEditableDraft}
-                    placeholder={t("licenseCardDesignerImageSourcePlaceholder")}
-                    onChange={(event) => {
-                      updateSelectedElement((element) => ({
-                        ...element,
-                        source: event.target.value,
-                      }));
-                    }}
-                  />
+                  {selectedShapeUsesGradient ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium uppercase text-zinc-500">
+                          {t("licenseCardInspectorGradientStartLabel")}
+                        </label>
+                        <Input
+                          value={getStyleStringValue(selectedElementStyle, "fill_gradient_start")}
+                          disabled={!isEditableDraft}
+                          placeholder="#ef4444"
+                          onChange={(event) => {
+                            setSelectedElementStylePatch({
+                              fill_gradient_start: event.target.value,
+                            });
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium uppercase text-zinc-500">
+                          {t("licenseCardInspectorGradientEndLabel")}
+                        </label>
+                        <Input
+                          value={getStyleStringValue(selectedElementStyle, "fill_gradient_end")}
+                          disabled={!isEditableDraft}
+                          placeholder="#3b82f6"
+                          onChange={(event) => {
+                            setSelectedElementStylePatch({
+                              fill_gradient_end: event.target.value,
+                            });
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium uppercase text-zinc-500">
+                          {t("licenseCardInspectorGradientAngleLabel")}
+                        </label>
+                        <Input
+                          type="number"
+                          step="1"
+                          value={getStyleStringValue(selectedElementStyle, "fill_gradient_angle_deg", "90")}
+                          disabled={!isEditableDraft}
+                          onChange={(event) => {
+                            setSelectedElementStylePatch({
+                              fill_gradient_angle_deg: event.target.value,
+                            });
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {selectedElement.type === "qr" ? (
+                <div className="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                  <h3 className="text-xs font-semibold uppercase text-zinc-600">
+                    {t("licenseCardInspectorQrAdvancedTitle")}
+                  </h3>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium uppercase text-zinc-500">
+                      {t("licenseCardInspectorQrModeLabel")}
+                    </label>
+                    <select
+                      className="w-full rounded-md border border-zinc-300 bg-white px-2 py-2 text-sm"
+                      value={selectedQrDataMode}
+                      disabled={!isEditableDraft}
+                      onChange={(event) => {
+                        const nextMode = event.target.value;
+                        if (!QR_DATA_MODE_OPTIONS.includes(nextMode as (typeof QR_DATA_MODE_OPTIONS)[number])) {
+                          return;
+                        }
+                        if (nextMode === "single_merge") {
+                          setSelectedElementStylePatch({
+                            data_mode: nextMode,
+                            merge_fields: undefined,
+                            custom_data: undefined,
+                          });
+                        } else if (nextMode === "multi_merge") {
+                          setSelectedElementStylePatch({
+                            data_mode: nextMode,
+                            custom_data: undefined,
+                            merge_fields:
+                              selectedQrMergeFields.length > 0
+                                ? selectedQrMergeFields
+                                : [selectedElement.merge_field || "member.ltf_licenseid"],
+                          });
+                        } else {
+                          setSelectedElementStylePatch({
+                            data_mode: nextMode,
+                            merge_fields: undefined,
+                            custom_data: getStyleStringValue(
+                              selectedElementStyle,
+                              "custom_data",
+                              "{{member.ltf_licenseid}}"
+                            ),
+                          });
+                        }
+                      }}
+                    >
+                      <option value="single_merge">
+                        {t("licenseCardInspectorQrModeSingleOption")}
+                      </option>
+                      <option value="multi_merge">{t("licenseCardInspectorQrModeMultiOption")}</option>
+                      <option value="custom">{t("licenseCardInspectorQrModeCustomOption")}</option>
+                    </select>
+                  </div>
+                  {selectedQrDataMode === "single_merge" ? (
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardDesignerMergeFieldLabel")}
+                      </label>
+                      <Select
+                        disabled={!isEditableDraft}
+                        value={selectedElement.merge_field || "none"}
+                        onValueChange={(value) => {
+                          setSelectedElementField("merge_field", value === "none" ? undefined : value);
+                        }}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder={t("licenseCardDesignerMergeFieldPlaceholder")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">{t("licenseCardDesignerNoMergeFieldOption")}</SelectItem>
+                          {mergeFields.map((field) => (
+                            <SelectItem key={field.key} value={field.key}>
+                              {field.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ) : null}
+                  {selectedQrDataMode === "multi_merge" ? (
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorQrMergeFieldsLabel")}
+                      </label>
+                      <select
+                        multiple
+                        className="min-h-[88px] w-full rounded-md border border-zinc-300 bg-white px-2 py-2 text-sm"
+                        value={selectedQrMergeFields}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          const selectedValues = Array.from(event.target.selectedOptions).map(
+                            (option) => option.value
+                          );
+                          setSelectedElementStylePatch({
+                            merge_fields: selectedValues.length > 0 ? selectedValues : undefined,
+                          });
+                        }}
+                      >
+                        {mergeFields.map((field) => (
+                          <option key={field.key} value={field.key}>
+                            {field.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
+                  {selectedQrDataMode === "custom" ? (
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorQrCustomDataLabel")}
+                      </label>
+                      <textarea
+                        className="min-h-[76px] w-full rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
+                        value={getStyleStringValue(selectedElementStyle, "custom_data")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({
+                            custom_data: event.target.value,
+                          });
+                        }}
+                      />
+                    </div>
+                  ) : null}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorQrSeparatorLabel")}
+                      </label>
+                      <Input
+                        value={getStyleStringValue(selectedElementStyle, "separator", "|")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({
+                            separator: event.target.value,
+                          });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorQrQuietZoneLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        step="1"
+                        min="0"
+                        value={getStyleStringValue(selectedElementStyle, "quiet_zone_modules", "1")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({
+                            quiet_zone_modules: event.target.value,
+                          });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorQrForegroundLabel")}
+                      </label>
+                      <Input
+                        value={getStyleStringValue(selectedElementStyle, "foreground_color", "#111827")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({
+                            foreground_color: event.target.value,
+                          });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorQrBackgroundLabel")}
+                      </label>
+                      <Input
+                        value={getStyleStringValue(selectedElementStyle, "background_color", "#ffffff")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch({
+                            background_color: event.target.value,
+                          });
+                        }}
+                      />
+                    </div>
+                  </div>
                 </div>
               ) : null}
 
@@ -3831,6 +5172,173 @@ export default function LtfAdminLicenseCardDesignerPage() {
               </Button>
             </div>
           )}
+
+          <Modal
+            title={t("licenseCardAssetLibraryModalTitle")}
+            description={t("licenseCardAssetLibraryModalSubtitle")}
+            isOpen={isAssetLibraryOpen}
+            onClose={() => {
+              if (isUploadingFontAsset || isUploadingImageAsset) {
+                return;
+              }
+              setIsAssetLibraryOpen(false);
+            }}
+          >
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant={assetLibraryTab === "fonts" ? "default" : "outline"}
+                  onClick={() => setAssetLibraryTab("fonts")}
+                >
+                  {t("licenseCardAssetLibraryFontsTab")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant={assetLibraryTab === "images" ? "default" : "outline"}
+                  onClick={() => setAssetLibraryTab("images")}
+                >
+                  {t("licenseCardAssetLibraryImagesTab")}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => void refreshAssetLibraries()}>
+                  {t("refreshAction")}
+                </Button>
+              </div>
+              {assetLibraryTab === "fonts" ? (
+                <div className="space-y-3">
+                  <div className="grid gap-2 rounded-md border border-zinc-200 p-3">
+                    <label className="text-xs font-medium uppercase text-zinc-500">
+                      {t("licenseCardAssetLibraryFontNameLabel")}
+                    </label>
+                    <Input
+                      value={newFontAssetName}
+                      disabled={isUploadingFontAsset}
+                      placeholder={t("licenseCardAssetLibraryFontNamePlaceholder")}
+                      onChange={(event) => setNewFontAssetName(event.target.value)}
+                    />
+                    <label className="text-xs font-medium uppercase text-zinc-500">
+                      {t("licenseCardAssetLibraryFontFileLabel")}
+                    </label>
+                    <input
+                      type="file"
+                      accept=".ttf,.otf,.woff,.woff2"
+                      disabled={isUploadingFontAsset}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] ?? null;
+                        setNewFontAssetFile(file);
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      disabled={isUploadingFontAsset}
+                      onClick={() => void handleUploadFontAsset()}
+                    >
+                      {isUploadingFontAsset
+                        ? t("licenseCardAssetLibraryUploadingAction")
+                        : t("licenseCardAssetLibraryUploadFontAction")}
+                    </Button>
+                  </div>
+                  <div className="max-h-56 space-y-1 overflow-auto rounded-md border border-zinc-200 p-2">
+                    {fontAssets.length === 0 ? (
+                      <p className="text-xs text-zinc-500">{t("licenseCardAssetLibraryNoFonts")}</p>
+                    ) : (
+                      fontAssets.map((asset) => (
+                        <div
+                          key={`font-asset-${asset.id}`}
+                          className="flex items-center justify-between gap-2 rounded border border-zinc-200 bg-white px-2 py-1"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-medium text-zinc-800">{asset.name}</p>
+                            <p className="truncate text-[10px] text-zinc-500">{asset.file}</p>
+                          </div>
+                          {selectedElement?.type === "text" ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-2 text-[10px]"
+                              disabled={!isEditableDraft}
+                              onClick={() => {
+                                setSelectedElementStylePatch({ font_asset_id: asset.id });
+                              }}
+                            >
+                              {t("licenseCardAssetLibraryApplyAction")}
+                            </Button>
+                          ) : null}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid gap-2 rounded-md border border-zinc-200 p-3">
+                    <label className="text-xs font-medium uppercase text-zinc-500">
+                      {t("licenseCardAssetLibraryImageNameLabel")}
+                    </label>
+                    <Input
+                      value={newImageAssetName}
+                      disabled={isUploadingImageAsset}
+                      placeholder={t("licenseCardAssetLibraryImageNamePlaceholder")}
+                      onChange={(event) => setNewImageAssetName(event.target.value)}
+                    />
+                    <label className="text-xs font-medium uppercase text-zinc-500">
+                      {t("licenseCardAssetLibraryImageFileLabel")}
+                    </label>
+                    <input
+                      type="file"
+                      accept=".png,.jpg,.jpeg,.webp,.svg"
+                      disabled={isUploadingImageAsset}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] ?? null;
+                        setNewImageAssetFile(file);
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      disabled={isUploadingImageAsset}
+                      onClick={() => void handleUploadImageAsset()}
+                    >
+                      {isUploadingImageAsset
+                        ? t("licenseCardAssetLibraryUploadingAction")
+                        : t("licenseCardAssetLibraryUploadImageAction")}
+                    </Button>
+                  </div>
+                  <div className="max-h-56 space-y-1 overflow-auto rounded-md border border-zinc-200 p-2">
+                    {imageAssets.length === 0 ? (
+                      <p className="text-xs text-zinc-500">{t("licenseCardAssetLibraryNoImages")}</p>
+                    ) : (
+                      imageAssets.map((asset) => (
+                        <div
+                          key={`image-asset-${asset.id}`}
+                          className="flex items-center justify-between gap-2 rounded border border-zinc-200 bg-white px-2 py-1"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-medium text-zinc-800">{asset.name}</p>
+                            <p className="truncate text-[10px] text-zinc-500">{asset.image}</p>
+                          </div>
+                          {selectedElement?.type === "image" ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-2 text-[10px]"
+                              disabled={!isEditableDraft}
+                              onClick={() => {
+                                setSelectedElementStylePatch({ image_asset_id: asset.id });
+                                setSelectedElementField("merge_field", undefined);
+                                setSelectedElementField("source", undefined);
+                              }}
+                            >
+                              {t("licenseCardAssetLibraryApplyAction")}
+                            </Button>
+                          ) : null}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </Modal>
         </section>
       </div>
     </LtfAdminLayout>

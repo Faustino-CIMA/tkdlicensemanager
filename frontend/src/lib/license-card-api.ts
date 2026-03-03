@@ -197,6 +197,42 @@ export type MergeField = {
   description: string;
 };
 
+export type CardFontAsset = {
+  id: number;
+  name: string;
+  file: string;
+  is_active: boolean;
+  metadata: Record<string, unknown>;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CardImageAsset = {
+  id: number;
+  name: string;
+  image: string;
+  is_active: boolean;
+  metadata: Record<string, unknown>;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CardFontAssetUploadInput = {
+  name: string;
+  file: File;
+  is_active?: boolean;
+  metadata?: Record<string, unknown>;
+};
+
+export type CardImageAssetUploadInput = {
+  name: string;
+  image: File;
+  is_active?: boolean;
+  metadata?: Record<string, unknown>;
+};
+
 export type PrintJobStatus =
   | "draft"
   | "queued"
@@ -574,6 +610,61 @@ export function publishCardTemplateVersion(id: number) {
 export function getMergeFields(options?: ApiCallOptions) {
   return apiRequest<MergeField[]>("/api/merge-fields/", {
     signal: options?.signal,
+  });
+}
+
+function appendOptionalJsonFormValue(
+  formData: FormData,
+  key: string,
+  value: unknown
+) {
+  if (typeof value === "undefined") {
+    return;
+  }
+  if (typeof value === "boolean") {
+    formData.append(key, value ? "true" : "false");
+    return;
+  }
+  if (value && typeof value === "object") {
+    formData.append(key, JSON.stringify(value));
+    return;
+  }
+  formData.append(key, String(value));
+}
+
+export function getCardFontAssets(options?: ApiCallOptions) {
+  return apiRequest<CardFontAsset[] | PaginatedResponse<CardFontAsset>>("/api/card-font-assets/", {
+    signal: options?.signal,
+  }).then((response) => unwrapListResponse(response));
+}
+
+export function createCardFontAsset(input: CardFontAssetUploadInput) {
+  const formData = new FormData();
+  formData.append("name", input.name);
+  formData.append("file", input.file);
+  appendOptionalJsonFormValue(formData, "is_active", input.is_active);
+  appendOptionalJsonFormValue(formData, "metadata", input.metadata);
+  return apiRequest<CardFontAsset>("/api/card-font-assets/", {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export function getCardImageAssets(options?: ApiCallOptions) {
+  return apiRequest<CardImageAsset[] | PaginatedResponse<CardImageAsset>>("/api/card-image-assets/", {
+    signal: options?.signal,
+  }).then((response) => unwrapListResponse(response));
+}
+
+export function createCardImageAsset(input: CardImageAssetUploadInput) {
+  const formData = new FormData();
+  formData.append("name", input.name);
+  formData.append("image", input.image);
+  appendOptionalJsonFormValue(formData, "is_active", input.is_active);
+  appendOptionalJsonFormValue(formData, "metadata", input.metadata);
+  return apiRequest<CardImageAsset>("/api/card-image-assets/", {
+    method: "POST",
+    body: formData,
   });
 }
 
