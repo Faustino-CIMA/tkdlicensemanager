@@ -32,7 +32,9 @@ import {
   CardElementType,
   CardFormat,
   CardPreviewDataResponse,
+  CardPreviewHtmlResponse,
   CardPreviewRequestInput,
+  CardSide,
   CardSheetPreviewRequestInput,
   CardTemplate,
   CardTemplateVersion,
@@ -47,6 +49,7 @@ import {
   getCardDesignerClubLookups,
   getCardDesignerLicenseLookups,
   getCardDesignerMemberLookups,
+  getCardTemplateVersionCardPreviewHtml,
   getCardTemplateVersionCardPreviewPdf,
   getCardTemplateVersionPreviewData,
   getCardTemplateVersionSheetPreviewPdf,
@@ -74,6 +77,15 @@ type EditableDesignElement = Omit<
 
 type EditableDesignPayload = Omit<CardDesignPayload, "elements"> & {
   elements: EditableDesignElement[];
+};
+
+type EditableDesignPayloadBySide = Record<CardSide, EditableDesignPayload>;
+
+type CardSideSummaryInfo = {
+  element_count: number;
+  has_background: boolean;
+  has_content: boolean;
+  is_active: boolean;
 };
 
 type ElementBounds = {
@@ -151,6 +163,8 @@ const SHAPE_KIND_OPTIONS = [
   "polygon",
 ] as const;
 const QR_DATA_MODE_OPTIONS = ["single_merge", "multi_merge", "custom"] as const;
+const CARD_SIDES: CardSide[] = ["front", "back"];
+const DEFAULT_ACTIVE_SIDE: CardSide = "front";
 
 function toFiniteNumber(value: unknown, fallback: number) {
   const parsed = Number(value);
@@ -211,6 +225,15 @@ function openBlobInNewTab(blob: Blob) {
   window.setTimeout(() => {
     window.URL.revokeObjectURL(url);
   }, 15000);
+}
+
+function buildCardSimulationSrcDoc(payload: CardPreviewHtmlResponse | null) {
+  if (!payload) {
+    return "";
+  }
+  const simulationHtml = payload.html || "";
+  const simulationCss = payload.css || "";
+  return `<!doctype html><html><head><meta charset="utf-8"><style>${simulationCss}</style></head><body>${simulationHtml}</body></html>`;
 }
 
 function getPreviewElementResolvedValue(
@@ -579,9 +602,21 @@ function clampElementToCanvas(
   };
 }
 
+function createEmptyEditableDesignPayload(): EditableDesignPayload {
+  return {
+    elements: [],
+    metadata: { unit: "mm" },
+  };
+}
+
 function normalizeDesignPayload(payload: CardDesignPayload | null | undefined): EditableDesignPayload {
   const metadata = isPlainObject(payload?.metadata) ? payload?.metadata : { unit: "mm" };
-  const background = isPlainObject(payload?.background) ? payload?.background : undefined;
+  const background =
+    typeof payload?.background === "string"
+      ? payload.background
+      : isPlainObject(payload?.background)
+        ? payload.background
+        : undefined;
   const elements: EditableDesignElement[] = Array.isArray(payload?.elements)
     ? payload.elements
         .map((element, index) => {
@@ -615,7 +650,7 @@ function normalizeDesignPayload(payload: CardDesignPayload | null | undefined): 
   return {
     elements,
     metadata,
-    ...(background ? { background } : {}),
+    ...(typeof background === "string" || isPlainObject(background) ? { background } : {}),
   };
 }
 
@@ -657,7 +692,87 @@ function sanitizePayloadForSave(payload: EditableDesignPayload): CardDesignPaylo
       return sanitized;
     }),
     metadata: isPlainObject(payload.metadata) ? payload.metadata : { unit: "mm" },
-    ...(isPlainObject(payload.background) ? { background: payload.background } : {}),
+    ...(typeof payload.background === "string" || isPlainObject(payload.background)
+      ? { background: payload.background }
+      : {}),
+  };
+}
+
+function normalizeDesignPayloadBySide(
+  payload: CardDesignPayload | null | undefined
+): EditableDesignPayloadBySide {
+  const normalizedFrontFallback = normalizeDesignPayload(payload);
+  const rawSides = isPlainObject(payload?.sides) ? payload.sides : null;
+  const rawFront = rawSides && isPlainObject(rawSides.front) ? rawSides.front : null;
+  const rawBack = rawSides && isPlainObject(rawSides.back) ? rawSides.back : null;
+
+  const front = rawFront
+    ? normalizeDesignPayload({
+        elements: Array.isArray(rawFront.elements) ? rawFront.elements : normalizedFrontFallback.elements,
+        metadata: isPlainObject(rawFront.metadata)
+          ? rawFront.metadata
+          : normalizedFrontFallback.metadata,
+        background:
+          typeof rawFront.background === "string" || isPlainObject(rawFront.background)
+            ? rawFront.background
+            : normalizedFrontFallback.background,
+      })
+    : normalizedFrontFallback;
+
+  const back = rawBack
+    ? normalizeDesignPayload({
+        elements: Array.isArray(rawBack.elements) ? rawBack.elements : [],
+        metadata: isPlainObject(rawBack.metadata)
+          ? rawBack.metadata
+          : isPlainObject(front.metadata)
+            ? front.metadata
+            : { unit: "mm" },
+        background:
+          typeof rawBack.background === "string" || isPlainObject(rawBack.background)
+            ? rawBack.background
+            : undefined,
+      })
+    : {
+        elements: [],
+        metadata: isPlainObject(front.metadata) ? front.metadata : { unit: "mm" },
+      };
+
+  return {
+    front,
+    back,
+  };
+}
+
+function sanitizePayloadBySideForSave(payloadBySide: EditableDesignPayloadBySide): CardDesignPayload {
+  const frontPayload = sanitizePayloadForSave(payloadBySide.front);
+  const backPayload = sanitizePayloadForSave(payloadBySide.back);
+
+  const frontMetadata = isPlainObject(frontPayload.metadata) ? frontPayload.metadata : { unit: "mm" };
+  const backMetadata = isPlainObject(backPayload.metadata) ? backPayload.metadata : { unit: "mm" };
+
+  return {
+    schema_version: 2,
+    elements: frontPayload.elements,
+    metadata: frontMetadata,
+    ...(typeof frontPayload.background === "string" || isPlainObject(frontPayload.background)
+      ? { background: frontPayload.background }
+      : {}),
+    sides: {
+      front: {
+        elements: frontPayload.elements,
+        metadata: frontMetadata,
+        ...(typeof frontPayload.background === "string" || isPlainObject(frontPayload.background)
+          ? { background: frontPayload.background }
+          : {}),
+      },
+      back: {
+        elements: backPayload.elements,
+        metadata: backMetadata,
+        ...(typeof backPayload.background === "string" || isPlainObject(backPayload.background)
+          ? { background: backPayload.background }
+          : {}),
+      },
+    },
   };
 }
 
@@ -678,6 +793,19 @@ function collectUnknownMergeFields(
           unknown.add(key);
         }
       }
+    }
+  }
+  return Array.from(unknown.values()).sort();
+}
+
+function collectUnknownMergeFieldsBySide(
+  payloadBySide: EditableDesignPayloadBySide,
+  allowedMergeFieldKeys: Set<string>
+) {
+  const unknown = new Set<string>();
+  for (const side of CARD_SIDES) {
+    for (const key of collectUnknownMergeFields(payloadBySide[side], allowedMergeFieldKeys)) {
+      unknown.add(key);
     }
   }
   return Array.from(unknown.values()).sort();
@@ -726,10 +854,14 @@ export default function LtfAdminLicenseCardDesignerPage() {
   const [newImageAssetFile, setNewImageAssetFile] = useState<File | null>(null);
   const [isUploadingImageAsset, setIsUploadingImageAsset] = useState(false);
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
-  const [designPayload, setDesignPayload] = useState<EditableDesignPayload>({
-    elements: [],
-    metadata: { unit: "mm" },
-  });
+  const [activeSide, setActiveSide] = useState<CardSide>(DEFAULT_ACTIVE_SIDE);
+  const [designPayloadBySide, setDesignPayloadBySide] = useState<EditableDesignPayloadBySide>(() => ({
+    front: createEmptyEditableDesignPayload(),
+    back: createEmptyEditableDesignPayload(),
+  }));
+  const [designPayload, setDesignPayload] = useState<EditableDesignPayload>(() =>
+    createEmptyEditableDesignPayload()
+  );
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
   const [dragState, setDragState] = useState<DragState>(null);
@@ -787,6 +919,10 @@ export default function LtfAdminLicenseCardDesignerPage() {
   const [isLoadingPreviewData, setIsLoadingPreviewData] = useState(false);
   const [isOpeningCardPreviewPdf, setIsOpeningCardPreviewPdf] = useState(false);
   const [isOpeningSheetPreviewPdf, setIsOpeningSheetPreviewPdf] = useState(false);
+  const [isLivePrintSimulationEnabled, setIsLivePrintSimulationEnabled] = useState(false);
+  const [isLoadingLiveSimulation, setIsLoadingLiveSimulation] = useState(false);
+  const [liveSimulationData, setLiveSimulationData] = useState<CardPreviewHtmlResponse | null>(null);
+  const [liveSimulationError, setLiveSimulationError] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const historyPastRef = useRef<EditableDesignPayload[]>([]);
   const historyFutureRef = useRef<EditableDesignPayload[]>([]);
@@ -996,6 +1132,47 @@ export default function LtfAdminLicenseCardDesignerPage() {
   const isEditableDraft = canManageDesigner && selectedVersion?.status === "draft";
   const canUndo = historyRevision >= 0 && historyPastRef.current.length > 0;
   const canRedo = historyRevision >= 0 && historyFutureRef.current.length > 0;
+  const sideLabelByValue = useMemo(
+    () => ({
+      front: t("licenseCardDesignerSideFrontLabel"),
+      back: t("licenseCardDesignerSideBackLabel"),
+    }),
+    [t]
+  );
+  const activeSideLabel = sideLabelByValue[activeSide];
+  const synchronizedPayloadBySide = useMemo(
+    () => ({
+      ...designPayloadBySide,
+      [activeSide]: designPayload,
+    }),
+    [activeSide, designPayload, designPayloadBySide]
+  );
+  const localSideSummary = useMemo(() => {
+    const summary = {} as Record<CardSide, CardSideSummaryInfo>;
+    for (const side of CARD_SIDES) {
+      const sidePayload = synchronizedPayloadBySide[side];
+      const elementCount = Array.isArray(sidePayload.elements) ? sidePayload.elements.length : 0;
+      const hasBackground = Boolean(sidePayload.background);
+      summary[side] = {
+        element_count: elementCount,
+        has_background: hasBackground,
+        has_content: elementCount > 0 || hasBackground,
+        is_active: side === activeSide,
+      };
+    }
+    return summary;
+  }, [activeSide, synchronizedPayloadBySide]);
+  const previewAvailableSides = useMemo(() => {
+    const available = previewData?.available_sides;
+    if (!Array.isArray(available) || available.length === 0) {
+      return CARD_SIDES;
+    }
+    return available.filter((side): side is CardSide => side === "front" || side === "back");
+  }, [previewData?.available_sides]);
+  const liveSimulationSrcDoc = useMemo(
+    () => buildCardSimulationSrcDoc(liveSimulationData),
+    [liveSimulationData]
+  );
 
   const resetHistory = useCallback(() => {
     historyPastRef.current = [];
@@ -1135,19 +1312,32 @@ export default function LtfAdminLicenseCardDesignerPage() {
 
   useEffect(() => {
     if (!selectedVersion) {
-      setDesignPayload({ elements: [], metadata: { unit: "mm" } });
+      const emptyBySide: EditableDesignPayloadBySide = {
+        front: createEmptyEditableDesignPayload(),
+        back: createEmptyEditableDesignPayload(),
+      };
+      setActiveSide(DEFAULT_ACTIVE_SIDE);
+      setDesignPayloadBySide(emptyBySide);
+      setDesignPayload(cloneEditableDesignPayload(emptyBySide.front));
       setSelectedElementIds([]);
       setSelectedElementId(null);
       setPreviewData(null);
+      setLiveSimulationData(null);
+      setLiveSimulationError(null);
       setPreviewSelectedSlots([]);
       setPreviewPaperProfileValue(TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE);
       resetHistory();
       return;
     }
-    setDesignPayload(normalizeDesignPayload(selectedVersion.design_payload));
+    const normalizedBySide = normalizeDesignPayloadBySide(selectedVersion.design_payload);
+    setActiveSide(DEFAULT_ACTIVE_SIDE);
+    setDesignPayloadBySide(normalizedBySide);
+    setDesignPayload(cloneEditableDesignPayload(normalizedBySide.front));
     setSelectedElementIds([]);
     setSelectedElementId(null);
     setPreviewData(null);
+    setLiveSimulationData(null);
+    setLiveSimulationError(null);
     setDragState(null);
     setResizeState(null);
     setSnapGuideLines([]);
@@ -1164,6 +1354,18 @@ export default function LtfAdminLicenseCardDesignerPage() {
       return matchesCardFormat ? previousValue : TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE;
     });
   }, [paperProfilesForSelectedCardFormat, resetHistory, selectedVersion]);
+
+  useEffect(() => {
+    setDesignPayloadBySide((previousPayloadBySide) => {
+      if (previousPayloadBySide[activeSide] === designPayload) {
+        return previousPayloadBySide;
+      }
+      return {
+        ...previousPayloadBySide,
+        [activeSide]: designPayload,
+      };
+    });
+  }, [activeSide, designPayload]);
 
   useEffect(() => {
     setSelectedElementIds((previousIds) => {
@@ -1721,6 +1923,62 @@ export default function LtfAdminLicenseCardDesignerPage() {
     [updateSelectedElement]
   );
 
+  const switchActiveSide = useCallback(
+    (nextSide: CardSide) => {
+      if (nextSide === activeSide) {
+        return;
+      }
+      const synchronized = {
+        ...designPayloadBySide,
+        [activeSide]: designPayload,
+      };
+      setDesignPayloadBySide(synchronized);
+      setActiveSide(nextSide);
+      setDesignPayload(cloneEditableDesignPayload(synchronized[nextSide]));
+      setSelectedElementIds([]);
+      setSelectedElementId(null);
+      setDragState(null);
+      setResizeState(null);
+      setSnapGuideLines([]);
+      setLiveMeasurementBounds(null);
+      setPreviewData(null);
+      setLiveSimulationData(null);
+      setLiveSimulationError(null);
+      resetHistory();
+    },
+    [activeSide, designPayload, designPayloadBySide, resetHistory]
+  );
+
+  const flipActiveSide = useCallback(() => {
+    switchActiveSide(activeSide === "front" ? "back" : "front");
+  }, [activeSide, switchActiveSide]);
+
+  const copySidePayload = useCallback(
+    (sourceSide: CardSide, destinationSide: CardSide) => {
+      const synchronized = {
+        ...designPayloadBySide,
+        [activeSide]: designPayload,
+      };
+      const sourcePayload = synchronized[sourceSide];
+      const nextBySide = {
+        ...synchronized,
+        [destinationSide]: cloneEditableDesignPayload(sourcePayload),
+      };
+      setDesignPayloadBySide(nextBySide);
+      if (destinationSide === activeSide) {
+        setDesignPayload(cloneEditableDesignPayload(nextBySide[destinationSide]));
+      }
+      setSuccessMessage(
+        t("licenseCardDesignerSideCopySuccess", {
+          source: sideLabelByValue[sourceSide],
+          destination: sideLabelByValue[destinationSide],
+        })
+      );
+      setErrorMessage(null);
+    },
+    [activeSide, designPayload, designPayloadBySide, sideLabelByValue, t]
+  );
+
   const removeSelectedElement = useCallback(() => {
     if (!isEditableDraft || effectiveSelectedElementIds.length === 0) {
       return;
@@ -1970,7 +2228,14 @@ export default function LtfAdminLicenseCardDesignerPage() {
       return;
     }
 
-    const unknownMergeFields = collectUnknownMergeFields(designPayload, mergeFieldKeySet);
+    const synchronizedPayloadBySide = {
+      ...designPayloadBySide,
+      [activeSide]: designPayload,
+    };
+    const unknownMergeFields = collectUnknownMergeFieldsBySide(
+      synchronizedPayloadBySide,
+      mergeFieldKeySet
+    );
     if (unknownMergeFields.length > 0) {
       setErrorMessage(
         t("licenseCardDesignerUnknownMergeFieldsError", {
@@ -1985,7 +2250,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
     setSuccessMessage(null);
     try {
       const updatedVersion = await updateCardTemplateVersion(selectedVersion.id, {
-        design_payload: sanitizePayloadForSave(designPayload),
+        design_payload: sanitizePayloadBySideForSave(synchronizedPayloadBySide),
       });
       setVersions((previousVersions) =>
         previousVersions.map((version) =>
@@ -2039,10 +2304,13 @@ export default function LtfAdminLicenseCardDesignerPage() {
           : t("licenseCardDesignerDraftInitialLabel"),
         card_format: cardFormatId,
         paper_profile: paperProfileId ?? undefined,
-        design_payload: sanitizePayloadForSave(
+        design_payload: sanitizePayloadBySideForSave(
           baseVersion
-            ? normalizeDesignPayload(baseVersion.design_payload)
-            : { elements: [], metadata: { unit: "mm" } }
+            ? normalizeDesignPayloadBySide(baseVersion.design_payload)
+            : {
+                front: createEmptyEditableDesignPayload(),
+                back: createEmptyEditableDesignPayload(),
+              }
         ),
       });
       await loadDesignerData(createdVersion.id);
@@ -2171,6 +2439,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
 
   const buildPreviewSheetPayload = useCallback((): CardSheetPreviewRequestInput => {
     const payload: CardSheetPreviewRequestInput = {
+      side: activeSide,
       include_bleed_guide: showBleedGuide,
       include_safe_area_guide: showSafeAreaGuide,
       bleed_mm: toMmString(bleedGuideMm),
@@ -2208,6 +2477,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
     }
     return payload;
   }, [
+    activeSide,
     bleedGuideMm,
     effectiveSlotCount,
     isAdvancedPreviewMode,
@@ -2226,6 +2496,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
   const buildPreviewCardPayload = useCallback((): CardPreviewRequestInput => {
     const sheetPayload = buildPreviewSheetPayload();
     return {
+      side: sheetPayload.side,
       member_id: sheetPayload.member_id,
       license_id: sheetPayload.license_id,
       club_id: sheetPayload.club_id,
@@ -2314,6 +2585,34 @@ export default function LtfAdminLicenseCardDesignerPage() {
       setIsOpeningSheetPreviewPdf(false);
     }
   };
+
+  const handleRefreshLiveSimulation = useCallback(async () => {
+    if (!selectedVersion) {
+      setLiveSimulationError(t("licenseCardDesignerNoVersionsSubtitle"));
+      return;
+    }
+    setIsLoadingLiveSimulation(true);
+    setLiveSimulationError(null);
+    try {
+      const payload = buildPreviewCardPayload();
+      const response = await getCardTemplateVersionCardPreviewHtml(selectedVersion.id, payload);
+      setLiveSimulationData(response);
+    } catch (error) {
+      setLiveSimulationData(null);
+      setLiveSimulationError(
+        error instanceof Error ? error.message : t("licenseCardPreviewSimulationLoadError")
+      );
+    } finally {
+      setIsLoadingLiveSimulation(false);
+    }
+  }, [buildPreviewCardPayload, selectedVersion, t]);
+
+  useEffect(() => {
+    if (!isLivePrintSimulationEnabled) {
+      return;
+    }
+    void handleRefreshLiveSimulation();
+  }, [activeSide, handleRefreshLiveSimulation, isLivePrintSimulationEnabled, selectedVersion?.id]);
 
   const togglePreviewSlot = (slotIndex: number) => {
     if (effectiveSlotCount <= 0) {
@@ -2967,6 +3266,55 @@ export default function LtfAdminLicenseCardDesignerPage() {
 
       <section className="mb-4 space-y-3 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-zinc-900">
+            {t("licenseCardDesignerSidesTitle")}
+          </h2>
+          <p className="text-xs text-zinc-500">
+            {t("licenseCardDesignerActiveSideSummary", {
+              side: activeSideLabel,
+              count: localSideSummary[activeSide].element_count,
+            })}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant={activeSide === "front" ? "default" : "outline"}
+            onClick={() => switchActiveSide("front")}
+          >
+            {sideLabelByValue.front}
+          </Button>
+          <Button
+            size="sm"
+            variant={activeSide === "back" ? "default" : "outline"}
+            onClick={() => switchActiveSide("back")}
+          >
+            {sideLabelByValue.back}
+          </Button>
+          <Button size="sm" variant="outline" onClick={flipActiveSide}>
+            {t("licenseCardDesignerFlipSideAction")}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={!isEditableDraft}
+            onClick={() => copySidePayload("front", "back")}
+          >
+            {t("licenseCardDesignerCopyFrontToBackAction")}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={!isEditableDraft}
+            onClick={() => copySidePayload("back", "front")}
+          >
+            {t("licenseCardDesignerCopyBackToFrontAction")}
+          </Button>
+        </div>
+      </section>
+
+      <section className="mb-4 space-y-3 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-zinc-900">{t("licenseCardEditorToolsTitle")}</h2>
           <p className="text-xs text-zinc-500">
             {t("licenseCardEditorSelectionCountLabel", { count: selectedCount })}
@@ -3156,6 +3504,12 @@ export default function LtfAdminLicenseCardDesignerPage() {
             {t("licenseCardPreviewControlsTitle")}
           </h2>
           <p className="mt-1 text-xs text-zinc-500">{t("licenseCardPreviewControlsSubtitle")}</p>
+          <p className="mt-1 text-xs text-zinc-500">
+            {t("licenseCardPreviewActiveSideLabel", {
+              side: activeSideLabel,
+              available: previewAvailableSides.map((side) => sideLabelByValue[side]).join(", "),
+            })}
+          </p>
         </div>
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -3419,8 +3773,21 @@ export default function LtfAdminLicenseCardDesignerPage() {
         {!previewData ? (
           <p className="text-sm text-zinc-500">{t("licenseCardPreviewNoData")}</p>
         ) : (
-          <div className="grid gap-4 lg:grid-cols-3">
-            <div className="space-y-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+              <p className="text-xs text-zinc-600">
+                {t("licenseCardPreviewSideMetadataLabel", {
+                  active: sideLabelByValue[(previewData.active_side || activeSide) as CardSide],
+                  available: (previewData.available_sides || CARD_SIDES)
+                    .map((side) => sideLabelByValue[side as CardSide])
+                    .join(", "),
+                  front: previewData.side_summary?.front?.element_count ?? localSideSummary.front.element_count,
+                  back: previewData.side_summary?.back?.element_count ?? localSideSummary.back.element_count,
+                })}
+              </p>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-3">
+              <div className="space-y-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
               <h3 className="text-sm font-semibold text-zinc-900">
                 {t("licenseCardPreviewContextTitle")}
               </h3>
@@ -3437,7 +3804,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                 )}
               </div>
             </div>
-            <div className="space-y-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+              <div className="space-y-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
               <h3 className="text-sm font-semibold text-zinc-900">
                 {t("licenseCardPreviewElementsTitle")}
               </h3>
@@ -3463,7 +3830,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                 ))}
               </div>
             </div>
-            <div className="space-y-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+              <div className="space-y-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
               <h3 className="text-sm font-semibold text-zinc-900">
                 {t("licenseCardPreviewSlotLayoutTitle")}
               </h3>
@@ -3493,6 +3860,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                   ))
                 )}
               </div>
+            </div>
             </div>
           </div>
         )}
@@ -3581,6 +3949,34 @@ export default function LtfAdminLicenseCardDesignerPage() {
             <h2 className="text-sm font-semibold text-zinc-900">
               {t("licenseCardDesignerCanvasTitle")}
             </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-zinc-300 bg-zinc-50 px-2 py-0.5 text-[11px] text-zinc-700">
+                {t("licenseCardDesignerCanvasActiveSideBadge", { side: activeSideLabel })}
+              </span>
+              <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
+                <Checkbox
+                  checked={isLivePrintSimulationEnabled}
+                  onCheckedChange={(checked) => {
+                    const enabled = Boolean(checked);
+                    setIsLivePrintSimulationEnabled(enabled);
+                    if (!enabled) {
+                      setLiveSimulationError(null);
+                    }
+                  }}
+                />
+                {t("licenseCardPreviewSimulationToggleLabel")}
+              </label>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!selectedVersion || !isLivePrintSimulationEnabled || isLoadingLiveSimulation}
+                onClick={() => void handleRefreshLiveSimulation()}
+              >
+                {isLoadingLiveSimulation
+                  ? t("licenseCardPreviewSimulationRefreshingAction")
+                  : t("licenseCardPreviewSimulationRefreshAction")}
+              </Button>
+            </div>
           </div>
           <p className="text-xs text-zinc-500">
             {t("licenseCardDesignerCanvasSizeLabel", {
@@ -3596,7 +3992,12 @@ export default function LtfAdminLicenseCardDesignerPage() {
               description={t("licenseCardDesignerNoVersionsSubtitle")}
             />
           ) : (
-            <div className="overflow-auto rounded-2xl border border-zinc-200 bg-zinc-100 p-4">
+            <>
+            <div
+              className={`overflow-auto rounded-2xl border border-zinc-200 bg-zinc-100 p-4 ${
+                isLivePrintSimulationEnabled ? "hidden" : ""
+              }`}
+            >
               <div
                 className="relative mx-auto"
                 style={{
@@ -3818,6 +4219,30 @@ export default function LtfAdminLicenseCardDesignerPage() {
                 </div>
               </div>
             </div>
+            {isLivePrintSimulationEnabled ? (
+              <div className="space-y-2 rounded-2xl border border-zinc-200 bg-zinc-100 p-4">
+                <div className="text-xs text-zinc-600">
+                  {t("licenseCardPreviewSimulationActiveSideLabel", { side: activeSideLabel })}
+                </div>
+                {liveSimulationError ? (
+                  <p className="text-xs text-red-600">{liveSimulationError}</p>
+                ) : null}
+                {!isLoadingLiveSimulation && !liveSimulationSrcDoc ? (
+                  <p className="text-xs text-zinc-500">
+                    {t("licenseCardPreviewSimulationEmptyHint")}
+                  </p>
+                ) : null}
+                <div className="mx-auto overflow-hidden rounded-lg border border-zinc-300 bg-white shadow-sm">
+                  <iframe
+                    title={t("licenseCardPreviewSimulationFrameTitle")}
+                    className="block border-0"
+                    style={{ width: canvasWidthPx, height: canvasHeightPx }}
+                    srcDoc={liveSimulationSrcDoc}
+                  />
+                </div>
+              </div>
+            ) : null}
+            </>
           )}
         </section>
 

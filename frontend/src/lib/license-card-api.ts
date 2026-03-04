@@ -7,6 +7,7 @@ type ApiCallOptions = {
 };
 
 export type CardElementType = "text" | "image" | "shape" | "qr" | "barcode";
+export type CardSide = "front" | "back";
 
 export type CardDesignElement = {
   id: string;
@@ -25,10 +26,19 @@ export type CardDesignElement = {
   metadata?: Record<string, unknown>;
 };
 
+export type CardDesignSidePayload = {
+  elements?: CardDesignElement[];
+  metadata?: Record<string, unknown>;
+  background?: Record<string, unknown> | string;
+  canvas?: Record<string, unknown>;
+};
+
 export type CardDesignPayload = {
   elements: CardDesignElement[];
+  schema_version?: number | string;
   metadata?: Record<string, unknown>;
-  background?: Record<string, unknown>;
+  background?: Record<string, unknown> | string;
+  sides?: Partial<Record<CardSide, CardDesignSidePayload>>;
 };
 
 export type CardFormat = {
@@ -302,6 +312,7 @@ export type PrintJobInput = {
 };
 
 export type CardPreviewRequestInput = {
+  side?: CardSide;
   member_id?: number;
   license_id?: number;
   club_id?: number;
@@ -321,6 +332,19 @@ export type CardPreviewDataResponse = {
   template_version_id: number;
   template_id: number;
   schema_version?: number;
+  active_side?: CardSide;
+  available_sides?: CardSide[];
+  side_summary?: Partial<
+    Record<
+      CardSide,
+      {
+        element_count: number;
+        has_background: boolean;
+        has_content: boolean;
+        is_active: boolean;
+      }
+    >
+  >;
   card_format: {
     id: number;
     code: string;
@@ -348,7 +372,7 @@ export type CardPreviewDataResponse = {
     safe_area_mm: string;
   };
   context: Record<string, string>;
-  background?: Record<string, unknown>;
+  background?: Record<string, unknown> | string;
   selected_slots: number[];
   slots: Array<{
     slot_index: number;
@@ -407,6 +431,34 @@ export type CardPreviewDataResponse = {
       unavailable_ids: number[];
     };
   };
+};
+
+export type CardPreviewHtmlResponse = {
+  template_version_id: number;
+  template_id: number;
+  active_side: CardSide;
+  available_sides: CardSide[];
+  side_summary: Partial<
+    Record<
+      CardSide,
+      {
+        element_count: number;
+        has_background: boolean;
+        has_content: boolean;
+        is_active: boolean;
+      }
+    >
+  >;
+  card_format: {
+    id: number;
+    code: string;
+    name: string;
+    width_mm: string;
+    height_mm: string;
+  };
+  render_metadata?: Record<string, unknown>;
+  html: string;
+  css: string;
 };
 
 export type CardDesignerLookupItem = {
@@ -848,4 +900,17 @@ export function getCardTemplateVersionSheetPreviewPdf(
   payload: CardSheetPreviewRequestInput
 ) {
   return postPreviewPdf(`/api/card-template-versions/${versionId}/preview-sheet-pdf/`, payload);
+}
+
+export function getCardTemplateVersionCardPreviewHtml(
+  versionId: number,
+  payload: CardPreviewRequestInput
+) {
+  return apiRequest<CardPreviewHtmlResponse>(
+    `/api/card-template-versions/${versionId}/preview-card-html/`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }
+  );
 }
