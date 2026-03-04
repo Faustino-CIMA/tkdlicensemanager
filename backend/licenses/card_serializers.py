@@ -13,6 +13,8 @@ from members.models import Member
 
 from .card_registry import (
     ALLOWED_MERGE_FIELDS,
+    CARD_SIDE_BACK,
+    CARD_SIDE_FRONT,
     MERGE_FIELD_REGISTRY,
     normalize_design_payload,
     validate_design_payload_schema,
@@ -32,6 +34,10 @@ from .models import (
 
 ALLOWED_FONT_EXTENSIONS = {".ttf", ".otf", ".woff", ".woff2"}
 ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"}
+CARD_SIDE_CHOICES = (
+    (CARD_SIDE_FRONT, "Front"),
+    (CARD_SIDE_BACK, "Back"),
+)
 
 
 class CardFormatPresetSerializer(serializers.ModelSerializer):
@@ -654,6 +660,11 @@ def _flatten_preview_sample_data(sample_data: dict[str, Any]) -> set[str]:
 
 
 class CardPreviewRequestSerializer(serializers.Serializer):
+    side = serializers.ChoiceField(
+        choices=CARD_SIDE_CHOICES,
+        required=False,
+        default=CARD_SIDE_FRONT,
+    )
     member_id = serializers.IntegerField(required=False, min_value=1)
     license_id = serializers.IntegerField(required=False, min_value=1)
     club_id = serializers.IntegerField(required=False, min_value=1)
@@ -709,6 +720,12 @@ class CardPreviewDataSerializer(serializers.Serializer):
     template_version_id = serializers.IntegerField()
     template_id = serializers.IntegerField()
     schema_version = serializers.IntegerField(required=False)
+    active_side = serializers.ChoiceField(choices=CARD_SIDE_CHOICES, required=False)
+    available_sides = serializers.ListField(
+        child=serializers.ChoiceField(choices=CARD_SIDE_CHOICES),
+        required=False,
+    )
+    side_summary = serializers.DictField(required=False)
     card_format = serializers.DictField()
     paper_profile = serializers.DictField(required=False, allow_null=True)
     guides = serializers.DictField()
@@ -719,6 +736,20 @@ class CardPreviewDataSerializer(serializers.Serializer):
     selected_slots = serializers.ListField(child=serializers.IntegerField(), required=False)
     slots = serializers.ListField(child=serializers.DictField(), required=False)
     elements = serializers.ListField(child=serializers.DictField())
+
+
+class CardPreviewHtmlSerializer(serializers.Serializer):
+    template_version_id = serializers.IntegerField()
+    template_id = serializers.IntegerField()
+    active_side = serializers.ChoiceField(choices=CARD_SIDE_CHOICES)
+    available_sides = serializers.ListField(
+        child=serializers.ChoiceField(choices=CARD_SIDE_CHOICES)
+    )
+    side_summary = serializers.DictField()
+    card_format = serializers.DictField()
+    render_metadata = serializers.DictField(required=False)
+    html = serializers.CharField()
+    css = serializers.CharField()
 
 
 def get_merge_field_registry_payload():

@@ -18,6 +18,9 @@ from clubs.models import BrandingAsset, Club
 from members.models import Member
 
 from .card_registry import (
+    ALLOWED_CARD_SIDES,
+    CARD_SIDE_BACK,
+    CARD_SIDE_FRONT,
     ALLOWED_MERGE_FIELDS,
     MERGE_FIELD_PATTERN,
     normalize_design_payload,
@@ -677,6 +680,72 @@ def _resolve_qr_value(element: dict[str, Any], context: dict[str, str]) -> str:
     return _resolve_element_value(element, context) or context.get("qr.validation_url", "")
 
 
+def _normalize_preview_side(side: str | None) -> str:
+    normalized_side = str(side or CARD_SIDE_FRONT).strip().lower()
+    if normalized_side not in ALLOWED_CARD_SIDES:
+        raise CardRenderError("side must be one of: front, back.")
+    return normalized_side
+
+
+def _extract_side_payload(
+    normalized_design_payload: dict[str, Any],
+    *,
+    side: str,
+) -> dict[str, Any]:
+    sides_payload = normalized_design_payload.get("sides") or {}
+    if not isinstance(sides_payload, dict):
+        sides_payload = {}
+    selected_side_payload = sides_payload.get(side) or {}
+    if not isinstance(selected_side_payload, dict):
+        selected_side_payload = {}
+    selected_elements = selected_side_payload.get("elements") or []
+    if not isinstance(selected_elements, list):
+        selected_elements = []
+    selected_background = selected_side_payload.get("background", {})
+    if not isinstance(selected_background, (dict, str)):
+        selected_background = {}
+    return {
+        "elements": selected_elements,
+        "background": selected_background,
+    }
+
+
+def _build_side_summary(
+    *,
+    normalized_design_payload: dict[str, Any],
+    active_side: str,
+    has_explicit_sides: bool,
+) -> tuple[list[str], dict[str, Any]]:
+    sides_payload = normalized_design_payload.get("sides") or {}
+    if not isinstance(sides_payload, dict):
+        sides_payload = {}
+
+    side_summary: dict[str, Any] = {}
+    available_sides: list[str] = []
+    for side_name in (CARD_SIDE_FRONT, CARD_SIDE_BACK):
+        side_payload = sides_payload.get(side_name) or {}
+        if not isinstance(side_payload, dict):
+            side_payload = {}
+        side_elements = side_payload.get("elements") or []
+        if not isinstance(side_elements, list):
+            side_elements = []
+        side_background = side_payload.get("background", {})
+        has_background = bool(side_background)
+        element_count = len(side_elements)
+        has_content = bool(element_count > 0 or has_background)
+        side_summary[side_name] = {
+            "element_count": element_count,
+            "has_background": has_background,
+            "has_content": has_content,
+            "is_active": side_name == active_side,
+        }
+        if side_name == CARD_SIDE_FRONT or has_explicit_sides or has_content:
+            available_sides.append(side_name)
+    if active_side not in available_sides:
+        available_sides.append(active_side)
+    return available_sides, side_summary
+
+
 def _sorted_design_elements(design_payload: dict[str, Any]) -> list[dict[str, Any]]:
     raw_elements = design_payload.get("elements") or []
     indexed_elements = list(enumerate(raw_elements))
@@ -924,6 +993,7 @@ def _build_slot_layout(
 def build_preview_data(
     *,
     template_version: CardTemplateVersion,
+    side: str = CARD_SIDE_FRONT,
     member_id: int | None = None,
     license_id: int | None = None,
     club_id: int | None = None,
@@ -951,8 +1021,27 @@ def build_preview_data(
     except ValidationError as exc:
         raise _error_from_validation(exc) from exc
 
+    has_explicit_sides = bool(
+        isinstance(template_version.design_payload, dict)
+        and "sides" in template_version.design_payload
+    )
+    active_side = _normalize_preview_side(side)
+    active_side_payload = _extract_side_payload(
+        normalized_design_payload,
+        side=active_side,
+    )
+    active_design_payload = {
+        "elements": list(active_side_payload["elements"]),
+        "background": active_side_payload["background"],
+    }
+    available_sides, side_summary = _build_side_summary(
+        normalized_design_payload=normalized_design_payload,
+        active_side=active_side,
+        has_explicit_sides=has_explicit_sides,
+    )
+
     requested_font_ids, requested_image_ids = _extract_asset_ids_from_design_payload(
-        normalized_design_payload
+        active_design_payload
     )
     resolved_font_assets = _resolve_active_font_assets(requested_font_ids)
     resolved_image_assets = _resolve_active_image_assets(
@@ -976,7 +1065,7 @@ def build_preview_data(
         sample_data=sample_data,
     )
     resolved_elements = _resolve_elements(
-        design_payload=normalized_design_payload,
+        design_payload=active_design_payload,
         context=context,
         member=member,
         font_assets=resolved_font_assets,
@@ -1002,6 +1091,9 @@ def build_preview_data(
         "template_version_id": template_version.id,
         "template_id": template_version.template_id,
         "schema_version": int(normalized_design_payload.get("schema_version", 1)),
+        "active_side": active_side,
+        "available_sides": available_sides,
+        "side_summary": side_summary,
         "card_format": {
             "id": template_version.card_format_id,
             "code": template_version.card_format.code,
@@ -1016,13 +1108,15 @@ def build_preview_data(
             "safe_area_mm": _format_mm(safe_area_value),
         },
         "context": context,
-        "background": normalized_design_payload.get("background", {}),
+        "background": active_side_payload.get("background", {}),
         "elements": resolved_elements,
         "render_metadata": {
             "engine_version": RENDER_ENGINE_VERSION,
             "unit": "mm",
             "precision_mm": "0.01",
             "geometry_rounding": "quantize_0.01",
+            "active_side": active_side,
+            "available_sides": available_sides,
             "font_assets": {
                 "requested_ids": sorted(requested_font_ids),
                 "resolved_ids": sorted(resolved_font_assets.keys()),
@@ -1664,6 +1758,26 @@ def build_sheet_slots(
 
 def render_card_fragment_html(preview_data: dict[str, Any]) -> str:
     return _render_card_fragment(preview_data)
+
+
+def build_card_simulation_payload(preview_data: dict[str, Any]) -> dict[str, str]:
+    card_format = preview_data.get("card_format") or {}
+    width_mm = str(card_format.get("width_mm") or "85.60")
+    height_mm = str(card_format.get("height_mm") or "53.98")
+    font_face_css = _build_embedded_font_face_css(preview_data)
+    css = (
+        f"{font_face_css}"
+        "html,body{margin:0;padding:0;}"
+        ".card-simulation-root{"
+        f"width:{escape(width_mm)}mm;"
+        f"height:{escape(height_mm)}mm;"
+        "position:relative;"
+        "overflow:hidden;"
+        "}"
+        ".card-canvas{position:relative;}"
+    )
+    html = f'<div class="card-simulation-root">{_render_card_fragment(preview_data)}</div>'
+    return {"html": html, "css": css}
 
 
 def render_pdf_bytes_from_html(html: str, *, base_url: str | None = None) -> bytes:

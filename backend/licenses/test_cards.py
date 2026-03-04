@@ -199,6 +199,43 @@ def _sample_v2_advanced_design_payload(*, font_asset_id: int, image_asset_id: in
     }
 
 
+def _sample_dual_side_design_payload() -> dict:
+    return {
+        "schema_version": "v2",
+        "sides": {
+            "front": {
+                "elements": [
+                    {
+                        "id": "front-name",
+                        "type": "text",
+                        "x_mm": "4.00",
+                        "y_mm": "4.00",
+                        "width_mm": "50.00",
+                        "height_mm": "8.00",
+                        "text": "FRONT {{member.full_name}}",
+                    }
+                ],
+                "background": {"color": "#ffffff"},
+            },
+            "back": {
+                "elements": [
+                    {
+                        "id": "back-name",
+                        "type": "text",
+                        "x_mm": "4.00",
+                        "y_mm": "4.00",
+                        "width_mm": "50.00",
+                        "height_mm": "8.00",
+                        "text": "BACK {{member.full_name}}",
+                    }
+                ],
+                "background": {"color": "#f8fafc"},
+            },
+        },
+        "metadata": {"unit": "mm"},
+    }
+
+
 def _build_uploaded_png(name: str = "preview-photo.png") -> SimpleUploadedFile:
     buffer = BytesIO()
     image = Image.new("RGB", (32, 32), color=(16, 185, 129))
@@ -685,6 +722,26 @@ class LicenseCardValidationTests(TestCase):
         self.assertEqual(payload["elements"][0]["x_mm"], "2.00")
         self.assertEqual(payload["elements"][0]["text"], "{{member.first_name}}")
 
+    def test_accepts_dual_side_payload_and_maps_front_to_legacy_elements(self):
+        response = self.client.post(
+            "/api/card-template-versions/",
+            {
+                "template": self.template.id,
+                "label": "Dual side payload",
+                "card_format": self.card_format.id,
+                "paper_profile": self.paper_profile.id,
+                "design_payload": _sample_dual_side_design_payload(),
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        payload = response.data["design_payload"]
+        self.assertIn("sides", payload)
+        self.assertIn("front", payload["sides"])
+        self.assertIn("back", payload["sides"])
+        self.assertEqual(payload["elements"][0]["id"], "front-name")
+        self.assertEqual(payload["sides"]["back"]["elements"][0]["id"], "back-name")
+
     def test_reject_out_of_bounds_coordinates(self):
         response = self.client.post(
             "/api/card-template-versions/",
@@ -1080,6 +1137,9 @@ class LicenseCardPreviewApiTests(TestCase):
         self.preview_sheet_pdf_url = (
             f"/api/card-template-versions/{self.template_version.id}/preview-sheet-pdf/"
         )
+        self.preview_card_html_url = (
+            f"/api/card-template-versions/{self.template_version.id}/preview-card-html/"
+        )
 
     def test_preview_data_returns_deterministic_resolved_layout(self):
         self.client.force_authenticate(user=self.ltf_admin)
@@ -1245,6 +1305,89 @@ class LicenseCardPreviewApiTests(TestCase):
         self.assertEqual(qr_element["qr_mode"], "custom")
         self.assertEqual(qr_element["resolved_value"], f"LTF|{self.member.ltf_licenseid}|{self.license.year}")
 
+    def test_preview_data_legacy_payload_defaults_to_front_side(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            self.preview_data_url,
+            {"member_id": self.member.id, "license_id": self.license.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["active_side"], "front")
+        self.assertEqual(response.data["available_sides"], ["front"])
+        self.assertIn("front", response.data["side_summary"])
+        self.assertIn("back", response.data["side_summary"])
+        self.assertEqual(response.data["side_summary"]["back"]["element_count"], 0)
+
+    def test_preview_data_dual_side_supports_front_and_back_selection(self):
+        self.template_version.design_payload = _sample_dual_side_design_payload()
+        self.template_version.save(update_fields=["design_payload", "updated_at"])
+        self.client.force_authenticate(user=self.ltf_admin)
+
+        front_response = self.client.post(
+            self.preview_data_url,
+            {"member_id": self.member.id, "license_id": self.license.id, "side": "front"},
+            format="json",
+        )
+        back_response = self.client.post(
+            self.preview_data_url,
+            {"member_id": self.member.id, "license_id": self.license.id, "side": "back"},
+            format="json",
+        )
+        self.assertEqual(front_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(back_response.status_code, status.HTTP_200_OK)
+
+        self.assertEqual(front_response.data["active_side"], "front")
+        self.assertEqual(back_response.data["active_side"], "back")
+        self.assertIn("back", back_response.data["available_sides"])
+
+        front_text = next(
+            item["resolved_text"] for item in front_response.data["elements"] if item["id"] == "front-name"
+        )
+        back_text = next(
+            item["resolved_text"] for item in back_response.data["elements"] if item["id"] == "back-name"
+        )
+        self.assertTrue(front_text.startswith("FRONT "))
+        self.assertTrue(back_text.startswith("BACK "))
+
+    def test_preview_request_rejects_invalid_side(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            self.preview_data_url,
+            {"member_id": self.member.id, "side": "left"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("side", response.data)
+
+    def test_preview_card_html_returns_simulation_payload(self):
+        self.template_version.design_payload = _sample_dual_side_design_payload()
+        self.template_version.save(update_fields=["design_payload", "updated_at"])
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            self.preview_card_html_url,
+            {"member_id": self.member.id, "license_id": self.license.id, "side": "back"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["active_side"], "back")
+        self.assertIn("back", response.data["available_sides"])
+        self.assertIn("card-simulation-root", response.data["html"])
+        self.assertIn(".card-simulation-root", response.data["css"])
+
+    def test_preview_card_pdf_supports_back_side(self):
+        self.template_version.design_payload = _sample_dual_side_design_payload()
+        self.template_version.save(update_fields=["design_payload", "updated_at"])
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            self.preview_card_pdf_url,
+            {"member_id": self.member.id, "license_id": self.license.id, "side": "back"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertTrue(response.content.startswith(b"%PDF"))
+
     def test_preview_card_pdf_returns_pdf_bytes(self):
         self.client.force_authenticate(user=self.ltf_admin)
         response = self.client.post(
@@ -1363,6 +1506,11 @@ class LicenseCardPreviewApiTests(TestCase):
                     payload,
                     format="json",
                 )
+                card_html_response = self.client.post(
+                    self.preview_card_html_url,
+                    payload,
+                    format="json",
+                )
                 sheet_pdf_response = self.client.post(
                     self.preview_sheet_pdf_url,
                     {
@@ -1374,6 +1522,7 @@ class LicenseCardPreviewApiTests(TestCase):
                 )
                 self.assertEqual(data_response.status_code, status.HTTP_403_FORBIDDEN)
                 self.assertEqual(card_pdf_response.status_code, status.HTTP_403_FORBIDDEN)
+                self.assertEqual(card_html_response.status_code, status.HTTP_403_FORBIDDEN)
                 self.assertEqual(sheet_pdf_response.status_code, status.HTTP_403_FORBIDDEN)
 
 

@@ -100,10 +100,24 @@ MERGE_FIELD_PATTERN = re.compile(r"\{\{\s*([^{}\s]+)\s*\}\}")
 ALLOWED_ELEMENT_TYPES = {"text", "image", "shape", "qr", "barcode"}
 SCHEMA_VERSION_V1 = 1
 SCHEMA_VERSION_V2 = 2
+CARD_SIDE_FRONT = "front"
+CARD_SIDE_BACK = "back"
+ALLOWED_CARD_SIDES = {CARD_SIDE_FRONT, CARD_SIDE_BACK}
 
-BASE_TOP_LEVEL_KEYS = {"schema_version", "elements", "metadata", "background"}
+BASE_TOP_LEVEL_KEYS = {"schema_version", "elements", "metadata", "background", "sides"}
 V2_TOP_LEVEL_KEYS = BASE_TOP_LEVEL_KEYS | {
     "layers",
+    "canvas",
+    "assets",
+    "variables",
+    "editor",
+    "guides",
+}
+SIDE_LEVEL_KEYS = {
+    "elements",
+    "layers",
+    "background",
+    "metadata",
     "canvas",
     "assets",
     "variables",
@@ -559,6 +573,84 @@ def _normalize_element(raw_element: dict[str, Any], *, index: int) -> dict[str, 
     return normalized_element
 
 
+def _normalize_elements_list(
+    raw_elements: Any,
+    *,
+    element_path_prefix: str,
+) -> list[dict[str, Any]]:
+    if raw_elements is None:
+        return []
+    if not isinstance(raw_elements, list):
+        raise ValidationError({element_path_prefix: "Must be a list."})
+    normalized_elements: list[dict[str, Any]] = []
+    for index, raw_element in enumerate(raw_elements):
+        element_path = f"{element_path_prefix}[{index}]"
+        if not isinstance(raw_element, dict):
+            raise ValidationError({element_path: "Each element must be an object."})
+        normalized_elements.append(_normalize_element(raw_element, index=index))
+    return normalized_elements
+
+
+def _normalize_side_payload(
+    raw_side_payload: Any,
+    *,
+    side_name: str,
+    schema_version: int,
+    fallback_elements: list[dict[str, Any]] | None = None,
+    fallback_background: Any = None,
+) -> dict[str, Any]:
+    side_path = f"design_payload.sides.{side_name}"
+    if raw_side_payload is None:
+        raw_side_payload = {}
+    if not isinstance(raw_side_payload, dict):
+        raise ValidationError({side_path: "Must be an object."})
+
+    unknown_side_keys = set(raw_side_payload.keys()) - SIDE_LEVEL_KEYS
+    if unknown_side_keys:
+        raise ValidationError(
+            {
+                side_path: (
+                    "Unknown key(s): " + ", ".join(sorted(unknown_side_keys))
+                )
+            }
+        )
+
+    side_elements_input = raw_side_payload.get("elements")
+    if side_elements_input is None and schema_version == SCHEMA_VERSION_V2:
+        side_elements_input = raw_side_payload.get("layers")
+    if side_elements_input is None and fallback_elements is not None:
+        side_elements = list(fallback_elements)
+    else:
+        side_elements = _normalize_elements_list(
+            side_elements_input,
+            element_path_prefix=f"{side_path}.elements",
+        )
+
+    side_background = raw_side_payload.get("background", fallback_background)
+    if side_background is None:
+        side_background = {}
+    if not isinstance(side_background, (dict, str)):
+        raise ValidationError({f"{side_path}.background": "Must be an object or string."})
+
+    side_metadata = raw_side_payload.get("metadata")
+    if side_metadata is None or side_metadata == "":
+        side_metadata = {}
+    if not isinstance(side_metadata, dict):
+        raise ValidationError({f"{side_path}.metadata": "Must be an object."})
+
+    normalized_side: dict[str, Any] = {
+        "elements": side_elements,
+        "background": side_background,
+        "metadata": side_metadata,
+    }
+    side_canvas = raw_side_payload.get("canvas")
+    if side_canvas is not None:
+        if not isinstance(side_canvas, dict):
+            raise ValidationError({f"{side_path}.canvas": "Must be an object."})
+        normalized_side["canvas"] = side_canvas
+    return normalized_side
+
+
 def normalize_design_payload(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValidationError({"design_payload": "Design payload must be a JSON object."})
@@ -576,13 +668,13 @@ def normalize_design_payload(payload: Any) -> dict[str, Any]:
             }
         )
 
-    elements = payload.get("elements")
-    if elements is None and schema_version == SCHEMA_VERSION_V2:
-        elements = payload.get("layers")
-    if elements is None:
-        elements = []
-    if not isinstance(elements, list):
-        raise ValidationError({"design_payload.elements": "Must be a list."})
+    legacy_elements_input = payload.get("elements")
+    if legacy_elements_input is None and schema_version == SCHEMA_VERSION_V2:
+        legacy_elements_input = payload.get("layers")
+    legacy_elements = _normalize_elements_list(
+        legacy_elements_input,
+        element_path_prefix="design_payload.elements",
+    )
 
     metadata = payload.get("metadata")
     if metadata is None or metadata == "":
@@ -598,7 +690,7 @@ def normalize_design_payload(payload: Any) -> dict[str, Any]:
 
     normalized_payload: dict[str, Any] = {
         "schema_version": schema_version,
-        "elements": [],
+        "elements": legacy_elements,
         "metadata": metadata,
         "background": background,
     }
@@ -608,57 +700,58 @@ def normalize_design_payload(payload: Any) -> dict[str, Any]:
             raise ValidationError({"design_payload.canvas": "Must be an object."})
         normalized_payload["canvas"] = canvas
 
-    for index, raw_element in enumerate(elements):
-        element_path = f"design_payload.elements[{index}]"
-        if not isinstance(raw_element, dict):
-            raise ValidationError({element_path: "Each element must be an object."})
-        normalized_payload["elements"].append(_normalize_element(raw_element, index=index))
+    raw_sides = payload.get("sides")
+    if raw_sides is None:
+        raw_sides = {}
+    if not isinstance(raw_sides, dict):
+        raise ValidationError({"design_payload.sides": "Must be an object."})
+    unknown_side_names = set(raw_sides.keys()) - ALLOWED_CARD_SIDES
+    if unknown_side_names:
+        raise ValidationError(
+            {
+                "design_payload.sides": (
+                    "Unknown side key(s): " + ", ".join(sorted(unknown_side_names))
+                )
+            }
+        )
+
+    front_side = _normalize_side_payload(
+        raw_sides.get(CARD_SIDE_FRONT),
+        side_name=CARD_SIDE_FRONT,
+        schema_version=schema_version,
+        fallback_elements=(legacy_elements if CARD_SIDE_FRONT not in raw_sides else None),
+        fallback_background=(background if CARD_SIDE_FRONT not in raw_sides else {}),
+    )
+    back_side = _normalize_side_payload(
+        raw_sides.get(CARD_SIDE_BACK),
+        side_name=CARD_SIDE_BACK,
+        schema_version=schema_version,
+        fallback_elements=[],
+        fallback_background={},
+    )
+    normalized_payload["sides"] = {
+        CARD_SIDE_FRONT: front_side,
+        CARD_SIDE_BACK: back_side,
+    }
+    # Keep top-level keys for compatibility with existing payload consumers.
+    normalized_payload["elements"] = list(front_side["elements"])
+    normalized_payload["background"] = front_side["background"]
     return normalized_payload
 
 
-def validate_design_payload_schema(
-    payload: Any,
+def _validate_normalized_elements(
+    elements: Any,
     *,
-    canvas_width_mm: Decimal,
-    canvas_height_mm: Decimal,
+    element_path_prefix: str,
+    canvas_width: Decimal,
+    canvas_height: Decimal,
+    required_keys: set[str],
+    allowed_element_keys: set[str],
 ) -> None:
-    normalized_payload = normalize_design_payload(payload)
-    elements = normalized_payload["elements"]
-
-    canvas_width = _to_decimal(
-        canvas_width_mm, field_name="canvas_width_mm", allow_zero=False
-    )
-    canvas_height = _to_decimal(
-        canvas_height_mm, field_name="canvas_height_mm", allow_zero=False
-    )
-
-    required_keys = {"id", "type", "x_mm", "y_mm", "width_mm", "height_mm"}
-    allowed_element_keys = {
-        "id",
-        "type",
-        "x_mm",
-        "y_mm",
-        "width_mm",
-        "height_mm",
-        "text",
-        "merge_field",
-        "rotation_deg",
-        "opacity",
-        "z_index",
-        "style",
-        "metadata",
-        "source",
-        "locked",
-        "visible",
-        "anchor",
-        "fit_mode",
-        "merge_fields",
-        "qr_data",
-        "qr_separator",
-        "qr_mode",
-    }
+    if not isinstance(elements, list):
+        raise ValidationError({element_path_prefix: "Must be a list."})
     for index, element in enumerate(elements):
-        element_path = f"design_payload.elements[{index}]"
+        element_path = f"{element_path_prefix}[{index}]"
         if not isinstance(element, dict):
             raise ValidationError({element_path: "Each element must be an object."})
 
@@ -734,3 +827,67 @@ def validate_design_payload_schema(
             element_type=element_type,
             element_path=element_path,
         )
+
+
+def validate_design_payload_schema(
+    payload: Any,
+    *,
+    canvas_width_mm: Decimal,
+    canvas_height_mm: Decimal,
+) -> None:
+    normalized_payload = normalize_design_payload(payload)
+    elements = normalized_payload["elements"]
+
+    canvas_width = _to_decimal(
+        canvas_width_mm, field_name="canvas_width_mm", allow_zero=False
+    )
+    canvas_height = _to_decimal(
+        canvas_height_mm, field_name="canvas_height_mm", allow_zero=False
+    )
+
+    required_keys = {"id", "type", "x_mm", "y_mm", "width_mm", "height_mm"}
+    allowed_element_keys = {
+        "id",
+        "type",
+        "x_mm",
+        "y_mm",
+        "width_mm",
+        "height_mm",
+        "text",
+        "merge_field",
+        "rotation_deg",
+        "opacity",
+        "z_index",
+        "style",
+        "metadata",
+        "source",
+        "locked",
+        "visible",
+        "anchor",
+        "fit_mode",
+        "merge_fields",
+        "qr_data",
+        "qr_separator",
+        "qr_mode",
+    }
+    _validate_normalized_elements(
+        elements,
+        element_path_prefix="design_payload.elements",
+        canvas_width=canvas_width,
+        canvas_height=canvas_height,
+        required_keys=required_keys,
+        allowed_element_keys=allowed_element_keys,
+    )
+
+    sides = normalized_payload.get("sides") or {}
+    if isinstance(sides, dict):
+        back_side = sides.get(CARD_SIDE_BACK) or {}
+        if isinstance(back_side, dict):
+            _validate_normalized_elements(
+                back_side.get("elements") or [],
+                element_path_prefix=f"design_payload.sides.{CARD_SIDE_BACK}.elements",
+                canvas_width=canvas_width,
+                canvas_height=canvas_height,
+                required_keys=required_keys,
+                allowed_element_keys=allowed_element_keys,
+            )

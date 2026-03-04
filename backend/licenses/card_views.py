@@ -23,6 +23,7 @@ from members.models import Member
 
 from .card_rendering import (
     CardRenderError,
+    build_card_simulation_payload,
     build_preview_data,
     render_card_pdf_bytes,
     render_sheet_pdf_bytes,
@@ -30,6 +31,7 @@ from .card_rendering import (
 from .card_serializers import (
     CardFormatPresetSerializer,
     CardPreviewDataSerializer,
+    CardPreviewHtmlSerializer,
     CardPreviewRequestSerializer,
     CardSheetPreviewRequestSerializer,
     CardDesignerLookupItemSerializer,
@@ -479,6 +481,7 @@ class CardTemplateVersionViewSet(viewsets.ModelViewSet):
         try:
             preview_payload = build_preview_data(
                 template_version=version,
+                side=serializer.validated_data.get("side", "front"),
                 member_id=serializer.validated_data.get("member_id"),
                 license_id=serializer.validated_data.get("license_id"),
                 club_id=serializer.validated_data.get("club_id"),
@@ -515,6 +518,7 @@ class CardTemplateVersionViewSet(viewsets.ModelViewSet):
         try:
             preview_payload = build_preview_data(
                 template_version=version,
+                side=serializer.validated_data.get("side", "front"),
                 member_id=serializer.validated_data.get("member_id"),
                 license_id=serializer.validated_data.get("license_id"),
                 club_id=serializer.validated_data.get("club_id"),
@@ -555,6 +559,7 @@ class CardTemplateVersionViewSet(viewsets.ModelViewSet):
         try:
             preview_payload = build_preview_data(
                 template_version=version,
+                side=serializer.validated_data.get("side", "front"),
                 member_id=serializer.validated_data.get("member_id"),
                 license_id=serializer.validated_data.get("license_id"),
                 club_id=serializer.validated_data.get("club_id"),
@@ -578,6 +583,46 @@ class CardTemplateVersionViewSet(viewsets.ModelViewSet):
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = f'inline; filename="sheet-preview-v{version.id}.pdf"'
         return response
+
+    @extend_schema(request=CardPreviewRequestSerializer, responses=CardPreviewHtmlSerializer)
+    @action(detail=True, methods=["post"], url_path="preview-card-html")
+    def preview_card_html(self, request, pk=None):
+        self._ensure_ltf_admin_preview_access(request)
+        version = self.get_object()
+        serializer = CardPreviewRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            preview_payload = build_preview_data(
+                template_version=version,
+                side=serializer.validated_data.get("side", "front"),
+                member_id=serializer.validated_data.get("member_id"),
+                license_id=serializer.validated_data.get("license_id"),
+                club_id=serializer.validated_data.get("club_id"),
+                sample_data=serializer.validated_data.get("sample_data") or {},
+                include_bleed_guide=serializer.validated_data.get("include_bleed_guide", False),
+                include_safe_area_guide=serializer.validated_data.get(
+                    "include_safe_area_guide", False
+                ),
+                bleed_mm=serializer.validated_data.get("bleed_mm", "2.00"),
+                safe_area_mm=serializer.validated_data.get("safe_area_mm", "3.00"),
+                request=request,
+            )
+            simulation_payload = build_card_simulation_payload(preview_payload)
+        except CardRenderError as exc:
+            return Response({"detail": exc.detail}, status=exc.status_code)
+
+        response_payload = {
+            "template_version_id": preview_payload["template_version_id"],
+            "template_id": preview_payload["template_id"],
+            "active_side": preview_payload.get("active_side", "front"),
+            "available_sides": preview_payload.get("available_sides", ["front"]),
+            "side_summary": preview_payload.get("side_summary", {}),
+            "card_format": preview_payload["card_format"],
+            "render_metadata": preview_payload.get("render_metadata", {}),
+            "html": simulation_payload["html"],
+            "css": simulation_payload["css"],
+        }
+        return Response(response_payload, status=status.HTTP_200_OK)
 
 
 class CardFontAssetViewSet(viewsets.ModelViewSet):
