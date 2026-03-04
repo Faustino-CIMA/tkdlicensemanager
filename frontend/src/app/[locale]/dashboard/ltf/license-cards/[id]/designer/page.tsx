@@ -170,6 +170,13 @@ const SHAPE_KIND_OPTIONS = [
 const QR_DATA_MODE_OPTIONS = ["single_merge", "multi_merge", "custom"] as const;
 const CARD_SIDES: CardSide[] = ["front", "back"];
 const DEFAULT_ACTIVE_SIDE: CardSide = "front";
+const CORNER_RADIUS_STYLE_KEYS = [
+  "radius_top_left_mm",
+  "radius_top_right_mm",
+  "radius_bottom_right_mm",
+  "radius_bottom_left_mm",
+] as const;
+type CornerRadiusStyleKey = (typeof CORNER_RADIUS_STYLE_KEYS)[number];
 
 function toFiniteNumber(value: unknown, fallback: number) {
   const parsed = Number(value);
@@ -541,6 +548,38 @@ function getStyleStringValue(
     return String(value);
   }
   return fallback;
+}
+
+function getStyleGlobalRadiusValue(style: Record<string, unknown>): string {
+  const borderRadius = getStyleStringValue(style, "border_radius_mm");
+  if (borderRadius.length > 0) {
+    return borderRadius;
+  }
+  return getStyleStringValue(style, "corner_radius_mm");
+}
+
+function getStyleCornerRadiusValue(style: Record<string, unknown>, key: CornerRadiusStyleKey): string {
+  const directValue = getStyleStringValue(style, key);
+  if (directValue.length > 0) {
+    return directValue;
+  }
+  return getStyleGlobalRadiusValue(style);
+}
+
+function buildCornerRadiusStylePatch(
+  style: Record<string, unknown>,
+  key: CornerRadiusStyleKey,
+  value: string
+): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  const globalFallback = getStyleGlobalRadiusValue(style);
+  for (const cornerKey of CORNER_RADIUS_STYLE_KEYS) {
+    const directValue = getStyleStringValue(style, cornerKey);
+    const effectiveValue = directValue.length > 0 ? directValue : globalFallback;
+    patch[cornerKey] = effectiveValue.length > 0 ? effectiveValue : undefined;
+  }
+  patch[key] = value;
+  return patch;
 }
 
 function getStyleBooleanValue(
@@ -5184,10 +5223,16 @@ export default function LtfAdminLicenseCardDesignerPage() {
                       <Input
                         type="number"
                         step="0.05"
-                        value={getStyleStringValue(selectedElementStyle, "radius_top_left_mm")}
+                        value={getStyleCornerRadiusValue(selectedElementStyle, "radius_top_left_mm")}
                         disabled={!isEditableDraft}
                         onChange={(event) => {
-                          setSelectedElementStylePatch({ radius_top_left_mm: event.target.value });
+                          setSelectedElementStylePatch(
+                            buildCornerRadiusStylePatch(
+                              selectedElementStyle,
+                              "radius_top_left_mm",
+                              event.target.value
+                            )
+                          );
                         }}
                       />
                     </div>
@@ -5198,10 +5243,16 @@ export default function LtfAdminLicenseCardDesignerPage() {
                       <Input
                         type="number"
                         step="0.05"
-                        value={getStyleStringValue(selectedElementStyle, "radius_top_right_mm")}
+                        value={getStyleCornerRadiusValue(selectedElementStyle, "radius_top_right_mm")}
                         disabled={!isEditableDraft}
                         onChange={(event) => {
-                          setSelectedElementStylePatch({ radius_top_right_mm: event.target.value });
+                          setSelectedElementStylePatch(
+                            buildCornerRadiusStylePatch(
+                              selectedElementStyle,
+                              "radius_top_right_mm",
+                              event.target.value
+                            )
+                          );
                         }}
                       />
                     </div>
@@ -5212,12 +5263,16 @@ export default function LtfAdminLicenseCardDesignerPage() {
                       <Input
                         type="number"
                         step="0.05"
-                        value={getStyleStringValue(selectedElementStyle, "radius_bottom_right_mm")}
+                        value={getStyleCornerRadiusValue(selectedElementStyle, "radius_bottom_right_mm")}
                         disabled={!isEditableDraft}
                         onChange={(event) => {
-                          setSelectedElementStylePatch({
-                            radius_bottom_right_mm: event.target.value,
-                          });
+                          setSelectedElementStylePatch(
+                            buildCornerRadiusStylePatch(
+                              selectedElementStyle,
+                              "radius_bottom_right_mm",
+                              event.target.value
+                            )
+                          );
                         }}
                       />
                     </div>
@@ -5228,10 +5283,16 @@ export default function LtfAdminLicenseCardDesignerPage() {
                       <Input
                         type="number"
                         step="0.05"
-                        value={getStyleStringValue(selectedElementStyle, "radius_bottom_left_mm")}
+                        value={getStyleCornerRadiusValue(selectedElementStyle, "radius_bottom_left_mm")}
                         disabled={!isEditableDraft}
                         onChange={(event) => {
-                          setSelectedElementStylePatch({ radius_bottom_left_mm: event.target.value });
+                          setSelectedElementStylePatch(
+                            buildCornerRadiusStylePatch(
+                              selectedElementStyle,
+                              "radius_bottom_left_mm",
+                              event.target.value
+                            )
+                          );
                         }}
                       />
                     </div>
@@ -5334,6 +5395,86 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         disabled={!isEditableDraft}
                         onChange={(event) => {
                           setSelectedElementStylePatch({ border_radius_mm: event.target.value });
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorRadiusTopLeftLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.05"
+                        value={getStyleCornerRadiusValue(selectedElementStyle, "radius_top_left_mm")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch(
+                            buildCornerRadiusStylePatch(
+                              selectedElementStyle,
+                              "radius_top_left_mm",
+                              event.target.value
+                            )
+                          );
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorRadiusTopRightLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.05"
+                        value={getStyleCornerRadiusValue(selectedElementStyle, "radius_top_right_mm")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch(
+                            buildCornerRadiusStylePatch(
+                              selectedElementStyle,
+                              "radius_top_right_mm",
+                              event.target.value
+                            )
+                          );
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorRadiusBottomRightLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.05"
+                        value={getStyleCornerRadiusValue(selectedElementStyle, "radius_bottom_right_mm")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch(
+                            buildCornerRadiusStylePatch(
+                              selectedElementStyle,
+                              "radius_bottom_right_mm",
+                              event.target.value
+                            )
+                          );
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium uppercase text-zinc-500">
+                        {t("licenseCardInspectorRadiusBottomLeftLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.05"
+                        value={getStyleCornerRadiusValue(selectedElementStyle, "radius_bottom_left_mm")}
+                        disabled={!isEditableDraft}
+                        onChange={(event) => {
+                          setSelectedElementStylePatch(
+                            buildCornerRadiusStylePatch(
+                              selectedElementStyle,
+                              "radius_bottom_left_mm",
+                              event.target.value
+                            )
+                          );
                         }}
                       />
                     </div>

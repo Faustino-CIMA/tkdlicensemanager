@@ -742,6 +742,63 @@ class LicenseCardValidationTests(TestCase):
         self.assertEqual(payload["elements"][0]["id"], "front-name")
         self.assertEqual(payload["sides"]["back"]["elements"][0]["id"], "back-name")
 
+    def test_accepts_distinct_per_corner_radius_values(self):
+        response = self.client.post(
+            "/api/card-template-versions/",
+            {
+                "template": self.template.id,
+                "label": "Per-corner radius payload",
+                "card_format": self.card_format.id,
+                "paper_profile": self.paper_profile.id,
+                "design_payload": {
+                    "elements": [
+                        {
+                            "id": "shape-corners",
+                            "type": "shape",
+                            "x_mm": "3.00",
+                            "y_mm": "3.00",
+                            "width_mm": "22.00",
+                            "height_mm": "12.00",
+                            "style": {
+                                "shape_kind": "rectangle",
+                                "radius_top_left_mm": "0.00",
+                                "radius_top_right_mm": "1.50",
+                                "radius_bottom_right_mm": "3.00",
+                                "radius_bottom_left_mm": "5.00",
+                            },
+                        },
+                        {
+                            "id": "image-corners",
+                            "type": "image",
+                            "x_mm": "30.00",
+                            "y_mm": "3.00",
+                            "width_mm": "20.00",
+                            "height_mm": "12.00",
+                            "source": "https://example.com/test.png",
+                            "style": {
+                                "radius_top_left_mm": "0.00",
+                                "radius_top_right_mm": "1.50",
+                                "radius_bottom_right_mm": "3.00",
+                                "radius_bottom_left_mm": "5.00",
+                            },
+                        },
+                    ]
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        shape_style = response.data["design_payload"]["elements"][0]["style"]
+        image_style = response.data["design_payload"]["elements"][1]["style"]
+        self.assertEqual(shape_style["radius_top_left_mm"], "0.00")
+        self.assertEqual(shape_style["radius_top_right_mm"], "1.50")
+        self.assertEqual(shape_style["radius_bottom_right_mm"], "3.00")
+        self.assertEqual(shape_style["radius_bottom_left_mm"], "5.00")
+        self.assertEqual(image_style["radius_top_left_mm"], "0.00")
+        self.assertEqual(image_style["radius_top_right_mm"], "1.50")
+        self.assertEqual(image_style["radius_bottom_right_mm"], "3.00")
+        self.assertEqual(image_style["radius_bottom_left_mm"], "5.00")
+
     def test_accepts_shape_gradient_canonical_object(self):
         response = self.client.post(
             "/api/card-template-versions/",
@@ -1513,6 +1570,94 @@ class LicenseCardPreviewApiTests(TestCase):
         self.assertIn("back", response.data["available_sides"])
         self.assertIn("card-simulation-root", response.data["html"])
         self.assertIn(".card-simulation-root", response.data["css"])
+
+    def test_preview_card_html_renders_distinct_per_corner_radius_values(self):
+        self.template_version.design_payload = {
+            "elements": [
+                {
+                    "id": "shape-corners",
+                    "type": "shape",
+                    "x_mm": "3.00",
+                    "y_mm": "3.00",
+                    "width_mm": "24.00",
+                    "height_mm": "14.00",
+                    "style": {
+                        "shape_kind": "rectangle",
+                        "fill_color": "#cbd5e1",
+                        "radius_top_left_mm": "0.00",
+                        "radius_top_right_mm": "1.50",
+                        "radius_bottom_right_mm": "3.00",
+                        "radius_bottom_left_mm": "5.00",
+                    },
+                },
+                {
+                    "id": "image-corners",
+                    "type": "image",
+                    "x_mm": "32.00",
+                    "y_mm": "3.00",
+                    "width_mm": "24.00",
+                    "height_mm": "14.00",
+                    "source": "member.profile_picture_processed",
+                    "style": {
+                        "radius_top_left_mm": "0.00",
+                        "radius_top_right_mm": "1.50",
+                        "radius_bottom_right_mm": "3.00",
+                        "radius_bottom_left_mm": "5.00",
+                    },
+                },
+            ]
+        }
+        self.template_version.save(update_fields=["design_payload", "updated_at"])
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            self.preview_card_html_url,
+            {"member_id": self.member.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        radius_css = "border-radius:0.00mm 1.50mm 3.00mm 5.00mm;"
+        self.assertIn(radius_css, response.data["html"])
+        self.assertGreaterEqual(response.data["html"].count(radius_css), 2)
+
+    def test_preview_card_html_legacy_global_radius_remains_valid(self):
+        self.template_version.design_payload = {
+            "elements": [
+                {
+                    "id": "shape-global-radius",
+                    "type": "shape",
+                    "x_mm": "3.00",
+                    "y_mm": "3.00",
+                    "width_mm": "24.00",
+                    "height_mm": "14.00",
+                    "style": {
+                        "shape_kind": "rectangle",
+                        "fill_color": "#cbd5e1",
+                        "border_radius_mm": "2.50",
+                    },
+                },
+                {
+                    "id": "image-global-radius",
+                    "type": "image",
+                    "x_mm": "32.00",
+                    "y_mm": "3.00",
+                    "width_mm": "24.00",
+                    "height_mm": "14.00",
+                    "source": "member.profile_picture_processed",
+                    "style": {
+                        "border_radius_mm": "2.50",
+                    },
+                },
+            ]
+        }
+        self.template_version.save(update_fields=["design_payload", "updated_at"])
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            self.preview_card_html_url,
+            {"member_id": self.member.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("border-radius:2.50mm;", response.data["html"])
 
     def test_preview_card_pdf_supports_back_side(self):
         self.template_version.design_payload = _sample_dual_side_design_payload()

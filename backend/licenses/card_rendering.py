@@ -1240,6 +1240,11 @@ def _style_bool_value(style: dict[str, Any], key: str, default: bool) -> bool:
 
 
 def _element_border_radius_css(style: dict[str, Any]) -> str:
+    global_fallback_radius = _style_mm_value(
+        style,
+        "border_radius_mm",
+        _style_mm_value(style, "corner_radius_mm", Decimal("0.00")),
+    )
     if any(
         key in style
         for key in (
@@ -1249,19 +1254,15 @@ def _element_border_radius_css(style: dict[str, Any]) -> str:
             "radius_bottom_left_mm",
         )
     ):
-        top_left = _style_mm_value(style, "radius_top_left_mm", Decimal("0.00"))
-        top_right = _style_mm_value(style, "radius_top_right_mm", Decimal("0.00"))
-        bottom_right = _style_mm_value(style, "radius_bottom_right_mm", Decimal("0.00"))
-        bottom_left = _style_mm_value(style, "radius_bottom_left_mm", Decimal("0.00"))
+        top_left = _style_mm_value(style, "radius_top_left_mm", global_fallback_radius)
+        top_right = _style_mm_value(style, "radius_top_right_mm", global_fallback_radius)
+        bottom_right = _style_mm_value(style, "radius_bottom_right_mm", global_fallback_radius)
+        bottom_left = _style_mm_value(style, "radius_bottom_left_mm", global_fallback_radius)
         return (
             f"{_format_mm(top_left)}mm {_format_mm(top_right)}mm "
             f"{_format_mm(bottom_right)}mm {_format_mm(bottom_left)}mm"
         )
-    border_radius = _style_mm_value(
-        style,
-        "border_radius_mm",
-        _style_mm_value(style, "corner_radius_mm", Decimal("0.00")),
-    )
+    border_radius = global_fallback_radius
     return f"{_format_mm(border_radius)}mm"
 
 
