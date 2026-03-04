@@ -1,5 +1,5 @@
 # LTF License Manager - Permanent Project Memory
-Last updated: 2026-02-27
+Last updated: 2026-03-04
 
 ## Current Stack (locked)
 - Backend: Django 6+ + DRF + PostgreSQL 18+
@@ -26,6 +26,7 @@ Last updated: 2026-02-27
 - License Card Step 3 backend render engine: deterministic preview-data + card/sheet PDF APIs with guides and merge resolution — completed
 - License Card Step 5 backend print execution pipeline: async execute/retry/cancel lifecycle, PDF artifact persistence, secure download endpoint, and audit/status history — completed
 - License Card Step 7 backend hardening: print history endpoint, list filters, guarded transition audits, Celery queue/time limits, cooperative cancellation checks, and artifact prune command — completed
+- License Card Step 8 final closure (v2): full UAT matrix pass (dual-side + simulation + quick print/history), runtime queue/schema verification, docs/runbook alignment, and rollout/rollback checklists — completed
 
 ## Key Decisions
 - Material Design 3 is the only UI framework
@@ -38,7 +39,7 @@ Last updated: 2026-02-27
 ## Current Open / Next Priorities (update after every milestone)
 - Gather real Payconiq sandbox credentials and run first live sandbox verification
 - Any remaining Dokploy stability tweaks
-- License Card Step 8+ frontend/ops integration for production batch printing workflows
+- Post-rollout production observation window for print queue throughput, dual-side simulation usage telemetry, and artifact retention tuning
 
 ## Coding & Memory Rules (always follow)
 - Explain ALL JS/TS in extreme beginner detail

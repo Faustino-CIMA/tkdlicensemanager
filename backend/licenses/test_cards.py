@@ -1208,6 +1208,56 @@ class LicenseCardDesignerV2FoundationApiTests(TestCase):
                 )
                 self.assertEqual(invalid_font_response.status_code, status.HTTP_400_BAD_REQUEST)
 
+                missing_font_file_response = self.client.post(
+                    "/api/card-font-assets/",
+                    {"name": "Missing Font File"},
+                    format="multipart",
+                )
+                self.assertEqual(
+                    missing_font_file_response.status_code,
+                    status.HTTP_400_BAD_REQUEST,
+                )
+                self.assertIn("file", missing_font_file_response.data)
+
+                wrong_font_key_response = self.client.post(
+                    "/api/card-font-assets/",
+                    {
+                        "name": "Wrong Font Key",
+                        "image": _build_uploaded_png("wrong-font-key.png"),
+                    },
+                    format="multipart",
+                )
+                self.assertEqual(
+                    wrong_font_key_response.status_code,
+                    status.HTTP_400_BAD_REQUEST,
+                )
+                self.assertIn("file", wrong_font_key_response.data)
+
+                missing_image_file_response = self.client.post(
+                    "/api/card-image-assets/",
+                    {"name": "Missing Image File"},
+                    format="multipart",
+                )
+                self.assertEqual(
+                    missing_image_file_response.status_code,
+                    status.HTTP_400_BAD_REQUEST,
+                )
+                self.assertIn("image", missing_image_file_response.data)
+
+                wrong_image_key_response = self.client.post(
+                    "/api/card-image-assets/",
+                    {
+                        "name": "Wrong Image Key",
+                        "file": _build_uploaded_font("wrong-image-key.ttf"),
+                    },
+                    format="multipart",
+                )
+                self.assertEqual(
+                    wrong_image_key_response.status_code,
+                    status.HTTP_400_BAD_REQUEST,
+                )
+                self.assertIn("image", wrong_image_key_response.data)
+
         self.client.force_authenticate(user=self.club_admin)
         denied_response = self.client.post(
             "/api/card-image-assets/",

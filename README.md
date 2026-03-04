@@ -227,6 +227,8 @@ Media uploads (profile pictures):
 - `MEDIA_ROOT` (default `/app/media` in Docker)
 - `DATA_UPLOAD_MAX_MEMORY_SIZE` (default `10485760` bytes / 10 MB)
 - `FILE_UPLOAD_MAX_MEMORY_SIZE` (default `10485760` bytes / 10 MB)
+- `CARD_FONT_ASSET_MAX_BYTES` (default `5242880` bytes / 5 MB, font uploads for License Card v2)
+- `CARD_IMAGE_ASSET_MAX_BYTES` (default `8388608` bytes / 8 MB, image uploads for License Card v2)
 
 Stripe + payments:
 - `STRIPE_SECRET_KEY`
@@ -369,6 +371,52 @@ Print artifact lifecycle:
   - Dry run: `docker compose exec backend python manage.py prune_print_job_artifacts --days 30 --dry-run`
   - Apply: `docker compose exec backend python manage.py prune_print_job_artifacts --days 30`
 
+## License Card Operations Runbook
+
+Role split:
+- LTF Admin: manages templates/versions, dual-side designer payloads, simulation previews, and can execute/retry/cancel any print job.
+- Club Admin: can quick-print from own-club members or licenses, execute/retry/cancel own-club print jobs, and view own-club print history.
+
+Primary API workflow:
+- Template manager/designer:
+  - `POST /api/card-templates/`
+  - `POST /api/card-template-versions/`
+  - `PATCH /api/card-template-versions/{id}/`
+  - `POST /api/card-template-versions/{id}/publish/`
+  - `POST /api/card-templates/{id}/clone/`
+  - `POST /api/card-templates/{id}/set-default/`
+- Preview endpoints:
+  - `POST /api/card-template-versions/{id}/preview-data/`
+  - `POST /api/card-template-versions/{id}/preview-card-pdf/`
+  - `POST /api/card-template-versions/{id}/preview-sheet-pdf/`
+  - `POST /api/card-template-versions/{id}/preview-card-html/` (live simulation payload)
+- Print jobs:
+  - `POST /api/print-jobs/`
+  - `POST /api/print-jobs/{id}/execute/`
+  - `POST /api/print-jobs/{id}/retry/`
+  - `POST /api/print-jobs/{id}/cancel/`
+  - `GET /api/print-jobs/{id}/pdf/`
+  - `GET /api/print-jobs/{id}/history/`
+- Designer asset libraries (LTF Admin):
+  - `GET/POST /api/card-font-assets/`
+  - `GET/POST /api/card-image-assets/`
+
+License Card v2 behavior notes:
+- `design_payload` supports dual-side structure under `sides.front` and `sides.back`.
+- Preview requests support `side` (`front` or `back`) and return side-aware metadata (`active_side`, `available_sides`, `side_summary`).
+- List/filter on print jobs supports `status`, `club_id`, `template_version_id`, `requested_by_id`, `created_from`, `created_to`, and `q`.
+
+Operational checks:
+- Keep runtime schema current: `docker compose exec backend python manage.py migrate`
+- Recreate app services after updates so runtime processes load new code/queue args:
+  - `docker compose up -d --force-recreate backend worker`
+- Verify worker queue binding includes print queue:
+  - `docker compose top worker`
+  - expected command contains `-Q celery,print_jobs`
+
+Rollout and rollback checklists:
+- See `docs/license-card-rollout-rollback-checklists.md`
+
 ## Migrations and Role Rename Notes
 
 If you have existing users from earlier versions:
@@ -420,6 +468,12 @@ Backend:
 
 ```
 docker compose exec backend python manage.py test
+```
+
+License card focused backend verification:
+
+```
+docker compose exec backend python manage.py test --keepdb --noinput licenses.test_cards
 ```
 
 Frontend:

@@ -904,6 +904,8 @@ export default function LtfAdminLicenseCardDesignerPage() {
   const [newImageAssetName, setNewImageAssetName] = useState("");
   const [newImageAssetFile, setNewImageAssetFile] = useState<File | null>(null);
   const [isUploadingImageAsset, setIsUploadingImageAsset] = useState(false);
+  const fontAssetInputRef = useRef<HTMLInputElement | null>(null);
+  const imageAssetInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const [activeSide, setActiveSide] = useState<CardSide>(DEFAULT_ACTIVE_SIDE);
   const [designPayloadBySide, setDesignPayloadBySide] = useState<EditableDesignPayloadBySide>(() => ({
@@ -2404,6 +2406,20 @@ export default function LtfAdminLicenseCardDesignerPage() {
     setImageAssets(imageAssetResponse);
   }, []);
 
+  const resetFontAssetInput = useCallback(() => {
+    setNewFontAssetFile(null);
+    if (fontAssetInputRef.current) {
+      fontAssetInputRef.current.value = "";
+    }
+  }, []);
+
+  const resetImageAssetInput = useCallback(() => {
+    setNewImageAssetFile(null);
+    if (imageAssetInputRef.current) {
+      imageAssetInputRef.current.value = "";
+    }
+  }, []);
+
   const handleUploadFontAsset = useCallback(async () => {
     if (!newFontAssetFile) {
       setErrorMessage(t("licenseCardAssetLibraryFontFileRequiredError"));
@@ -2421,7 +2437,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
       const uploadedAsset = await createCardFontAsset(payload);
       await refreshAssetLibraries();
       setNewFontAssetName("");
-      setNewFontAssetFile(null);
+      resetFontAssetInput();
       setSuccessMessage(
         t("licenseCardAssetLibraryFontUploadSuccess", { name: uploadedAsset.name })
       );
@@ -2432,7 +2448,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
     } finally {
       setIsUploadingFontAsset(false);
     }
-  }, [newFontAssetFile, newFontAssetName, refreshAssetLibraries, t]);
+  }, [newFontAssetFile, newFontAssetName, refreshAssetLibraries, resetFontAssetInput, t]);
 
   const handleUploadImageAsset = useCallback(async () => {
     if (!newImageAssetFile) {
@@ -2451,7 +2467,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
       const uploadedAsset = await createCardImageAsset(payload);
       await refreshAssetLibraries();
       setNewImageAssetName("");
-      setNewImageAssetFile(null);
+      resetImageAssetInput();
       setSuccessMessage(
         t("licenseCardAssetLibraryImageUploadSuccess", { name: uploadedAsset.name })
       );
@@ -2462,7 +2478,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
     } finally {
       setIsUploadingImageAsset(false);
     }
-  }, [newImageAssetFile, newImageAssetName, refreshAssetLibraries, t]);
+  }, [newImageAssetFile, newImageAssetName, refreshAssetLibraries, resetImageAssetInput, t]);
 
   const clearPreviewLookupSelections = () => {
     setPreviewSelectedMember(null);
@@ -5797,18 +5813,37 @@ export default function LtfAdminLicenseCardDesignerPage() {
                     <label className="text-xs font-medium uppercase text-zinc-500">
                       {t("licenseCardAssetLibraryFontFileLabel")}
                     </label>
-                    <input
-                      type="file"
-                      accept=".ttf,.otf,.woff,.woff2"
-                      disabled={isUploadingFontAsset}
-                      onChange={(event) => {
-                        const file = event.target.files?.[0] ?? null;
-                        setNewFontAssetFile(file);
-                      }}
-                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        ref={fontAssetInputRef}
+                        type="file"
+                        accept=".ttf,.otf,.woff,.woff2"
+                        className="hidden"
+                        disabled={isUploadingFontAsset}
+                        onChange={(event) => {
+                          const file = event.currentTarget.files?.[0] ?? null;
+                          setNewFontAssetFile(file);
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={isUploadingFontAsset}
+                        onClick={() => fontAssetInputRef.current?.click()}
+                      >
+                        {t("licenseCardAssetLibraryChooseFontFileAction")}
+                      </Button>
+                      {newFontAssetFile ? (
+                        <p className="text-xs text-zinc-600">
+                          {t("selectedFileLabel")}: {newFontAssetFile.name}
+                        </p>
+                      ) : null}
+                    </div>
                     <Button
+                      type="button"
                       size="sm"
-                      disabled={isUploadingFontAsset}
+                      disabled={isUploadingFontAsset || !newFontAssetFile}
                       onClick={() => void handleUploadFontAsset()}
                     >
                       {isUploadingFontAsset
@@ -5862,18 +5897,37 @@ export default function LtfAdminLicenseCardDesignerPage() {
                     <label className="text-xs font-medium uppercase text-zinc-500">
                       {t("licenseCardAssetLibraryImageFileLabel")}
                     </label>
-                    <input
-                      type="file"
-                      accept=".png,.jpg,.jpeg,.webp,.svg"
-                      disabled={isUploadingImageAsset}
-                      onChange={(event) => {
-                        const file = event.target.files?.[0] ?? null;
-                        setNewImageAssetFile(file);
-                      }}
-                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        ref={imageAssetInputRef}
+                        type="file"
+                        accept=".png,.jpg,.jpeg,.webp,.svg"
+                        className="hidden"
+                        disabled={isUploadingImageAsset}
+                        onChange={(event) => {
+                          const file = event.currentTarget.files?.[0] ?? null;
+                          setNewImageAssetFile(file);
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={isUploadingImageAsset}
+                        onClick={() => imageAssetInputRef.current?.click()}
+                      >
+                        {t("licenseCardAssetLibraryChooseImageFileAction")}
+                      </Button>
+                      {newImageAssetFile ? (
+                        <p className="text-xs text-zinc-600">
+                          {t("selectedFileLabel")}: {newImageAssetFile.name}
+                        </p>
+                      ) : null}
+                    </div>
                     <Button
+                      type="button"
                       size="sm"
-                      disabled={isUploadingImageAsset}
+                      disabled={isUploadingImageAsset || !newImageAssetFile}
                       onClick={() => void handleUploadImageAsset()}
                     >
                       {isUploadingImageAsset
