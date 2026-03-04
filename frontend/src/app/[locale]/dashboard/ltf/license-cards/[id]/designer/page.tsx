@@ -22,6 +22,11 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { apiRequest } from "@/lib/api";
 import { getDashboardRouteForRole } from "@/lib/dashboard-routing";
 import {
+  buildShapeGradientStylePatch,
+  normalizeShapeGradientStyleForSave,
+  resolveShapeGradientState,
+} from "@/lib/license-card-gradient";
+import {
   CardDesignElement,
   CardDesignPayload,
   CardFontAsset,
@@ -517,6 +522,9 @@ function normalizeElementStyle(element: EditableDesignElement | null): Record<st
   if (!element || !isPlainObject(element.style)) {
     return {};
   }
+  if (element.type === "shape") {
+    return normalizeShapeGradientStyleForSave(element.style);
+  }
   return { ...element.style };
 }
 
@@ -684,7 +692,11 @@ function sanitizePayloadForSave(payload: EditableDesignPayload): CardDesignPaylo
         sanitized.z_index = element.z_index;
       }
       if (isPlainObject(element.style)) {
-        sanitized.style = element.style;
+        const normalizedStyle =
+          element.type === "shape"
+            ? normalizeShapeGradientStyleForSave(element.style)
+            : element.style;
+        sanitized.style = normalizedStyle;
       }
       if (isPlainObject(element.metadata)) {
         sanitized.metadata = element.metadata;
@@ -1109,13 +1121,11 @@ export default function LtfAdminLicenseCardDesignerPage() {
     return "source";
   }, [selectedElement, selectedImageAssetId]);
 
-  const selectedShapeUsesGradient = useMemo(() => {
-    return (
-      getStyleBooleanValue(selectedElementStyle, "fill_gradient", false) ||
-      getStyleStringValue(selectedElementStyle, "fill_gradient_start").length > 0 ||
-      getStyleStringValue(selectedElementStyle, "fill_gradient_end").length > 0
-    );
-  }, [selectedElementStyle]);
+  const selectedShapeGradientState = useMemo(
+    () => resolveShapeGradientState(selectedElementStyle),
+    [selectedElementStyle]
+  );
+  const selectedShapeUsesGradient = selectedShapeGradientState.enabled;
 
   const selectedQrDataMode = useMemo(() => {
     const mode = getStyleStringValue(selectedElementStyle, "data_mode", "").toLowerCase();
@@ -5333,15 +5343,11 @@ export default function LtfAdminLicenseCardDesignerPage() {
                       checked={selectedShapeUsesGradient}
                       onCheckedChange={(checked) => {
                         const enabled = Boolean(checked);
-                        setSelectedElementStylePatch({
-                          fill_gradient: enabled,
-                          fill_gradient_start: enabled
-                            ? getStyleStringValue(selectedElementStyle, "fill_gradient_start", "#ef4444")
-                            : undefined,
-                          fill_gradient_end: enabled
-                            ? getStyleStringValue(selectedElementStyle, "fill_gradient_end", "#3b82f6")
-                            : undefined,
-                        });
+                        setSelectedElementStylePatch(
+                          buildShapeGradientStylePatch(selectedElementStyle, {
+                            enabled,
+                          })
+                        );
                       }}
                       disabled={!isEditableDraft}
                     />
@@ -5354,13 +5360,15 @@ export default function LtfAdminLicenseCardDesignerPage() {
                           {t("licenseCardInspectorGradientStartLabel")}
                         </label>
                         <Input
-                          value={getStyleStringValue(selectedElementStyle, "fill_gradient_start")}
+                          value={selectedShapeGradientState.startColor}
                           disabled={!isEditableDraft}
                           placeholder="#ef4444"
                           onChange={(event) => {
-                            setSelectedElementStylePatch({
-                              fill_gradient_start: event.target.value,
-                            });
+                            setSelectedElementStylePatch(
+                              buildShapeGradientStylePatch(selectedElementStyle, {
+                                startColor: event.target.value,
+                              })
+                            );
                           }}
                         />
                       </div>
@@ -5369,13 +5377,15 @@ export default function LtfAdminLicenseCardDesignerPage() {
                           {t("licenseCardInspectorGradientEndLabel")}
                         </label>
                         <Input
-                          value={getStyleStringValue(selectedElementStyle, "fill_gradient_end")}
+                          value={selectedShapeGradientState.endColor}
                           disabled={!isEditableDraft}
                           placeholder="#3b82f6"
                           onChange={(event) => {
-                            setSelectedElementStylePatch({
-                              fill_gradient_end: event.target.value,
-                            });
+                            setSelectedElementStylePatch(
+                              buildShapeGradientStylePatch(selectedElementStyle, {
+                                endColor: event.target.value,
+                              })
+                            );
                           }}
                         />
                       </div>
@@ -5386,12 +5396,14 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         <Input
                           type="number"
                           step="1"
-                          value={getStyleStringValue(selectedElementStyle, "fill_gradient_angle_deg", "90")}
+                          value={selectedShapeGradientState.angleDeg}
                           disabled={!isEditableDraft}
                           onChange={(event) => {
-                            setSelectedElementStylePatch({
-                              fill_gradient_angle_deg: event.target.value,
-                            });
+                            setSelectedElementStylePatch(
+                              buildShapeGradientStylePatch(selectedElementStyle, {
+                                angleDeg: event.target.value,
+                              })
+                            );
                           }}
                         />
                       </div>

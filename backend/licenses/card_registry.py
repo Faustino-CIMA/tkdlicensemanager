@@ -281,6 +281,10 @@ STYLE_ENUMS: dict[str, set[str]] = {
     },
 }
 
+DEFAULT_SHAPE_GRADIENT_START_COLOR = "#ef4444"
+DEFAULT_SHAPE_GRADIENT_END_COLOR = "#3b82f6"
+DEFAULT_SHAPE_GRADIENT_ANGLE_DEG = Decimal("90.00")
+
 
 def _to_decimal(
     value: Any,
@@ -329,6 +333,74 @@ def _coerce_non_negative_int(value: Any, *, field_name: str) -> int:
     if int_value < 0:
         raise ValidationError({field_name: "Must be >= 0."})
     return int_value
+
+
+def _normalize_decimal_string(
+    value: Any,
+    *,
+    fallback: Decimal,
+    quant: str = "0.01",
+) -> str:
+    try:
+        normalized_value = Decimal(str(value)).quantize(Decimal(quant))
+    except (InvalidOperation, TypeError, ValueError):
+        normalized_value = fallback.quantize(Decimal(quant))
+    return f"{normalized_value}"
+
+
+def _normalize_shape_gradient_style(style: dict[str, Any]) -> dict[str, Any]:
+    normalized_style = dict(style)
+    fill_gradient = normalized_style.get("fill_gradient")
+    legacy_start = str(normalized_style.get("fill_gradient_start") or "").strip()
+    legacy_end = str(normalized_style.get("fill_gradient_end") or "").strip()
+    legacy_angle_raw = normalized_style.get("fill_gradient_angle_deg")
+
+    if isinstance(fill_gradient, dict):
+        gradient_payload = dict(fill_gradient)
+        gradient_start = str(
+            gradient_payload.get("start_color")
+            or legacy_start
+            or DEFAULT_SHAPE_GRADIENT_START_COLOR
+        ).strip() or DEFAULT_SHAPE_GRADIENT_START_COLOR
+        gradient_end = str(
+            gradient_payload.get("end_color")
+            or legacy_end
+            or DEFAULT_SHAPE_GRADIENT_END_COLOR
+        ).strip() or DEFAULT_SHAPE_GRADIENT_END_COLOR
+        gradient_angle = _normalize_decimal_string(
+            gradient_payload.get("angle_deg", legacy_angle_raw),
+            fallback=DEFAULT_SHAPE_GRADIENT_ANGLE_DEG,
+        )
+        gradient_payload["start_color"] = gradient_start
+        gradient_payload["end_color"] = gradient_end
+        gradient_payload["angle_deg"] = gradient_angle
+        normalized_style["fill_gradient"] = gradient_payload
+        normalized_style["fill_gradient_start"] = gradient_start
+        normalized_style["fill_gradient_end"] = gradient_end
+        normalized_style["fill_gradient_angle_deg"] = gradient_angle
+        return normalized_style
+
+    if isinstance(fill_gradient, bool):
+        if fill_gradient:
+            gradient_start = legacy_start or DEFAULT_SHAPE_GRADIENT_START_COLOR
+            gradient_end = legacy_end or DEFAULT_SHAPE_GRADIENT_END_COLOR
+            gradient_angle = _normalize_decimal_string(
+                legacy_angle_raw,
+                fallback=DEFAULT_SHAPE_GRADIENT_ANGLE_DEG,
+            )
+            normalized_style["fill_gradient"] = {
+                "start_color": gradient_start,
+                "end_color": gradient_end,
+                "angle_deg": gradient_angle,
+            }
+            normalized_style["fill_gradient_start"] = gradient_start
+            normalized_style["fill_gradient_end"] = gradient_end
+            normalized_style["fill_gradient_angle_deg"] = gradient_angle
+        else:
+            normalized_style["fill_gradient"] = False
+        return normalized_style
+
+    return normalized_style
 
 
 def _validate_style_scaffolding(
@@ -410,26 +482,49 @@ def _validate_style_scaffolding(
                 raise ValidationError({point_path: "x_pct and y_pct must be <= 100."})
     if "fill_gradient" in style:
         fill_gradient = style.get("fill_gradient")
-        if not isinstance(fill_gradient, dict):
+        if isinstance(fill_gradient, bool):
+            if fill_gradient:
+                fill_gradient = {
+                    "start_color": str(
+                        style.get("fill_gradient_start") or DEFAULT_SHAPE_GRADIENT_START_COLOR
+                    ).strip()
+                    or DEFAULT_SHAPE_GRADIENT_START_COLOR,
+                    "end_color": str(
+                        style.get("fill_gradient_end") or DEFAULT_SHAPE_GRADIENT_END_COLOR
+                    ).strip()
+                    or DEFAULT_SHAPE_GRADIENT_END_COLOR,
+                    "angle_deg": style.get(
+                        "fill_gradient_angle_deg",
+                        f"{DEFAULT_SHAPE_GRADIENT_ANGLE_DEG}",
+                    ),
+                }
+            else:
+                fill_gradient = None
+        elif not isinstance(fill_gradient, dict):
             raise ValidationError(
-                {f"{element_path}.style.fill_gradient": "Must be an object with gradient configuration."}
+                {
+                    f"{element_path}.style.fill_gradient": (
+                        "Must be an object with gradient configuration or a boolean."
+                    )
+                }
             )
-        for required_gradient_key in {"start_color", "end_color"}:
-            if required_gradient_key not in fill_gradient:
-                raise ValidationError(
-                    {
-                        f"{element_path}.style.fill_gradient": (
-                            f"Missing '{required_gradient_key}'."
-                        )
-                    }
+        if isinstance(fill_gradient, dict):
+            for required_gradient_key in {"start_color", "end_color"}:
+                if required_gradient_key not in fill_gradient:
+                    raise ValidationError(
+                        {
+                            f"{element_path}.style.fill_gradient": (
+                                f"Missing '{required_gradient_key}'."
+                            )
+                        }
+                    )
+            if "angle_deg" in fill_gradient:
+                _to_decimal(
+                    fill_gradient.get("angle_deg"),
+                    field_name=f"{element_path}.style.fill_gradient.angle_deg",
+                    allow_zero=True,
+                    minimum=Decimal("-360.00"),
                 )
-        if "angle_deg" in fill_gradient:
-            _to_decimal(
-                fill_gradient.get("angle_deg"),
-                field_name=f"{element_path}.style.fill_gradient.angle_deg",
-                allow_zero=True,
-                minimum=Decimal("-360.00"),
-            )
     if "merge_fields" in style:
         merge_fields = style.get("merge_fields")
         if not isinstance(merge_fields, list) or not merge_fields:
@@ -536,14 +631,17 @@ def _normalize_element(raw_element: dict[str, Any], *, index: int) -> dict[str, 
         element["qr_data"] = element.get("custom_data")
     if "qr_data" not in element and "data" in element and str(element.get("type", "")).lower() == "qr":
         element["qr_data"] = element.get("data")
+    normalized_type = str(element.get("type") or "").strip().lower()
     if element.get("style") is None:
         element["style"] = {}
+    if normalized_type == "shape" and isinstance(element.get("style"), dict):
+        element["style"] = _normalize_shape_gradient_style(element["style"])
     if element.get("metadata") is None:
         element["metadata"] = {}
 
     normalized_element: dict[str, Any] = {
         "id": str(element.get("id") or f"element-{index + 1}"),
-        "type": str(element.get("type") or "").strip().lower(),
+        "type": normalized_type,
         "x_mm": element.get("x_mm"),
         "y_mm": element.get("y_mm"),
         "width_mm": element.get("width_mm"),

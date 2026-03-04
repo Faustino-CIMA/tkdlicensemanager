@@ -742,6 +742,145 @@ class LicenseCardValidationTests(TestCase):
         self.assertEqual(payload["elements"][0]["id"], "front-name")
         self.assertEqual(payload["sides"]["back"]["elements"][0]["id"], "back-name")
 
+    def test_accepts_shape_gradient_canonical_object(self):
+        response = self.client.post(
+            "/api/card-template-versions/",
+            {
+                "template": self.template.id,
+                "label": "Gradient object",
+                "card_format": self.card_format.id,
+                "paper_profile": self.paper_profile.id,
+                "design_payload": {
+                    "elements": [
+                        {
+                            "id": "shape-gradient-object",
+                            "type": "shape",
+                            "x_mm": "5.00",
+                            "y_mm": "5.00",
+                            "width_mm": "25.00",
+                            "height_mm": "12.00",
+                            "style": {
+                                "shape_kind": "rectangle",
+                                "fill_gradient": {
+                                    "start_color": "#ef4444",
+                                    "end_color": "#3b82f6",
+                                    "angle_deg": "40",
+                                },
+                            },
+                        }
+                    ]
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        saved_style = response.data["design_payload"]["elements"][0]["style"]
+        self.assertIsInstance(saved_style.get("fill_gradient"), dict)
+        self.assertEqual(saved_style["fill_gradient"]["start_color"], "#ef4444")
+        self.assertEqual(saved_style["fill_gradient"]["end_color"], "#3b82f6")
+
+    def test_accepts_shape_gradient_legacy_boolean_with_legacy_keys(self):
+        response = self.client.post(
+            "/api/card-template-versions/",
+            {
+                "template": self.template.id,
+                "label": "Gradient legacy boolean",
+                "card_format": self.card_format.id,
+                "paper_profile": self.paper_profile.id,
+                "design_payload": {
+                    "elements": [
+                        {
+                            "id": "shape-gradient-legacy",
+                            "type": "shape",
+                            "x_mm": "5.00",
+                            "y_mm": "5.00",
+                            "width_mm": "25.00",
+                            "height_mm": "12.00",
+                            "style": {
+                                "shape_kind": "rectangle",
+                                "fill_gradient": True,
+                                "fill_gradient_start": "#f97316",
+                                "fill_gradient_end": "#22c55e",
+                                "fill_gradient_angle_deg": "125",
+                            },
+                        }
+                    ]
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        saved_style = response.data["design_payload"]["elements"][0]["style"]
+        self.assertIsInstance(saved_style.get("fill_gradient"), dict)
+        self.assertEqual(saved_style["fill_gradient"]["start_color"], "#f97316")
+        self.assertEqual(saved_style["fill_gradient"]["end_color"], "#22c55e")
+        self.assertEqual(saved_style["fill_gradient"]["angle_deg"], "125.00")
+
+    def test_accepts_shape_gradient_legacy_split_keys_without_object(self):
+        response = self.client.post(
+            "/api/card-template-versions/",
+            {
+                "template": self.template.id,
+                "label": "Gradient legacy split keys",
+                "card_format": self.card_format.id,
+                "paper_profile": self.paper_profile.id,
+                "design_payload": {
+                    "elements": [
+                        {
+                            "id": "shape-gradient-legacy-keys",
+                            "type": "shape",
+                            "x_mm": "5.00",
+                            "y_mm": "5.00",
+                            "width_mm": "25.00",
+                            "height_mm": "12.00",
+                            "style": {
+                                "shape_kind": "rectangle",
+                                "fill_gradient_start": "#f97316",
+                                "fill_gradient_end": "#22c55e",
+                                "fill_gradient_angle_deg": "125",
+                            },
+                        }
+                    ]
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        saved_style = response.data["design_payload"]["elements"][0]["style"]
+        self.assertNotIn("fill_gradient", saved_style)
+        self.assertEqual(saved_style["fill_gradient_start"], "#f97316")
+        self.assertEqual(saved_style["fill_gradient_end"], "#22c55e")
+
+    def test_rejects_shape_gradient_invalid_type(self):
+        response = self.client.post(
+            "/api/card-template-versions/",
+            {
+                "template": self.template.id,
+                "label": "Gradient invalid type",
+                "card_format": self.card_format.id,
+                "paper_profile": self.paper_profile.id,
+                "design_payload": {
+                    "elements": [
+                        {
+                            "id": "shape-gradient-invalid",
+                            "type": "shape",
+                            "x_mm": "5.00",
+                            "y_mm": "5.00",
+                            "width_mm": "25.00",
+                            "height_mm": "12.00",
+                            "style": {
+                                "shape_kind": "rectangle",
+                                "fill_gradient": "yes",
+                            },
+                        }
+                    ]
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("fill_gradient", str(response.data))
+
     def test_reject_out_of_bounds_coordinates(self):
         response = self.client.post(
             "/api/card-template-versions/",

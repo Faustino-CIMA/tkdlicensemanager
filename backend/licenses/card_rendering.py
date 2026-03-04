@@ -1288,25 +1288,38 @@ def _build_shape_svg_markup(
             fallback=_normalize_css_color(style.get("background_color"), fallback="#d1d5db"),
         )
     )
+    fill_gradient_payload = style.get("fill_gradient")
+    gradient_start_source = style.get("fill_gradient_start")
+    gradient_end_source = style.get("fill_gradient_end")
+    gradient_angle_source = style.get("fill_gradient_angle_deg", "90")
+    has_gradient = False
+    if isinstance(fill_gradient_payload, dict):
+        has_gradient = True
+        gradient_start_source = fill_gradient_payload.get("start_color", gradient_start_source)
+        gradient_end_source = fill_gradient_payload.get("end_color", gradient_end_source)
+        gradient_angle_source = fill_gradient_payload.get("angle_deg", gradient_angle_source)
+    elif isinstance(fill_gradient_payload, bool):
+        has_gradient = fill_gradient_payload
+    else:
+        has_gradient = bool(gradient_start_source or gradient_end_source)
     gradient_start = escape(
         _normalize_css_color(
-            style.get("fill_gradient_start"),
+            gradient_start_source,
             fallback=fill_color,
         )
     )
     gradient_end = escape(
         _normalize_css_color(
-            style.get("fill_gradient_end"),
+            gradient_end_source,
             fallback=fill_color,
         )
     )
     try:
-        gradient_angle = Decimal(str(style.get("fill_gradient_angle_deg", "90"))).quantize(
+        gradient_angle = Decimal(str(gradient_angle_source)).quantize(
             Decimal("0.01")
         )
     except (InvalidOperation, TypeError, ValueError):
         gradient_angle = Decimal("90.00")
-    has_gradient = bool(style.get("fill_gradient") or style.get("fill_gradient_start") or style.get("fill_gradient_end"))
     fill_value = "url(#shapeGradient)" if has_gradient else fill_color
 
     defs = ""
