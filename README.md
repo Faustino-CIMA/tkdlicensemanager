@@ -5,6 +5,7 @@ Modern, secure Taekwondo license management for the Luxembourg Taekwondo Federat
 ## Release Notes
 
 - See `CHANGELOG.md` for user-facing and technical release notes.
+- Current stable release: `v0.3.2` (License Card v2 stabilization and rollout hardening).
 
 ## CI (GitHub Actions)
 
@@ -201,10 +202,6 @@ Terminal (Compose start + status):
 ![Terminal output showing docker compose up and docker compose ps](docs/screenshots/docker-compose-terminal.png)
 _Caption: Example terminal output for building and checking running containers._
 
-Browser (Frontend + API docs):
-![Browser showing local frontend and Swagger API docs](docs/screenshots/localhost-ui-and-api-docs.png)
-_Caption: Frontend UI on port 3000 and Swagger API docs on port 8000._
-
 ## Project Structure
 
 ```
@@ -376,6 +373,25 @@ Print artifact lifecycle:
 Role split:
 - LTF Admin: manages templates/versions, dual-side designer payloads, simulation previews, and can execute/retry/cancel any print job.
 - Club Admin: can quick-print from own-club members or licenses, execute/retry/cancel own-club print jobs, and view own-club print history.
+
+### License Card v2 Quick Usage (v0.3.2)
+
+LTF Admin flow:
+1. Open `/{locale}/dashboard/ltf/license-cards`.
+2. Create or select a template, then open the designer.
+3. Build both `front` and `back` sides, run side-aware previews (`preview-data`, live simulation HTML, card/sheet PDF), then publish.
+4. Validate print behavior from the print-jobs page (`create -> execute -> download PDF -> history`).
+
+Club Admin flow:
+1. Open `/{locale}/dashboard/club/print-jobs/quick-print`.
+2. Select members/licenses and run quick print using the latest published template.
+3. Confirm job reaches `succeeded` and artifact download works from history.
+
+v0.3.2 stability notes:
+- Publish flow now guards unsaved in-memory edits before publishing.
+- Print pipeline side selection (`front`/`back`/`both`) is enforced and covered by regression tests.
+- SVG uploads are sanitized server-side with strict stripping of dangerous constructs before storage/render.
+- Step 7 full gate results are recorded in `docs/license-card-v2-step7-uat.md`.
 
 Primary API workflow:
 - Template manager/designer:

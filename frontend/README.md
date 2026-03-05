@@ -49,6 +49,8 @@ License Card v2 designer capabilities:
 - Side-aware preview requests (`preview-data`, card/sheet PDF, and live simulation HTML).
 - Live print simulation toggle and manual refresh from the designer preview panel.
 - Undo/redo history stack and precision layout tools (align, duplicate, nudge with keyboard shortcuts).
+- Publish flow now protects unsaved changes by persisting draft payload before publish (v0.3.2 stabilization).
+- Asset upload flow supports reliable same-file reselect behavior in the designer asset library.
 
 Relevant frontend API client helpers (`src/lib/license-card-api.ts`):
 - `getCardTemplateVersionPreviewData()`
