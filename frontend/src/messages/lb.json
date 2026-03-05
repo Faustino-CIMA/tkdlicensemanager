@@ -821,6 +821,7 @@
     "licenseCardDesignerDraftCreateError": "Draft-Versioun konnt net erstallt ginn.",
     "licenseCardDesignerDraftPublished": "Draft publizéiert.",
     "licenseCardDesignerDraftPublishError": "Draft konnt net publizéiert ginn.",
+    "licenseCardDesignerPublishUnsavedChangesConfirm": "Net gespäichert Ännerunge ginn virum Publizéieren gespäichert. Weiderfueren?",
     "licenseCardEditorToolsTitle": "Präzis Layout-Tools",
     "licenseCardEditorSelectionCountLabel": "{count} ausgewielt",
     "licenseCardEditorUndoAction": "Réckgängeg",

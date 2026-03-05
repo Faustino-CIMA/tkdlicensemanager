@@ -821,6 +821,7 @@
     "licenseCardDesignerDraftCreateError": "Failed to create draft version.",
     "licenseCardDesignerDraftPublished": "Draft published.",
     "licenseCardDesignerDraftPublishError": "Failed to publish draft.",
+    "licenseCardDesignerPublishUnsavedChangesConfirm": "Unsaved changes will be saved before publishing. Continue?",
     "licenseCardEditorToolsTitle": "Precision layout tools",
     "licenseCardEditorSelectionCountLabel": "{count} selected",
     "licenseCardEditorUndoAction": "Undo",

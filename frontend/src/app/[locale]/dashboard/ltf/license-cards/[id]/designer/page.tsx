@@ -1200,6 +1200,24 @@ export default function LtfAdminLicenseCardDesignerPage() {
     }),
     [activeSide, designPayload, designPayloadBySide]
   );
+  const savedPayloadSnapshot = useMemo(() => {
+    if (!selectedVersion) {
+      return null;
+    }
+    return JSON.stringify(
+      sanitizePayloadBySideForSave(normalizeDesignPayloadBySide(selectedVersion.design_payload))
+    );
+  }, [selectedVersion]);
+  const currentPayloadSnapshot = useMemo(
+    () => JSON.stringify(sanitizePayloadBySideForSave(synchronizedPayloadBySide)),
+    [synchronizedPayloadBySide]
+  );
+  const isDirty = useMemo(() => {
+    if (!selectedVersion || selectedVersion.status !== "draft" || !savedPayloadSnapshot) {
+      return false;
+    }
+    return savedPayloadSnapshot !== currentPayloadSnapshot;
+  }, [currentPayloadSnapshot, savedPayloadSnapshot, selectedVersion]);
   const localSideSummary = useMemo(() => {
     const summary = {} as Record<CardSide, CardSideSummaryInfo>;
     for (const side of CARD_SIDES) {
@@ -2275,26 +2293,27 @@ export default function LtfAdminLicenseCardDesignerPage() {
     });
   };
 
+  const persistDraftPayload = useCallback(
+    async (versionId: number, payloadBySide: EditableDesignPayloadBySide) => {
+      const unknownMergeFields = collectUnknownMergeFieldsBySide(payloadBySide, mergeFieldKeySet);
+      if (unknownMergeFields.length > 0) {
+        setErrorMessage(
+          t("licenseCardDesignerUnknownMergeFieldsError", {
+            fields: unknownMergeFields.join(", "),
+          })
+        );
+        return null;
+      }
+      return updateCardTemplateVersion(versionId, {
+        design_payload: sanitizePayloadBySideForSave(payloadBySide),
+      });
+    },
+    [mergeFieldKeySet, t]
+  );
+
   const handleSaveDraft = async () => {
     if (!selectedVersion || selectedVersion.status !== "draft") {
       setErrorMessage(t("licenseCardDesignerDraftOnlyError"));
-      return;
-    }
-
-    const synchronizedPayloadBySide = {
-      ...designPayloadBySide,
-      [activeSide]: designPayload,
-    };
-    const unknownMergeFields = collectUnknownMergeFieldsBySide(
-      synchronizedPayloadBySide,
-      mergeFieldKeySet
-    );
-    if (unknownMergeFields.length > 0) {
-      setErrorMessage(
-        t("licenseCardDesignerUnknownMergeFieldsError", {
-          fields: unknownMergeFields.join(", "),
-        })
-      );
       return;
     }
 
@@ -2302,9 +2321,10 @@ export default function LtfAdminLicenseCardDesignerPage() {
     setErrorMessage(null);
     setSuccessMessage(null);
     try {
-      const updatedVersion = await updateCardTemplateVersion(selectedVersion.id, {
-        design_payload: sanitizePayloadBySideForSave(synchronizedPayloadBySide),
-      });
+      const updatedVersion = await persistDraftPayload(selectedVersion.id, synchronizedPayloadBySide);
+      if (!updatedVersion) {
+        return;
+      }
       setVersions((previousVersions) =>
         previousVersions.map((version) =>
           version.id === updatedVersion.id ? updatedVersion : version
@@ -2382,11 +2402,31 @@ export default function LtfAdminLicenseCardDesignerPage() {
       setErrorMessage(t("licenseCardDesignerDraftOnlyError"));
       return;
     }
+    const shouldSaveBeforePublish = isDirty;
+    if (
+      shouldSaveBeforePublish &&
+      !window.confirm(t("licenseCardDesignerPublishUnsavedChangesConfirm"))
+    ) {
+      return;
+    }
 
     setIsPublishingDraft(true);
     setErrorMessage(null);
     setSuccessMessage(null);
     try {
+      if (shouldSaveBeforePublish) {
+        const updatedVersion = await persistDraftPayload(selectedVersion.id, synchronizedPayloadBySide);
+        if (!updatedVersion) {
+          return;
+        }
+        setVersions((previousVersions) =>
+          previousVersions.map((version) =>
+            version.id === updatedVersion.id ? updatedVersion : version
+          )
+        );
+      }
+      // Manual regression check (DEF-7-001): edit a draft without saving, publish it,
+      // then verify the published version includes the latest in-memory edits.
       await publishCardTemplateVersion(selectedVersion.id);
       await loadDesignerData(selectedVersion.id);
       setSuccessMessage(t("licenseCardDesignerDraftPublished"));
