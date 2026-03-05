@@ -904,6 +904,8 @@ export default function LtfAdminLicenseCardDesignerPage() {
   const [newImageAssetName, setNewImageAssetName] = useState("");
   const [newImageAssetFile, setNewImageAssetFile] = useState<File | null>(null);
   const [isUploadingImageAsset, setIsUploadingImageAsset] = useState(false);
+  const selectedFontAssetFileRef = useRef<File | null>(null);
+  const selectedImageAssetFileRef = useRef<File | null>(null);
   const fontAssetInputRef = useRef<HTMLInputElement | null>(null);
   const imageAssetInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
@@ -2406,29 +2408,89 @@ export default function LtfAdminLicenseCardDesignerPage() {
     setImageAssets(imageAssetResponse);
   }, []);
 
+  const setSelectedFontAssetFile = useCallback((file: File | null) => {
+    selectedFontAssetFileRef.current = file;
+    setNewFontAssetFile(file);
+  }, []);
+
+  const setSelectedImageAssetFile = useCallback((file: File | null) => {
+    selectedImageAssetFileRef.current = file;
+    setNewImageAssetFile(file);
+  }, []);
+
   const resetFontAssetInput = useCallback(() => {
-    setNewFontAssetFile(null);
+    setSelectedFontAssetFile(null);
     if (fontAssetInputRef.current) {
       fontAssetInputRef.current.value = "";
     }
-  }, []);
+  }, [setSelectedFontAssetFile]);
 
   const resetImageAssetInput = useCallback(() => {
-    setNewImageAssetFile(null);
+    setSelectedImageAssetFile(null);
     if (imageAssetInputRef.current) {
       imageAssetInputRef.current.value = "";
     }
-  }, []);
+  }, [setSelectedImageAssetFile]);
+
+  const openFontAssetFilePicker = useCallback(() => {
+    if (isUploadingFontAsset) {
+      return;
+    }
+    const input = fontAssetInputRef.current;
+    if (!input) {
+      return;
+    }
+    setSelectedFontAssetFile(null);
+    input.value = "";
+    input.click();
+  }, [isUploadingFontAsset, setSelectedFontAssetFile]);
+
+  const openImageAssetFilePicker = useCallback(() => {
+    if (isUploadingImageAsset) {
+      return;
+    }
+    const input = imageAssetInputRef.current;
+    if (!input) {
+      return;
+    }
+    setSelectedImageAssetFile(null);
+    input.value = "";
+    input.click();
+  }, [isUploadingImageAsset, setSelectedImageAssetFile]);
+
+  const handleFontAssetFileChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.currentTarget.files?.[0] ?? null;
+      setSelectedFontAssetFile(file);
+    },
+    [setSelectedFontAssetFile]
+  );
+
+  const handleImageAssetFileChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.currentTarget.files?.[0] ?? null;
+      setSelectedImageAssetFile(file);
+    },
+    [setSelectedImageAssetFile]
+  );
 
   const handleUploadFontAsset = useCallback(async () => {
-    if (!newFontAssetFile) {
+    const selectedFile =
+      newFontAssetFile ??
+      selectedFontAssetFileRef.current ??
+      fontAssetInputRef.current?.files?.[0] ??
+      null;
+    if (!selectedFile) {
       setErrorMessage(t("licenseCardAssetLibraryFontFileRequiredError"));
       return;
     }
+    if (selectedFile !== newFontAssetFile) {
+      setSelectedFontAssetFile(selectedFile);
+    }
     const trimmedName = newFontAssetName.trim();
     const payload: CardFontAssetUploadInput = {
-      name: trimmedName || newFontAssetFile.name,
-      file: newFontAssetFile,
+      name: trimmedName || selectedFile.name,
+      file: selectedFile,
     };
     setIsUploadingFontAsset(true);
     setErrorMessage(null);
@@ -2448,17 +2510,32 @@ export default function LtfAdminLicenseCardDesignerPage() {
     } finally {
       setIsUploadingFontAsset(false);
     }
-  }, [newFontAssetFile, newFontAssetName, refreshAssetLibraries, resetFontAssetInput, t]);
+  }, [
+    newFontAssetFile,
+    newFontAssetName,
+    refreshAssetLibraries,
+    resetFontAssetInput,
+    setSelectedFontAssetFile,
+    t,
+  ]);
 
   const handleUploadImageAsset = useCallback(async () => {
-    if (!newImageAssetFile) {
+    const selectedFile =
+      newImageAssetFile ??
+      selectedImageAssetFileRef.current ??
+      imageAssetInputRef.current?.files?.[0] ??
+      null;
+    if (!selectedFile) {
       setErrorMessage(t("licenseCardAssetLibraryImageFileRequiredError"));
       return;
     }
+    if (selectedFile !== newImageAssetFile) {
+      setSelectedImageAssetFile(selectedFile);
+    }
     const trimmedName = newImageAssetName.trim();
     const payload: CardImageAssetUploadInput = {
-      name: trimmedName || newImageAssetFile.name,
-      image: newImageAssetFile,
+      name: trimmedName || selectedFile.name,
+      image: selectedFile,
     };
     setIsUploadingImageAsset(true);
     setErrorMessage(null);
@@ -2478,7 +2555,14 @@ export default function LtfAdminLicenseCardDesignerPage() {
     } finally {
       setIsUploadingImageAsset(false);
     }
-  }, [newImageAssetFile, newImageAssetName, refreshAssetLibraries, resetImageAssetInput, t]);
+  }, [
+    newImageAssetFile,
+    newImageAssetName,
+    refreshAssetLibraries,
+    resetImageAssetInput,
+    setSelectedImageAssetFile,
+    t,
+  ]);
 
   const clearPreviewLookupSelections = () => {
     setPreviewSelectedMember(null);
@@ -5775,6 +5859,8 @@ export default function LtfAdminLicenseCardDesignerPage() {
               if (isUploadingFontAsset || isUploadingImageAsset) {
                 return;
               }
+              resetFontAssetInput();
+              resetImageAssetInput();
               setIsAssetLibraryOpen(false);
             }}
           >
@@ -5820,25 +5906,20 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         accept=".ttf,.otf,.woff,.woff2"
                         className="hidden"
                         disabled={isUploadingFontAsset}
-                        onChange={(event) => {
-                          const file = event.currentTarget.files?.[0] ?? null;
-                          setNewFontAssetFile(file);
-                        }}
+                        onChange={handleFontAssetFileChange}
                       />
                       <Button
                         type="button"
                         size="sm"
                         variant="outline"
                         disabled={isUploadingFontAsset}
-                        onClick={() => fontAssetInputRef.current?.click()}
+                        onClick={openFontAssetFilePicker}
                       >
                         {t("licenseCardAssetLibraryChooseFontFileAction")}
                       </Button>
-                      {newFontAssetFile ? (
-                        <p className="text-xs text-zinc-600">
-                          {t("selectedFileLabel")}: {newFontAssetFile.name}
-                        </p>
-                      ) : null}
+                      <p className="text-xs text-zinc-600">
+                        {t("selectedFileLabel")}: {newFontAssetFile?.name || t("noFileSelected")}
+                      </p>
                     </div>
                     <Button
                       type="button"
@@ -5904,25 +5985,20 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         accept=".png,.jpg,.jpeg,.webp,.svg"
                         className="hidden"
                         disabled={isUploadingImageAsset}
-                        onChange={(event) => {
-                          const file = event.currentTarget.files?.[0] ?? null;
-                          setNewImageAssetFile(file);
-                        }}
+                        onChange={handleImageAssetFileChange}
                       />
                       <Button
                         type="button"
                         size="sm"
                         variant="outline"
                         disabled={isUploadingImageAsset}
-                        onClick={() => imageAssetInputRef.current?.click()}
+                        onClick={openImageAssetFilePicker}
                       >
                         {t("licenseCardAssetLibraryChooseImageFileAction")}
                       </Button>
-                      {newImageAssetFile ? (
-                        <p className="text-xs text-zinc-600">
-                          {t("selectedFileLabel")}: {newImageAssetFile.name}
-                        </p>
-                      ) : null}
+                      <p className="text-xs text-zinc-600">
+                        {t("selectedFileLabel")}: {newImageAssetFile?.name || t("noFileSelected")}
+                      </p>
                     </div>
                     <Button
                       type="button"
