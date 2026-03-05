@@ -405,6 +405,12 @@ License Card v2 behavior notes:
 - `design_payload` supports dual-side structure under `sides.front` and `sides.back`.
 - Preview requests support `side` (`front` or `back`) and return side-aware metadata (`active_side`, `available_sides`, `side_summary`).
 - List/filter on print jobs supports `status`, `club_id`, `template_version_id`, `requested_by_id`, `created_from`, `created_to`, and `q`.
+- SVG hardening for card image assets:
+  - `.svg` uploads are sanitized server-side with a strict allowlist before storage.
+  - Allowed SVG tags are limited to drawing primitives and gradients (`svg`, `g`, `path`, `rect`, `circle`, `ellipse`, `line`, `polyline`, `polygon`, `defs`, `linearGradient`, `radialGradient`, `stop`, `clipPath`).
+  - Event handlers, script-capable tags, dangerous protocols (`javascript:`, `file:`, `vbscript:`), and external resource references are blocked.
+  - Render pipeline image sources reject dangerous schemes and non-image `data:` payloads.
+  - No additional environment variables are required for this hardening path.
 
 Operational checks:
 - Keep runtime schema current: `docker compose exec backend python manage.py migrate`

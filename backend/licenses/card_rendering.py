@@ -8,6 +8,7 @@ import json
 import math
 import mimetypes
 from typing import Any
+from urllib.parse import urlparse
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -33,6 +34,7 @@ from .models import (
     License,
     PaperProfile,
 )
+from .svg_sanitizer import SvgSanitizationError, sanitize_svg_bytes
 
 try:
     from weasyprint import HTML
@@ -53,6 +55,15 @@ class CardRenderError(Exception):
 
 
 RENDER_ENGINE_VERSION = "card-render-v2.0"
+_ALLOWED_INLINE_IMAGE_MIME_PREFIXES = (
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/webp",
+    "image/gif",
+    "image/bmp",
+)
+_BLOCKED_SOURCE_PREFIXES = ("javascript:", "vbscript:", "file:")
 
 
 def _error_from_validation(exc: ValidationError) -> CardRenderError:
@@ -165,6 +176,12 @@ def _file_to_data_uri(file_field, *, fallback_mime: str) -> str:
     if not file_bytes:
         return ""
     mime_type = _guess_mime_type_from_name(str(file_field.name), fallback=fallback_mime)
+    if mime_type in {"image/svg+xml", "image/svg"} or str(file_field.name).lower().endswith(".svg"):
+        try:
+            file_bytes = sanitize_svg_bytes(file_bytes)
+        except SvgSanitizationError:
+            return ""
+        mime_type = "image/svg+xml"
     return f"data:{mime_type};base64,{base64.b64encode(file_bytes).decode('ascii')}"
 
 
@@ -473,9 +490,27 @@ def _normalize_source_url(source: str, request: HttpRequest | None) -> str:
     normalized_source = str(source or "").strip()
     if not normalized_source:
         return ""
-    if normalized_source.startswith("data:"):
+    normalized_compact = "".join(normalized_source.lower().split())
+    if normalized_compact.startswith(_BLOCKED_SOURCE_PREFIXES):
+        return ""
+    if normalized_compact.startswith("//"):
+        return ""
+    if normalized_compact.startswith("data:"):
+        comma_index = normalized_compact.find(",")
+        if comma_index <= 5:
+            return ""
+        data_meta = normalized_compact[5:comma_index]
+        if data_meta.startswith("image/svg+xml"):
+            return ""
+        if ";base64" not in data_meta:
+            return ""
+        if not any(data_meta.startswith(prefix) for prefix in _ALLOWED_INLINE_IMAGE_MIME_PREFIXES):
+            return ""
         return normalized_source
-    if normalized_source.startswith("http://") or normalized_source.startswith("https://"):
+    parsed_source = urlparse(normalized_source)
+    if parsed_source.scheme:
+        if parsed_source.scheme not in {"http", "https"}:
+            return ""
         return normalized_source
     if normalized_source.startswith("/") and request is not None:
         return request.build_absolute_uri(normalized_source)

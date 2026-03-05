@@ -253,6 +253,23 @@ def _build_uploaded_font(name: str = "preview-font.ttf") -> SimpleUploadedFile:
     )
 
 
+def _build_uploaded_svg(
+    name: str = "preview-asset.svg",
+    payload: str | None = None,
+) -> SimpleUploadedFile:
+    svg_payload = payload or (
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'>"
+        "<rect x='1' y='1' width='8' height='8' fill='#22c55e' stroke='#14532d' "
+        "stroke-width='0.5'/>"
+        "</svg>"
+    )
+    return SimpleUploadedFile(
+        name,
+        svg_payload.encode("utf-8"),
+        content_type="image/svg+xml",
+    )
+
+
 class LicenseCardRoleAccessTests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -1266,6 +1283,72 @@ class LicenseCardDesignerV2FoundationApiTests(TestCase):
         )
         self.assertEqual(denied_response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_svg_upload_sanitizes_malicious_payload_before_storage(self):
+        malicious_svg = (
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' onload='alert(1)'>"
+            "<script>alert('x')</script>"
+            "<a href='javascript:alert(2)'><rect x='1' y='1' width='8' height='8' "
+            "fill='#22c55e'/></a>"
+            "</svg>"
+        )
+        with tempfile.TemporaryDirectory() as temp_media_root:
+            with self.settings(MEDIA_ROOT=temp_media_root):
+                self.client.force_authenticate(user=self.ltf_admin)
+                response = self.client.post(
+                    "/api/card-image-assets/",
+                    {
+                        "name": "Sanitized SVG",
+                        "image": _build_uploaded_svg("sanitized.svg", payload=malicious_svg),
+                    },
+                    format="multipart",
+                )
+                self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+                image_asset = CardImageAsset.objects.get(id=response.data["id"])
+                with image_asset.image.open("rb") as image_stream:
+                    stored_payload = image_stream.read().decode("utf-8")
+                lowered_payload = stored_payload.lower()
+                self.assertIn("<svg", lowered_payload)
+                self.assertNotIn("<script", lowered_payload)
+                self.assertNotIn("onload=", lowered_payload)
+                self.assertNotIn("javascript:", lowered_payload)
+                self.assertNotIn("href=", lowered_payload)
+
+    def test_svg_upload_rejects_malformed_non_text_payload(self):
+        malformed_payload = SimpleUploadedFile(
+            "broken.svg",
+            b"\xff\xfe\x00\x00\x01\x02",
+            content_type="image/svg+xml",
+        )
+        with tempfile.TemporaryDirectory() as temp_media_root:
+            with self.settings(MEDIA_ROOT=temp_media_root):
+                self.client.force_authenticate(user=self.ltf_admin)
+                response = self.client.post(
+                    "/api/card-image-assets/",
+                    {"name": "Broken SVG", "image": malformed_payload},
+                    format="multipart",
+                )
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                self.assertIn("image", response.data)
+                self.assertIn("SVG payload", str(response.data["image"][0]))
+
+    def test_raster_image_upload_remains_supported_after_svg_hardening(self):
+        with tempfile.TemporaryDirectory() as temp_media_root:
+            with self.settings(MEDIA_ROOT=temp_media_root):
+                self.client.force_authenticate(user=self.ltf_admin)
+                response = self.client.post(
+                    "/api/card-image-assets/",
+                    {
+                        "name": "Raster PNG",
+                        "image": _build_uploaded_png("raster.png"),
+                    },
+                    format="multipart",
+                )
+                self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+                image_asset = CardImageAsset.objects.get(id=response.data["id"])
+                with image_asset.image.open("rb") as image_stream:
+                    stored_payload = image_stream.read()
+                self.assertTrue(stored_payload.startswith(b"\x89PNG\r\n\x1a\n"))
+
     def test_lookup_endpoints_return_frontend_friendly_payload(self):
         self.client.force_authenticate(user=self.ltf_admin)
 
@@ -1518,6 +1601,85 @@ class LicenseCardPreviewApiTests(TestCase):
         text_element = response.data["elements"][0]
         self.assertEqual(text_element["resolved_font"]["status"], "missing")
         self.assertEqual(text_element["resolved_font"]["font_family"], "Fallback Sans")
+
+    def test_preview_data_blocks_unsafe_image_source_scheme(self):
+        self.template_version.design_payload = {
+            "elements": [
+                {
+                    "id": "unsafe-source-image",
+                    "type": "image",
+                    "x_mm": "5.00",
+                    "y_mm": "5.00",
+                    "width_mm": "25.00",
+                    "height_mm": "20.00",
+                    "source": "javascript:alert(1)",
+                }
+            ]
+        }
+        self.template_version.save(update_fields=["design_payload", "updated_at"])
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            self.preview_data_url,
+            {"member_id": self.member.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        image_element = response.data["elements"][0]
+        self.assertEqual(image_element["resolved_source"], "")
+
+    def test_preview_endpoints_work_with_sanitized_svg_asset(self):
+        with tempfile.TemporaryDirectory() as temp_media_root:
+            with self.settings(MEDIA_ROOT=temp_media_root):
+                self.client.force_authenticate(user=self.ltf_admin)
+                upload_response = self.client.post(
+                    "/api/card-image-assets/",
+                    {
+                        "name": "Preview SVG",
+                        "image": _build_uploaded_svg("preview-safe.svg"),
+                    },
+                    format="multipart",
+                )
+                self.assertEqual(upload_response.status_code, status.HTTP_201_CREATED)
+                image_asset_id = upload_response.data["id"]
+                self.template_version.design_payload = {
+                    "elements": [
+                        {
+                            "id": "svg-asset-image",
+                            "type": "image",
+                            "x_mm": "10.00",
+                            "y_mm": "10.00",
+                            "width_mm": "25.00",
+                            "height_mm": "20.00",
+                            "style": {
+                                "image_asset_id": image_asset_id,
+                            },
+                        }
+                    ]
+                }
+                self.template_version.save(update_fields=["design_payload", "updated_at"])
+
+                preview_data_response = self.client.post(
+                    self.preview_data_url,
+                    {"member_id": self.member.id},
+                    format="json",
+                )
+                self.assertEqual(preview_data_response.status_code, status.HTTP_200_OK)
+
+                preview_html_response = self.client.post(
+                    self.preview_card_html_url,
+                    {"member_id": self.member.id},
+                    format="json",
+                )
+                self.assertEqual(preview_html_response.status_code, status.HTTP_200_OK)
+
+                preview_pdf_response = self.client.post(
+                    self.preview_card_pdf_url,
+                    {"member_id": self.member.id},
+                    format="json",
+                )
+                self.assertEqual(preview_pdf_response.status_code, status.HTTP_200_OK)
+                self.assertEqual(preview_pdf_response["Content-Type"], "application/pdf")
+                self.assertTrue(preview_pdf_response.content.startswith(b"%PDF"))
 
     def test_qr_custom_mode_supports_tokenized_custom_payload(self):
         self.template_version.design_payload = {

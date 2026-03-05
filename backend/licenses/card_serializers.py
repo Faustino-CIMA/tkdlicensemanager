@@ -31,6 +31,7 @@ from .models import (
     PrintJob,
     PrintJobItem,
 )
+from .svg_sanitizer import SvgSanitizationError, is_svg_upload, sanitize_svg_upload
 
 ALLOWED_FONT_EXTENSIONS = {".ttf", ".otf", ".woff", ".woff2"}
 ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"}
@@ -313,6 +314,9 @@ class CardFontAssetSerializer(serializers.ModelSerializer):
 
 
 class CardImageAssetSerializer(serializers.ModelSerializer):
+    # Use FileField so SVG uploads can pass through custom sanitizer.
+    image = serializers.FileField()
+
     class Meta:
         model = CardImageAsset
         fields = [
@@ -339,6 +343,16 @@ class CardImageAssetSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 f"Image file exceeds max size ({max_bytes} bytes)."
             )
+        if is_svg_upload(value):
+            try:
+                sanitized_upload = sanitize_svg_upload(value)
+            except SvgSanitizationError as exc:
+                raise serializers.ValidationError(str(exc)) from exc
+            if int(getattr(sanitized_upload, "size", 0)) > max_bytes:
+                raise serializers.ValidationError(
+                    f"Image file exceeds max size ({max_bytes} bytes)."
+                )
+            return sanitized_upload
         return value
 
     def validate_metadata(self, value):

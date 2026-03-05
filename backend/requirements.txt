@@ -17,3 +17,4 @@ weasyprint>=62.3
 qrcode>=7.4
 django-simple-history>=3.7
 Pillow>=10.4
+django-bleach>=2.0.0,<3.0
