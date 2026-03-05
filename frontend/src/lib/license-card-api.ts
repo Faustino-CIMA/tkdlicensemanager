@@ -250,6 +250,7 @@ export type PrintJobStatus =
   | "succeeded"
   | "failed"
   | "cancelled";
+export type PrintJobSide = "front" | "back" | "both";
 
 export type PrintJobItemStatus = "pending" | "printed" | "failed";
 
@@ -271,6 +272,7 @@ export type PrintJob = {
   club: number;
   template_version: number;
   paper_profile: number | null;
+  side: PrintJobSide;
   status: PrintJobStatus;
   total_items: number;
   selected_slots: number[];
@@ -301,6 +303,7 @@ export type PrintJobInput = {
   club: number;
   template_version: number;
   paper_profile?: number | null;
+  side?: PrintJobSide;
   member_ids?: number[];
   license_ids?: number[];
   selected_slots?: number[];

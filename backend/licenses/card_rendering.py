@@ -8,7 +8,7 @@ import json
 import math
 import mimetypes
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -233,7 +233,12 @@ def _resolve_active_font_assets(font_ids: set[int]) -> dict[int, dict[str, Any]]
     return resolved
 
 
-def _resolve_active_image_assets(image_ids: set[int], *, request: HttpRequest | None) -> dict[int, dict[str, Any]]:
+def _resolve_active_image_assets(
+    image_ids: set[int],
+    *,
+    request: HttpRequest | None,
+    asset_base_url: str | None,
+) -> dict[int, dict[str, Any]]:
     if not image_ids:
         return {}
     queryset = CardImageAsset.objects.filter(id__in=image_ids, is_active=True).order_by("id")
@@ -246,7 +251,11 @@ def _resolve_active_image_assets(image_ids: set[int], *, request: HttpRequest | 
                 url_value = str(image_asset.image.url)
             except Exception:  # pragma: no cover - storage backend dependent
                 url_value = ""
-        normalized_url = _normalize_source_url(url_value, request)
+        normalized_url = _normalize_source_url(
+            url_value,
+            request=request,
+            asset_base_url=asset_base_url,
+        )
         resolved[int(image_asset.id)] = {
             "id": int(image_asset.id),
             "name": str(image_asset.name),
@@ -486,7 +495,12 @@ def _member_photo_data_uri(member: Member | None) -> str:
     return _file_to_data_uri(image_field, fallback_mime="image/png")
 
 
-def _normalize_source_url(source: str, request: HttpRequest | None) -> str:
+def _normalize_source_url(
+    source: str,
+    request: HttpRequest | None,
+    *,
+    asset_base_url: str | None = None,
+) -> str:
     normalized_source = str(source or "").strip()
     if not normalized_source:
         return ""
@@ -514,6 +528,8 @@ def _normalize_source_url(source: str, request: HttpRequest | None) -> str:
         return normalized_source
     if normalized_source.startswith("/") and request is not None:
         return request.build_absolute_uri(normalized_source)
+    if normalized_source.startswith("/") and asset_base_url:
+        return urljoin(asset_base_url.rstrip("/") + "/", normalized_source)
     return normalized_source
 
 
@@ -524,6 +540,7 @@ def _resolve_image_source(
     member: Member | None,
     image_assets: dict[int, dict[str, Any]],
     request: HttpRequest | None,
+    asset_base_url: str | None,
 ) -> tuple[str, dict[str, Any]]:
     asset_resolution_meta: dict[str, Any] = {}
     style = element.get("style", {})
@@ -565,7 +582,11 @@ def _resolve_image_source(
             "status": "resolved",
         }
     if merge_field:
-        return _normalize_source_url(_resolve_merge_value(merge_field, context), request), {
+        return _normalize_source_url(
+            _resolve_merge_value(merge_field, context),
+            request,
+            asset_base_url=asset_base_url,
+        ), {
             **asset_resolution_meta,
             "resolved_via": "merge_field",
             "status": "resolved",
@@ -604,7 +625,11 @@ def _resolve_image_source(
                 "resolved_via": "tokenized_source",
                 "status": "resolved",
             }
-        return _normalize_source_url(_resolve_tokenized_text(source, context), request), {
+        return _normalize_source_url(
+            _resolve_tokenized_text(source, context),
+            request,
+            asset_base_url=asset_base_url,
+        ), {
             **asset_resolution_meta,
             "resolved_via": "tokenized_source",
             "status": "resolved",
@@ -618,13 +643,21 @@ def _resolve_image_source(
                 "resolved_via": "merge_source",
                 "status": "resolved",
             }
-        return _normalize_source_url(_resolve_merge_value(source, context), request), {
+        return _normalize_source_url(
+            _resolve_merge_value(source, context),
+            request,
+            asset_base_url=asset_base_url,
+        ), {
             **asset_resolution_meta,
             "resolved_via": "merge_source",
             "status": "resolved",
         }
 
-    return _normalize_source_url(source, request), {
+    return _normalize_source_url(
+        source,
+        request,
+        asset_base_url=asset_base_url,
+    ), {
         **asset_resolution_meta,
         "resolved_via": "source",
         "status": "resolved",
@@ -785,14 +818,14 @@ def _sorted_design_elements(design_payload: dict[str, Any]) -> list[dict[str, An
     raw_elements = design_payload.get("elements") or []
     indexed_elements = list(enumerate(raw_elements))
 
-    def _sort_key(item: tuple[int, dict[str, Any]]) -> tuple[int, str, int]:
+    def _sort_key(item: tuple[int, dict[str, Any]]) -> tuple[int, int]:
         index, element = item
         z_value = element.get("z_index", 0)
         try:
             z_index = int(Decimal(str(z_value)))
         except (InvalidOperation, TypeError, ValueError):
             z_index = 0
-        return z_index, str(element.get("id", "")), index
+        return z_index, index
 
     ordered = sorted(indexed_elements, key=_sort_key)
     return [element for _, element in ordered]
@@ -806,6 +839,7 @@ def _resolve_elements(
     font_assets: dict[int, dict[str, Any]],
     image_assets: dict[int, dict[str, Any]],
     request: HttpRequest | None,
+    asset_base_url: str | None,
 ) -> list[dict[str, Any]]:
     def _parse_optional_asset_id(value: Any) -> int | None:
         if value is None or value == "":
@@ -893,6 +927,7 @@ def _resolve_elements(
                 member=member,
                 image_assets=image_assets,
                 request=request,
+                asset_base_url=asset_base_url,
             )
             resolved["resolved_source"] = resolved_source
             resolved["resolved_source_meta"] = source_meta
@@ -1040,6 +1075,7 @@ def build_preview_data(
     paper_profile_id: int | None = None,
     selected_slots: list[int] | None = None,
     request: HttpRequest | None = None,
+    asset_base_url: str | None = None,
 ) -> dict[str, Any]:
     if template_version.card_format_id is None:
         raise CardRenderError("Template version must have a card format.")
@@ -1082,6 +1118,7 @@ def build_preview_data(
     resolved_image_assets = _resolve_active_image_assets(
         requested_image_ids,
         request=request,
+        asset_base_url=asset_base_url,
     )
 
     member, license_record, club = _resolve_entities(
@@ -1106,6 +1143,7 @@ def build_preview_data(
         font_assets=resolved_font_assets,
         image_assets=resolved_image_assets,
         request=request,
+        asset_base_url=asset_base_url,
     )
 
     bleed_value = _coerce_mm(bleed_mm, field_name="bleed_mm", allow_zero=True)

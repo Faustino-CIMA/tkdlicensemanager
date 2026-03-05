@@ -14,7 +14,7 @@ import stripe
 from accounts.email_utils import send_resend_email
 
 from .history import expire_outdated_licenses, log_license_status_change
-from .models import FinanceAuditLog, Invoice, License, Order
+from .models import FinanceAuditLog, Invoice, License, Order, PrintJob
 from .pdf_utils import build_invoice_context, render_invoice_pdf
 from .print_jobs import execute_print_job_now
 from .services import apply_payment_and_activate
@@ -67,13 +67,40 @@ def activate_order_from_stripe(order_id: int, stripe_data: dict | None = None) -
     )
 
 
+def _print_job_task_lock_key(print_job_id: int) -> str:
+    return f"print_job:execute:lock:{int(print_job_id)}"
+
+
 @shared_task(
     queue=getattr(settings, "CELERY_PRINT_JOB_QUEUE", "print_jobs"),
     soft_time_limit=getattr(settings, "CELERY_PRINT_JOB_SOFT_TIME_LIMIT_SECONDS", 300),
     time_limit=getattr(settings, "CELERY_PRINT_JOB_TIME_LIMIT_SECONDS", 360),
 )
 def execute_print_job_task(print_job_id: int, actor_id: int | None = None) -> None:
-    execute_print_job_now(print_job_id=print_job_id, actor_id=actor_id)
+    lock_timeout = int(
+        getattr(
+            settings,
+            "CELERY_PRINT_JOB_TASK_LOCK_TIMEOUT_SECONDS",
+            getattr(settings, "CELERY_PRINT_JOB_TIME_LIMIT_SECONDS", 360) + 60,
+        )
+    )
+    lock_key = _print_job_task_lock_key(print_job_id)
+    if not cache.add(lock_key, timezone.now().isoformat(), timeout=max(1, lock_timeout)):
+        print_job = PrintJob.objects.select_related("club").filter(id=print_job_id).first()
+        if print_job is not None:
+            FinanceAuditLog.objects.create(
+                action="print_job.task_duplicate_ignored",
+                message="Duplicate print job task ignored by task lock.",
+                actor=None,
+                club=print_job.club,
+                metadata={"print_job_id": int(print_job_id)},
+            )
+        return
+
+    try:
+        execute_print_job_now(print_job_id=print_job_id, actor_id=actor_id)
+    finally:
+        cache.delete(lock_key)
 
 
 @shared_task

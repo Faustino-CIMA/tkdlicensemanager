@@ -5,6 +5,7 @@ from pathlib import Path
 import tempfile
 from unittest.mock import patch
 
+from django.core.cache import cache
 from django.core.management import call_command
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
@@ -30,6 +31,8 @@ from .models import (
     PrintJob,
     PrintJobItem,
 )
+from .print_jobs import execute_print_job_now
+from .tasks import execute_print_job_task
 
 
 def _sample_design_payload() -> dict:
@@ -1507,6 +1510,42 @@ class LicenseCardPreviewApiTests(TestCase):
         self.assertTrue(qr_element["resolved_value"])
         self.assertTrue(qr_element["qr_data_uri"].startswith("data:image/png;base64,"))
 
+    def test_preview_data_preserves_equal_z_index_input_order(self):
+        self.template_version.design_payload = {
+            "elements": [
+                {
+                    "id": "z-second",
+                    "type": "text",
+                    "x_mm": "4.00",
+                    "y_mm": "4.00",
+                    "width_mm": "30.00",
+                    "height_mm": "8.00",
+                    "text": "second",
+                    "z_index": 1,
+                },
+                {
+                    "id": "z-first",
+                    "type": "text",
+                    "x_mm": "4.00",
+                    "y_mm": "14.00",
+                    "width_mm": "30.00",
+                    "height_mm": "8.00",
+                    "text": "first",
+                    "z_index": 1,
+                },
+            ]
+        }
+        self.template_version.save(update_fields=["design_payload", "updated_at"])
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            self.preview_data_url,
+            {"member_id": self.member.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        rendered_ids = [element["id"] for element in response.data["elements"]]
+        self.assertEqual(rendered_ids[:2], ["z-second", "z-first"])
+
     def test_preview_data_renders_v2_styles_with_assets_and_qr_multi_merge(self):
         with tempfile.TemporaryDirectory() as temp_media_root:
             with self.settings(MEDIA_ROOT=temp_media_root):
@@ -2127,6 +2166,333 @@ class PrintJobExecutionPipelineTests(TestCase):
         response = self.client.post("/api/print-jobs/", payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         return response.data
+
+    def _create_published_template_version(
+        self,
+        *,
+        design_payload: dict,
+        paper_profile: PaperProfile | None,
+    ) -> CardTemplateVersion:
+        template = CardTemplate.objects.create(
+            name=f"Print Pipeline Variant {CardTemplate.objects.count() + 1}",
+            created_by=self.ltf_admin,
+            updated_by=self.ltf_admin,
+        )
+        return CardTemplateVersion.objects.create(
+            template=template,
+            version_number=1,
+            status=CardTemplateVersion.Status.PUBLISHED,
+            card_format=self.card_format,
+            paper_profile=paper_profile,
+            design_payload=design_payload,
+            created_by=self.ltf_admin,
+            published_by=self.ltf_admin,
+            published_at=timezone.now(),
+        )
+
+    def test_create_print_job_side_defaults_for_single_and_dual_side_templates(self):
+        single_side_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": self.template_version.id,
+                "member_ids": [self.member_one.id],
+            },
+        )
+        self.assertEqual(single_side_job["side"], PrintJob.Side.FRONT)
+
+        dual_side_version = self._create_published_template_version(
+            design_payload=_sample_dual_side_design_payload(),
+            paper_profile=self.paper_profile,
+        )
+        dual_side_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": dual_side_version.id,
+                "member_ids": [self.member_one.id],
+            },
+        )
+        self.assertEqual(dual_side_job["side"], PrintJob.Side.BOTH)
+
+    def test_execute_honors_front_back_and_both_side_selection(self):
+        dual_side_version = self._create_published_template_version(
+            design_payload=_sample_dual_side_design_payload(),
+            paper_profile=None,
+        )
+
+        test_cases = (
+            (
+                PrintJob.Side.FRONT,
+                ["FRONT Print ONE"],
+                ["BACK Print ONE"],
+                ["front"],
+            ),
+            (
+                PrintJob.Side.BACK,
+                ["BACK Print ONE"],
+                ["FRONT Print ONE"],
+                ["back"],
+            ),
+            (
+                PrintJob.Side.BOTH,
+                ["FRONT Print ONE", "BACK Print ONE"],
+                [],
+                ["front", "back"],
+            ),
+        )
+        for side, expected_fragments, forbidden_fragments, expected_render_sides in test_cases:
+            with self.subTest(side=side):
+                created_job = self._create_print_job(
+                    user=self.ltf_admin,
+                    payload={
+                        "club": self.club.id,
+                        "template_version": dual_side_version.id,
+                        "member_ids": [self.member_one.id],
+                        "side": side,
+                    },
+                )
+                job_id = created_job["id"]
+                self.client.force_authenticate(user=self.ltf_admin)
+                with patch(
+                    "licenses.print_jobs.render_pdf_bytes_from_html",
+                    return_value=b"%PDF-1.4\n",
+                ) as render_pdf_mock:
+                    execute_response = self.client.post(
+                        f"/api/print-jobs/{job_id}/execute/",
+                        {},
+                        format="json",
+                    )
+                    self.assertIn(
+                        execute_response.status_code,
+                        {status.HTTP_200_OK, status.HTTP_202_ACCEPTED},
+                    )
+
+                rendered_html = str(render_pdf_mock.call_args.args[0])
+                for expected_fragment in expected_fragments:
+                    self.assertIn(expected_fragment, rendered_html)
+                for forbidden_fragment in forbidden_fragments:
+                    self.assertNotIn(forbidden_fragment, rendered_html)
+
+                final_state = PrintJob.objects.get(id=job_id)
+                self.assertEqual(final_state.side, side)
+                self.assertEqual(
+                    final_state.execution_metadata.get("render_sides"),
+                    expected_render_sides,
+                )
+
+    def test_enqueue_failure_moves_job_to_failed_with_retryable_state(self):
+        created_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": self.template_version.id,
+                "license_ids": [self.license_one.id],
+            },
+        )
+        job_id = created_job["id"]
+        self.client.force_authenticate(user=self.ltf_admin)
+
+        with patch(
+            "licenses.card_views.execute_print_job_task.apply_async",
+            side_effect=RuntimeError("broker unavailable"),
+        ):
+            execute_response = self.client.post(
+                f"/api/print-jobs/{job_id}/execute/",
+                {},
+                format="json",
+            )
+        self.assertEqual(execute_response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        failed_job = PrintJob.objects.get(id=job_id)
+        self.assertEqual(failed_job.status, PrintJob.Status.FAILED)
+        self.assertIn("broker unavailable", failed_job.error_detail)
+        self.assertIsNotNone(failed_job.last_error_at)
+        self.assertEqual(
+            failed_job.execution_metadata.get("last_dispatch_error"),
+            "broker unavailable",
+        )
+        self.assertTrue(
+            FinanceAuditLog.objects.filter(
+                action="print_job.execute_queued_dispatch_failed",
+                metadata__print_job_id=job_id,
+            ).exists()
+        )
+
+        retry_response = self.client.post(
+            f"/api/print-jobs/{job_id}/retry/",
+            {},
+            format="json",
+        )
+        self.assertIn(
+            retry_response.status_code,
+            {status.HTTP_200_OK, status.HTTP_202_ACCEPTED},
+        )
+        succeeded_job = PrintJob.objects.get(id=job_id)
+        self.assertEqual(succeeded_job.status, PrintJob.Status.SUCCEEDED)
+
+    def test_execute_print_job_now_short_circuits_duplicate_running_job(self):
+        created_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": self.template_version.id,
+                "license_ids": [self.license_one.id],
+            },
+        )
+        job_id = created_job["id"]
+        running_started_at = timezone.now()
+        PrintJob.objects.filter(id=job_id).update(
+            status=PrintJob.Status.RUNNING,
+            started_at=running_started_at,
+            execution_attempts=3,
+        )
+        with patch("licenses.print_jobs.build_preview_data") as preview_builder:
+            execute_print_job_now(print_job_id=job_id, actor_id=self.ltf_admin.id)
+        preview_builder.assert_not_called()
+
+        running_job = PrintJob.objects.get(id=job_id)
+        self.assertEqual(running_job.status, PrintJob.Status.RUNNING)
+        self.assertEqual(int(running_job.execution_attempts), 3)
+        self.assertEqual(running_job.started_at, running_started_at)
+        self.assertTrue(
+            FinanceAuditLog.objects.filter(
+                action="print_job.duplicate_ignored_running",
+                metadata__print_job_id=job_id,
+            ).exists()
+        )
+
+    def test_execute_print_job_task_ignores_duplicate_lock(self):
+        created_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": self.template_version.id,
+                "license_ids": [self.license_one.id],
+            },
+        )
+        job_id = created_job["id"]
+        lock_key = f"print_job:execute:lock:{job_id}"
+        cache.set(lock_key, "1", timeout=60)
+        try:
+            with patch("licenses.tasks.execute_print_job_now") as execute_now_mock:
+                execute_print_job_task(job_id, self.ltf_admin.id)
+            execute_now_mock.assert_not_called()
+        finally:
+            cache.delete(lock_key)
+
+        self.assertTrue(
+            FinanceAuditLog.objects.filter(
+                action="print_job.task_duplicate_ignored",
+                metadata__print_job_id=job_id,
+            ).exists()
+        )
+
+    @override_settings(
+        BACKEND_BASE_URL="http://backend.local",
+        FRONTEND_BASE_URL="http://frontend.local",
+    )
+    def test_print_worker_absolutizes_relative_asset_urls(self):
+        relative_source_version = self._create_published_template_version(
+            design_payload={
+                "elements": [
+                    {
+                        "id": "relative-image",
+                        "type": "image",
+                        "x_mm": "2.00",
+                        "y_mm": "2.00",
+                        "width_mm": "20.00",
+                        "height_mm": "20.00",
+                        "source": "/media/cards/example.png",
+                    }
+                ]
+            },
+            paper_profile=None,
+        )
+        self.client.force_authenticate(user=self.ltf_admin)
+
+        preview_response = self.client.post(
+            f"/api/card-template-versions/{relative_source_version.id}/preview-data/",
+            {"member_id": self.member_one.id},
+            format="json",
+        )
+        self.assertEqual(preview_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            preview_response.data["elements"][0]["resolved_source"],
+            "http://testserver/media/cards/example.png",
+        )
+
+        created_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": relative_source_version.id,
+                "member_ids": [self.member_one.id],
+                "side": PrintJob.Side.FRONT,
+            },
+        )
+        job_id = created_job["id"]
+        with patch(
+            "licenses.print_jobs.render_pdf_bytes_from_html",
+            return_value=b"%PDF-1.4\n",
+        ) as render_pdf_mock:
+            execute_response = self.client.post(
+                f"/api/print-jobs/{job_id}/execute/",
+                {},
+                format="json",
+            )
+        self.assertIn(
+            execute_response.status_code,
+            {status.HTTP_200_OK, status.HTTP_202_ACCEPTED},
+        )
+        rendered_html = str(render_pdf_mock.call_args.args[0])
+        self.assertIn('src="http://backend.local/media/cards/example.png"', rendered_html)
+        self.assertNotIn('src="/media/cards/example.png"', rendered_html)
+        self.assertEqual(
+            render_pdf_mock.call_args.kwargs.get("base_url"),
+            "http://backend.local/",
+        )
+
+    def test_pdf_endpoint_returns_404_when_artifact_file_missing(self):
+        with tempfile.TemporaryDirectory() as temp_media_root:
+            with self.settings(MEDIA_ROOT=temp_media_root):
+                created_job = self._create_print_job(
+                    user=self.ltf_admin,
+                    payload={
+                        "club": self.club.id,
+                        "template_version": self.template_version.id,
+                        "license_ids": [self.license_one.id],
+                    },
+                )
+                job_id = created_job["id"]
+                self.client.force_authenticate(user=self.ltf_admin)
+                with patch(
+                    "licenses.print_jobs.render_pdf_bytes_from_html",
+                    return_value=b"%PDF-1.4\n",
+                ):
+                    self.client.post(
+                        f"/api/print-jobs/{job_id}/execute/",
+                        {},
+                        format="json",
+                    )
+
+                print_job = PrintJob.objects.get(id=job_id)
+                artifact_path = Path(print_job.artifact_pdf.path)
+                self.assertTrue(artifact_path.exists())
+                artifact_path.unlink()
+
+                pdf_response = self.client.get(f"/api/print-jobs/{job_id}/pdf/")
+                self.assertEqual(pdf_response.status_code, status.HTTP_404_NOT_FOUND)
+                self.assertIn(
+                    "artifact file is unavailable",
+                    str(pdf_response.data["detail"]).lower(),
+                )
+                self.assertTrue(
+                    FinanceAuditLog.objects.filter(
+                        action="print_job.pdf_missing_artifact",
+                        metadata__print_job_id=job_id,
+                    ).exists()
+                )
 
     def test_create_execute_and_download_pdf_artifact(self):
         created_job = self._create_print_job(

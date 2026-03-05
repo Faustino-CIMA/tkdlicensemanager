@@ -11,6 +11,7 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 
+from .card_registry import CARD_SIDE_BACK, CARD_SIDE_FRONT
 from .card_rendering import (
     CardRenderError,
     build_embedded_font_face_css_from_payloads,
@@ -49,6 +50,27 @@ def _is_print_job_cancelled(print_job_id: int) -> bool:
 def _raise_if_cancelled(print_job_id: int) -> None:
     if _is_print_job_cancelled(print_job_id):
         raise CardRenderError("Print job execution was cancelled.")
+
+
+def _resolve_render_sides(print_job: PrintJob) -> list[str]:
+    selected_side = str(getattr(print_job, "side", "") or PrintJob.Side.FRONT).strip().lower()
+    if selected_side == PrintJob.Side.BACK:
+        return [CARD_SIDE_BACK]
+    if selected_side == PrintJob.Side.BOTH:
+        return [CARD_SIDE_FRONT, CARD_SIDE_BACK]
+    return [CARD_SIDE_FRONT]
+
+
+def _resolve_render_asset_base_url() -> str:
+    for setting_name in (
+        "CARD_RENDER_BASE_URL",
+        "BACKEND_BASE_URL",
+        "FRONTEND_BASE_URL",
+    ):
+        raw_value = str(getattr(settings, setting_name, "") or "").strip()
+        if raw_value:
+            return raw_value.rstrip("/") + "/"
+    return "/"
 
 
 def _render_card_pages_html(preview_payloads: list[dict[str, Any]]) -> tuple[str, int]:
@@ -92,7 +114,7 @@ def _render_sheet_pages_html(
     *,
     print_job: PrintJob,
     preview_payloads: list[dict[str, Any]],
-    ordered_items: list[PrintJobItem],
+    ordered_item_slots: list[tuple[PrintJobItem, int]],
 ) -> tuple[str, int]:
     paper_profile = print_job.paper_profile
     if paper_profile is None:
@@ -121,17 +143,17 @@ def _render_sheet_pages_html(
     selected_slots = [int(slot) for slot in (print_job.selected_slots or [])]
     selected_set = set(selected_slots)
     page_slot_fragments: dict[int, dict[int, str]] = defaultdict(dict)
-    for item, preview_payload in zip(ordered_items, preview_payloads):
-        if item.slot_index is None:
-            raise CardRenderError("Print job item is missing slot_index.")
-        global_slot = int(item.slot_index)
+    for (_, render_slot_index), preview_payload in zip(ordered_item_slots, preview_payloads):
+        global_slot = int(render_slot_index)
         if selected_slots:
-            if global_slot not in selected_set:
+            if global_slot < 0:
+                raise CardRenderError("Print job item slot_index must be >= 0.")
+            local_slot = global_slot % slot_count
+            page_index = global_slot // slot_count
+            if local_slot not in selected_set:
                 raise CardRenderError(
                     f"Print job item slot {global_slot} is outside selected_slots."
                 )
-            page_index = 0
-            local_slot = global_slot
         else:
             if global_slot < 0:
                 raise CardRenderError("Print job item slot_index must be >= 0.")
@@ -224,12 +246,24 @@ def execute_print_job_now(*, print_job_id: int, actor_id: int | None = None) -> 
     actor = UserModel.objects.filter(id=actor_id).first() if actor_id else None
     attempt_started_monotonic = time.monotonic()
     attempt_started_at = timezone.now()
+    preview_payloads: list[dict[str, Any]] = []
+    render_sides: list[str] = [CARD_SIDE_FRONT]
+    logical_item_count = 0
 
     with transaction.atomic():
         print_job = PrintJob.objects.select_for_update().get(id=print_job_id)
         if print_job.status == PrintJob.Status.CANCELLED:
             return print_job
         if print_job.status == PrintJob.Status.SUCCEEDED and print_job.artifact_pdf:
+            return print_job
+        if print_job.status == PrintJob.Status.RUNNING:
+            _audit_print_job(
+                print_job=print_job,
+                action="duplicate_ignored_running",
+                message="Guarded transition: duplicate execution ignored for running print job.",
+                actor=actor,
+                metadata={"execution_attempt": int(print_job.execution_attempts)},
+            )
             return print_job
 
         print_job.status = PrintJob.Status.RUNNING
@@ -287,23 +321,47 @@ def execute_print_job_now(*, print_job_id: int, actor_id: int | None = None) -> 
         )
         if not ordered_items:
             raise CardRenderError("Print job has no items to render.")
+        logical_item_count = len(ordered_items)
 
         _resolve_item_slots(print_job, ordered_items)
-        preview_payloads: list[dict[str, Any]] = []
-        for item in sorted(ordered_items, key=lambda current: (int(current.slot_index or 0), current.id)):
-            _raise_if_cancelled(print_job_id)
-            preview_payloads.append(
-                build_preview_data(
-                    template_version=print_job.template_version,
-                    member_id=item.member_id,
-                    license_id=item.license_id,
-                    club_id=print_job.club_id,
-                    include_bleed_guide=bool(print_job.include_bleed_guide),
-                    include_safe_area_guide=bool(print_job.include_safe_area_guide),
-                    bleed_mm=print_job.bleed_mm,
-                    safe_area_mm=print_job.safe_area_mm,
-                )
+        ordered_items_for_render = sorted(
+            ordered_items,
+            key=lambda current: (int(current.slot_index or 0), current.id),
+        )
+        render_sides = _resolve_render_sides(print_job)
+        render_asset_base_url = _resolve_render_asset_base_url()
+        ordered_item_slots: list[tuple[PrintJobItem, int]] = []
+        cycle_slot_span = 0
+        if print_job.paper_profile is not None:
+            slot_count = int(print_job.paper_profile.slot_count)
+            if slot_count <= 0:
+                raise CardRenderError("Paper profile slot_count must be positive.")
+            max_slot_index = max(
+                int(item.slot_index or 0) for item in ordered_items_for_render
             )
+            cycle_slot_span = ((max_slot_index // slot_count) + 1) * slot_count
+
+        for side_index, side in enumerate(render_sides):
+            slot_offset = side_index * cycle_slot_span if cycle_slot_span > 0 else 0
+            for item in ordered_items_for_render:
+                _raise_if_cancelled(print_job_id)
+                ordered_item_slots.append(
+                    (item, int(item.slot_index or 0) + slot_offset)
+                )
+                preview_payloads.append(
+                    build_preview_data(
+                        template_version=print_job.template_version,
+                        side=side,
+                        member_id=item.member_id,
+                        license_id=item.license_id,
+                        club_id=print_job.club_id,
+                        include_bleed_guide=bool(print_job.include_bleed_guide),
+                        include_safe_area_guide=bool(print_job.include_safe_area_guide),
+                        bleed_mm=print_job.bleed_mm,
+                        safe_area_mm=print_job.safe_area_mm,
+                        asset_base_url=render_asset_base_url,
+                    )
+                )
 
         _raise_if_cancelled(print_job_id)
         if print_job.paper_profile is None:
@@ -312,14 +370,12 @@ def execute_print_job_now(*, print_job_id: int, actor_id: int | None = None) -> 
             html, page_count = _render_sheet_pages_html(
                 print_job=print_job,
                 preview_payloads=preview_payloads,
-                ordered_items=sorted(
-                    ordered_items, key=lambda current: (int(current.slot_index or 0), current.id)
-                ),
+                ordered_item_slots=ordered_item_slots,
             )
         _raise_if_cancelled(print_job_id)
         pdf_bytes = render_pdf_bytes_from_html(
             html,
-            base_url=str(settings.FRONTEND_BASE_URL).rstrip("/") + "/",
+            base_url=render_asset_base_url,
         )
     except Exception as exc:
         detail = exc.detail if isinstance(exc, CardRenderError) else str(exc)
@@ -376,7 +432,10 @@ def execute_print_job_now(*, print_job_id: int, actor_id: int | None = None) -> 
         print_job.artifact_sha256 = sha256(pdf_bytes).hexdigest()
         print_job.execution_metadata = {
             **dict(print_job.execution_metadata or {}),
-            "rendered_items": len(preview_payloads),
+            "rendered_items": logical_item_count,
+            "rendered_faces": len(preview_payloads),
+            "requested_side": str(print_job.side or PrintJob.Side.FRONT),
+            "render_sides": list(render_sides),
             "page_count": page_count,
             "selected_slots": [int(slot) for slot in (print_job.selected_slots or [])],
             "completed_at": completed_at.isoformat(),
@@ -408,7 +467,9 @@ def execute_print_job_now(*, print_job_id: int, actor_id: int | None = None) -> 
             message="Print job execution finished successfully.",
             actor=actor,
             metadata={
-                "rendered_items": len(preview_payloads),
+                "rendered_items": logical_item_count,
+                "rendered_faces": len(preview_payloads),
+                "render_sides": list(render_sides),
                 "page_count": page_count,
                 "artifact_size_bytes": len(pdf_bytes),
             },

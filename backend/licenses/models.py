@@ -785,6 +785,11 @@ class PrintJob(models.Model):
         FAILED = "failed", "Failed"
         CANCELLED = "cancelled", "Cancelled"
 
+    class Side(models.TextChoices):
+        FRONT = "front", "Front"
+        BACK = "back", "Back"
+        BOTH = "both", "Both"
+
     job_number = models.CharField(
         max_length=20,
         unique=True,
@@ -804,6 +809,7 @@ class PrintJob(models.Model):
         null=True,
         blank=True,
     )
+    side = models.CharField(max_length=10, choices=Side.choices, default=Side.FRONT)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
     total_items = models.PositiveIntegerField(default=0)  # pyright: ignore[reportArgumentType]
     selected_slots = models.JSONField(default=list, blank=True)

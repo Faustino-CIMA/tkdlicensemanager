@@ -39,6 +39,37 @@ CARD_SIDE_CHOICES = (
     (CARD_SIDE_FRONT, "Front"),
     (CARD_SIDE_BACK, "Back"),
 )
+PRINT_JOB_SIDE_BOTH = "both"
+PRINT_JOB_SIDE_CHOICES = (
+    (CARD_SIDE_FRONT, "Front"),
+    (CARD_SIDE_BACK, "Back"),
+    (PRINT_JOB_SIDE_BOTH, "Both"),
+)
+
+
+def _resolve_default_print_side(template_version: CardTemplateVersion) -> str:
+    try:
+        normalized_payload = normalize_design_payload(template_version.design_payload)
+    except DjangoValidationError:
+        return CARD_SIDE_FRONT
+
+    sides_payload = normalized_payload.get("sides") or {}
+    if not isinstance(sides_payload, dict):
+        return CARD_SIDE_FRONT
+    back_payload = sides_payload.get(CARD_SIDE_BACK) or {}
+    if not isinstance(back_payload, dict):
+        return CARD_SIDE_FRONT
+
+    back_elements = back_payload.get("elements") or []
+    if isinstance(back_elements, list) and len(back_elements) > 0:
+        return PRINT_JOB_SIDE_BOTH
+
+    back_background = back_payload.get("background")
+    if isinstance(back_background, str) and back_background.strip():
+        return PRINT_JOB_SIDE_BOTH
+    if isinstance(back_background, dict) and len(back_background) > 0:
+        return PRINT_JOB_SIDE_BOTH
+    return CARD_SIDE_FRONT
 
 
 class CardFormatPresetSerializer(serializers.ModelSerializer):
@@ -421,6 +452,7 @@ class PrintJobSerializer(serializers.ModelSerializer):
             "club",
             "template_version",
             "paper_profile",
+            "side",
             "status",
             "total_items",
             "selected_slots",
@@ -448,6 +480,7 @@ class PrintJobSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "job_number",
+            "side",
             "status",
             "total_items",
             "requested_by",
@@ -492,6 +525,7 @@ class PrintJobCreateSerializer(serializers.Serializer):
         required=False,
         allow_null=True,
     )
+    side = serializers.ChoiceField(choices=PRINT_JOB_SIDE_CHOICES, required=False)
     member_ids = serializers.ListField(
         required=False,
         child=serializers.IntegerField(min_value=1),
@@ -528,10 +562,14 @@ class PrintJobCreateSerializer(serializers.Serializer):
     def validate(self, attrs):
         club = attrs["club"]
         template_version = attrs["template_version"]
+        requested_side = attrs.get("side")
         paper_profile = attrs.get("paper_profile") or template_version.paper_profile
         member_ids = attrs.get("member_ids") or []
         license_ids = attrs.get("license_ids") or []
         selected_slots = attrs.get("selected_slots") or []
+
+        if requested_side is None:
+            attrs["side"] = _resolve_default_print_side(template_version)
 
         if template_version.status != CardTemplateVersion.Status.PUBLISHED:
             raise serializers.ValidationError(

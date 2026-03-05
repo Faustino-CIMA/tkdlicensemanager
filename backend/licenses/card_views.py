@@ -834,6 +834,7 @@ class PrintJobViewSet(
                 club=club,
                 template_version=template_version,
                 paper_profile=resolved_paper_profile,
+                side=serializer.validated_data.get("side", PrintJob.Side.FRONT),
                 status=PrintJob.Status.DRAFT,
                 total_items=len(resolved_items),
                 selected_slots=selected_slots,
@@ -864,7 +865,11 @@ class PrintJobViewSet(
                 print_job=print_job,
                 action="created",
                 message="Print job created.",
-                metadata={"item_count": len(resolved_items), "selected_slots": selected_slots},
+                metadata={
+                    "item_count": len(resolved_items),
+                    "selected_slots": selected_slots,
+                    "side": print_job.side,
+                },
             )
 
         response_serializer = PrintJobSerializer(print_job, context={"request": request})
@@ -886,7 +891,6 @@ class PrintJobViewSet(
     ) -> tuple[PrintJob, int]:
         user = request.user if request.user.is_authenticated else None
         invalid_status: str | None = None
-        invalid_job: PrintJob | None = None
         with transaction.atomic():
             locked_job = (
                 PrintJob.objects.select_for_update()
@@ -915,10 +919,7 @@ class PrintJobViewSet(
                     metadata={"current_status": locked_job.status},
                 )
                 invalid_status = locked_job.status
-                invalid_job = locked_job
-                locked_job = None
-
-            if locked_job is not None:
+            else:
                 locked_job.status = PrintJob.Status.QUEUED
                 locked_job.queued_at = timezone.now()
                 locked_job.finished_at = None
@@ -939,20 +940,66 @@ class PrintJobViewSet(
                         "updated_at",
                     ]
                 )
-                self._log_print_job_event(
-                    print_job=locked_job,
-                    action=audit_action,
-                    message="Print job queued for execution.",
-                )
 
-        if invalid_status is not None and invalid_job is not None:
+        if invalid_status is not None:
             raise serializers.ValidationError(
                 {"detail": f"Print job cannot be queued from status '{invalid_status}'."}
             )
 
-        execute_print_job_task.apply_async(
-            args=[locked_job.id, user.id if user is not None else None],
-            queue=getattr(settings, "CELERY_PRINT_JOB_QUEUE", "print_jobs"),
+        try:
+            execute_print_job_task.apply_async(
+                args=[locked_job.id, user.id if user is not None else None],
+                queue=getattr(settings, "CELERY_PRINT_JOB_QUEUE", "print_jobs"),
+            )
+        except Exception as exc:
+            dispatch_error = str(exc)[:1000] or "Unknown broker dispatch error."
+            failure_at = timezone.now()
+            with transaction.atomic():
+                failed_job = (
+                    PrintJob.objects.select_for_update()
+                    .select_related("club")
+                    .get(id=locked_job.id)
+                )
+                if failed_job.status == PrintJob.Status.QUEUED:
+                    failed_job.status = PrintJob.Status.FAILED
+                    failed_job.finished_at = failure_at
+                    failed_job.error_detail = f"Task dispatch failed: {dispatch_error}"[:4000]
+                    failed_job.last_error_at = failure_at
+                    failed_job.execution_metadata = {
+                        **dict(failed_job.execution_metadata or {}),
+                        "last_dispatch_error": dispatch_error,
+                        "last_dispatch_failed_at": failure_at.isoformat(),
+                    }
+                    failed_job.save(
+                        update_fields=[
+                            "status",
+                            "finished_at",
+                            "error_detail",
+                            "last_error_at",
+                            "execution_metadata",
+                            "updated_at",
+                        ]
+                    )
+                self._log_print_job_event(
+                    print_job=failed_job,
+                    action=f"{audit_action}_dispatch_failed",
+                    message="Print job enqueue failed.",
+                    metadata={"dispatch_error": dispatch_error},
+                )
+            raise serializers.ValidationError(
+                {
+                    "detail": (
+                        "Failed to enqueue print job execution. "
+                        "Job moved to failed state; retry is available."
+                    )
+                }
+            ) from exc
+
+        locked_job = PrintJob.objects.get(id=locked_job.id)
+        self._log_print_job_event(
+            print_job=locked_job,
+            action=audit_action,
+            message="Print job queued for execution.",
         )
         return locked_job, status.HTTP_202_ACCEPTED
 
@@ -1069,7 +1116,18 @@ class PrintJobViewSet(
                 {"detail": "Print job PDF artifact is not available yet."},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        artifact_stream = print_job.artifact_pdf.open("rb")
+        try:
+            artifact_stream = print_job.artifact_pdf.open("rb")
+        except Exception:
+            self._log_print_job_event(
+                print_job=print_job,
+                action="pdf_missing_artifact",
+                message="Print job artifact file is missing from storage.",
+            )
+            return Response(
+                {"detail": "Print job PDF artifact file is unavailable."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
         response = FileResponse(artifact_stream, content_type="application/pdf")
         response["Content-Disposition"] = (
             f'attachment; filename="{print_job.job_number.lower()}-artifact.pdf"'
