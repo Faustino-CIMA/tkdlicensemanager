@@ -1019,6 +1019,9 @@ def _build_slot_layout(
     rows = int(paper_profile.rows)
     if columns <= 0 or rows <= 0:
         raise CardRenderError("Paper profile rows and columns must be positive.")
+    expected_slot_count = rows * columns
+    if slot_count != expected_slot_count:
+        raise CardRenderError("Paper profile slot_count must equal rows * columns.")
 
     slots: list[dict[str, Any]] = []
     margin_left = Decimal(str(paper_profile.margin_left_mm))
@@ -1036,8 +1039,6 @@ def _build_slot_layout(
     for slot_index in range(slot_count):
         row = slot_index // columns
         col = slot_index % columns
-        if row >= rows:
-            break
         x_mm = margin_left + Decimal(col) * (card_width + h_gap)
         y_mm = margin_top + Decimal(row) * (card_height + v_gap)
         x_end_mm = x_mm + card_width
@@ -1058,6 +1059,39 @@ def _build_slot_layout(
             }
         )
     return slots, normalized_slots
+
+
+def _build_sheet_layout_metadata(
+    *,
+    slots: list[dict[str, Any]],
+    sheet_width_mm: Decimal,
+    sheet_height_mm: Decimal,
+) -> dict[str, Any]:
+    if slots:
+        max_x = max(Decimal(str(slot["x_end_mm"])) for slot in slots)
+        max_y = max(Decimal(str(slot["y_end_mm"])) for slot in slots)
+    else:
+        max_x = Decimal("0.00")
+        max_y = Decimal("0.00")
+    return {
+        "max_x_mm": _format_mm(max_x),
+        "max_y_mm": _format_mm(max_y),
+        "sheet_width_mm": _format_mm(sheet_width_mm),
+        "sheet_height_mm": _format_mm(sheet_height_mm),
+        "within_sheet_bounds": (max_x <= sheet_width_mm and max_y <= sheet_height_mm),
+    }
+
+
+def build_sheet_layout_metadata(
+    *,
+    paper_profile: PaperProfile,
+    slots: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return _build_sheet_layout_metadata(
+        slots=slots,
+        sheet_width_mm=Decimal(str(paper_profile.sheet_width_mm)),
+        sheet_height_mm=Decimal(str(paper_profile.sheet_height_mm)),
+    )
 
 
 def build_preview_data(
@@ -1230,6 +1264,12 @@ def build_preview_data(
             "sheet_height_mm": _format_mm(Decimal(str(paper_profile.sheet_height_mm))),
             "card_width_mm": _format_mm(Decimal(str(paper_profile.card_width_mm))),
             "card_height_mm": _format_mm(Decimal(str(paper_profile.card_height_mm))),
+            "margin_top_mm": _format_mm(Decimal(str(paper_profile.margin_top_mm))),
+            "margin_bottom_mm": _format_mm(Decimal(str(paper_profile.margin_bottom_mm))),
+            "margin_left_mm": _format_mm(Decimal(str(paper_profile.margin_left_mm))),
+            "margin_right_mm": _format_mm(Decimal(str(paper_profile.margin_right_mm))),
+            "horizontal_gap_mm": _format_mm(Decimal(str(paper_profile.horizontal_gap_mm))),
+            "vertical_gap_mm": _format_mm(Decimal(str(paper_profile.vertical_gap_mm))),
             "card_corner_radius_mm": (
                 _format_mm(Decimal(str(paper_profile.card_corner_radius_mm)))
                 if paper_profile.card_corner_radius_mm is not None
@@ -1241,22 +1281,10 @@ def build_preview_data(
         }
         payload["selected_slots"] = normalized_selected_slots
         payload["slots"] = slots
-        if slots:
-            max_x = max(Decimal(str(slot["x_end_mm"])) for slot in slots)
-            max_y = max(Decimal(str(slot["y_end_mm"])) for slot in slots)
-        else:
-            max_x = Decimal("0.00")
-            max_y = Decimal("0.00")
-        payload["layout_metadata"] = {
-            "max_x_mm": _format_mm(max_x),
-            "max_y_mm": _format_mm(max_y),
-            "sheet_width_mm": _format_mm(Decimal(str(paper_profile.sheet_width_mm))),
-            "sheet_height_mm": _format_mm(Decimal(str(paper_profile.sheet_height_mm))),
-            "within_sheet_bounds": (
-                max_x <= Decimal(str(paper_profile.sheet_width_mm))
-                and max_y <= Decimal(str(paper_profile.sheet_height_mm))
-            ),
-        }
+        payload["layout_metadata"] = build_sheet_layout_metadata(
+            paper_profile=paper_profile,
+            slots=slots,
+        )
     else:
         if selected_slots:
             raise CardRenderError(
@@ -1849,8 +1877,8 @@ def render_card_fragment_html(preview_data: dict[str, Any]) -> str:
 
 def build_card_simulation_payload(preview_data: dict[str, Any]) -> dict[str, str]:
     card_format = preview_data.get("card_format") or {}
-    width_mm = str(card_format.get("width_mm") or "85.60")
-    height_mm = str(card_format.get("height_mm") or "53.98")
+    width_mm = str(card_format.get("width_mm") or "85.00")
+    height_mm = str(card_format.get("height_mm") or "55.00")
     font_face_css = _build_embedded_font_face_css(preview_data)
     css = (
         f"{font_face_css}"

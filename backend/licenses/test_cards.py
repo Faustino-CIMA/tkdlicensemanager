@@ -60,8 +60,8 @@ def _sample_render_design_payload() -> dict:
                 "type": "shape",
                 "x_mm": "0.00",
                 "y_mm": "0.00",
-                "width_mm": "85.60",
-                "height_mm": "53.98",
+                "width_mm": "85.00",
+                "height_mm": "55.00",
                 "z_index": 0,
                 "style": {
                     "background_color": "#f3f4f6",
@@ -435,8 +435,8 @@ class LicenseCardRoleAccessTests(TestCase):
                 "card_format": self.card_format.id,
                 "sheet_width_mm": "210.00",
                 "sheet_height_mm": "297.00",
-                "card_width_mm": "85.60",
-                "card_height_mm": "53.98",
+                "card_width_mm": "85.00",
+                "card_height_mm": "55.00",
                 "margin_top_mm": "1.00",
                 "margin_bottom_mm": "1.00",
                 "margin_left_mm": "1.00",
@@ -659,8 +659,8 @@ class LicenseCardValidationTests(TestCase):
                 "card_format": self.card_format.id,
                 "sheet_width_mm": "0.00",
                 "sheet_height_mm": "297.00",
-                "card_width_mm": "85.60",
-                "card_height_mm": "53.98",
+                "card_width_mm": "85.00",
+                "card_height_mm": "55.00",
                 "margin_top_mm": "1.00",
                 "margin_bottom_mm": "1.00",
                 "margin_left_mm": "1.00",
@@ -990,11 +990,21 @@ class LicenseCardValidationTests(TestCase):
         self.assertIn("3c", format_codes)
         self.assertIn("din-a6", format_codes)
         self.assertIn("custom", format_codes)
+        lp798_format = CardFormatPreset.objects.get(code="3c")
+        self.assertEqual(lp798_format.width_mm, Decimal("85.00"))
+        self.assertEqual(lp798_format.height_mm, Decimal("55.00"))
 
         profile = PaperProfile.objects.filter(code="sigel-lp798").first()
         self.assertIsNotNone(profile)
         self.assertEqual(profile.slot_count, 10)
-        self.assertEqual(profile.card_width_mm, Decimal("85.60"))
+        self.assertEqual(profile.card_width_mm, Decimal("85.00"))
+        self.assertEqual(profile.card_height_mm, Decimal("55.00"))
+        self.assertEqual(profile.margin_left_mm, Decimal("15.00"))
+        self.assertEqual(profile.margin_right_mm, Decimal("15.00"))
+        self.assertEqual(profile.margin_top_mm, Decimal("10.00"))
+        self.assertEqual(profile.margin_bottom_mm, Decimal("12.00"))
+        self.assertEqual(profile.horizontal_gap_mm, Decimal("10.00"))
+        self.assertEqual(profile.vertical_gap_mm, Decimal("0.00"))
         self.assertEqual(profile.card_corner_radius_mm, Decimal("3.18"))
 
 
@@ -1970,26 +1980,70 @@ class LicenseCardPreviewApiTests(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["paper_profile"]["code"], "sigel-lp798")
+        self.assertEqual(response.data["card_format"]["width_mm"], "85.00")
+        self.assertEqual(response.data["card_format"]["height_mm"], "55.00")
+        self.assertEqual(response.data["paper_profile"]["card_width_mm"], "85.00")
+        self.assertEqual(response.data["paper_profile"]["card_height_mm"], "55.00")
+        self.assertEqual(response.data["paper_profile"]["margin_left_mm"], "15.00")
+        self.assertEqual(response.data["paper_profile"]["margin_right_mm"], "15.00")
+        self.assertEqual(response.data["paper_profile"]["margin_top_mm"], "10.00")
+        self.assertEqual(response.data["paper_profile"]["margin_bottom_mm"], "12.00")
+        self.assertEqual(response.data["paper_profile"]["horizontal_gap_mm"], "10.00")
+        self.assertEqual(response.data["paper_profile"]["vertical_gap_mm"], "0.00")
         self.assertEqual(response.data["paper_profile"]["card_corner_radius_mm"], "3.18")
         slots = response.data["slots"]
         self.assertEqual(len(slots), 10)
 
         slot_0 = next(slot for slot in slots if slot["slot_index"] == 0)
-        slot_2 = next(slot for slot in slots if slot["slot_index"] == 2)
+        slot_1 = next(slot for slot in slots if slot["slot_index"] == 1)
         slot_9 = next(slot for slot in slots if slot["slot_index"] == 9)
-        self.assertEqual(slot_0["x_mm"], "19.40")
-        self.assertEqual(slot_0["y_mm"], "13.55")
-        self.assertEqual(slot_2["x_mm"], "19.40")
-        self.assertEqual(slot_2["y_mm"], "67.53")
-        self.assertEqual(slot_9["x_mm"], "105.00")
-        self.assertEqual(slot_9["y_mm"], "229.47")
+        self.assertEqual(slot_0["x_mm"], "15.00")
+        self.assertEqual(slot_0["y_mm"], "10.00")
+        self.assertEqual(slot_0["x_end_mm"], "100.00")
+        self.assertEqual(slot_0["y_end_mm"], "65.00")
+        self.assertEqual(slot_1["x_mm"], "110.00")
+        self.assertEqual(slot_1["y_mm"], "10.00")
+        self.assertEqual(slot_1["x_end_mm"], "195.00")
+        self.assertEqual(slot_1["y_end_mm"], "65.00")
+        self.assertEqual(slot_9["x_mm"], "110.00")
+        self.assertEqual(slot_9["y_mm"], "230.00")
+        self.assertEqual(slot_9["x_end_mm"], "195.00")
+        self.assertEqual(slot_9["y_end_mm"], "285.00")
 
         self.assertTrue(response.data["layout_metadata"]["within_sheet_bounds"])
-        self.assertEqual(response.data["layout_metadata"]["max_x_mm"], "190.60")
-        self.assertEqual(response.data["layout_metadata"]["max_y_mm"], "283.45")
+        self.assertEqual(response.data["layout_metadata"]["max_x_mm"], "195.00")
+        self.assertEqual(response.data["layout_metadata"]["max_y_mm"], "285.00")
         for slot in slots:
             self.assertLessEqual(Decimal(slot["x_end_mm"]), Decimal("210.00"))
             self.assertLessEqual(Decimal(slot["y_end_mm"]), Decimal("297.00"))
+
+    def test_lp798_guides_do_not_change_slot_geometry(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        base_payload = {
+            "member_id": self.member.id,
+            "license_id": self.license.id,
+            "paper_profile_id": self.paper_profile.id,
+            "selected_slots": [0, 1, 9],
+        }
+        base_response = self.client.post(self.preview_data_url, base_payload, format="json")
+        guided_response = self.client.post(
+            self.preview_data_url,
+            {
+                **base_payload,
+                "include_bleed_guide": True,
+                "include_safe_area_guide": True,
+                "bleed_mm": "2.00",
+                "safe_area_mm": "3.00",
+            },
+            format="json",
+        )
+        self.assertEqual(base_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(guided_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(base_response.data["slots"], guided_response.data["slots"])
+        self.assertEqual(
+            base_response.data["layout_metadata"],
+            guided_response.data["layout_metadata"],
+        )
 
     def test_preview_sheet_rejects_out_of_range_slots(self):
         self.client.force_authenticate(user=self.ltf_admin)
@@ -2535,6 +2589,50 @@ class PrintJobExecutionPipelineTests(TestCase):
 
         self.assertTrue(FinanceAuditLog.objects.filter(action="print_job.created").exists())
         self.assertTrue(FinanceAuditLog.objects.filter(action="print_job.succeeded").exists())
+
+    def test_sheet_execution_layout_metadata_matches_preview_geometry(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        preview_response = self.client.post(
+            f"/api/card-template-versions/{self.template_version.id}/preview-data/",
+            {
+                "member_id": self.member_one.id,
+                "license_id": self.license_one.id,
+                "paper_profile_id": self.paper_profile.id,
+                "selected_slots": [0],
+            },
+            format="json",
+        )
+        self.assertEqual(preview_response.status_code, status.HTTP_200_OK)
+
+        created_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": self.template_version.id,
+                "paper_profile": self.paper_profile.id,
+                "license_ids": [self.license_one.id],
+                "selected_slots": [0],
+            },
+        )
+        job_id = created_job["id"]
+
+        self.client.force_authenticate(user=self.ltf_admin)
+        with patch(
+            "licenses.print_jobs.render_pdf_bytes_from_html",
+            return_value=b"%PDF-1.4\n",
+        ):
+            execute_response = self.client.post(
+                f"/api/print-jobs/{job_id}/execute/",
+                {},
+                format="json",
+            )
+        self.assertIn(execute_response.status_code, {status.HTTP_200_OK, status.HTTP_202_ACCEPTED})
+
+        final_state = PrintJob.objects.get(id=job_id)
+        self.assertEqual(
+            final_state.execution_metadata.get("sheet_layout_metadata"),
+            preview_response.data["layout_metadata"],
+        )
 
     def test_execute_is_idempotent_after_success(self):
         created_job = self._create_print_job(

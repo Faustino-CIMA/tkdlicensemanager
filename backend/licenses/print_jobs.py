@@ -16,6 +16,7 @@ from .card_rendering import (
     CardRenderError,
     build_embedded_font_face_css_from_payloads,
     build_preview_data,
+    build_sheet_layout_metadata,
     build_sheet_slots,
     render_card_fragment_html,
     render_pdf_bytes_from_html,
@@ -115,7 +116,7 @@ def _render_sheet_pages_html(
     print_job: PrintJob,
     preview_payloads: list[dict[str, Any]],
     ordered_item_slots: list[tuple[PrintJobItem, int]],
-) -> tuple[str, int]:
+) -> tuple[str, int, dict[str, Any]]:
     paper_profile = print_job.paper_profile
     if paper_profile is None:
         raise CardRenderError("Sheet rendering requires a paper profile.")
@@ -126,6 +127,10 @@ def _render_sheet_pages_html(
     slot_layout, _ = build_sheet_slots(
         paper_profile=paper_profile,
         selected_slots=print_job.selected_slots or None,
+    )
+    sheet_layout_metadata = build_sheet_layout_metadata(
+        paper_profile=paper_profile,
+        slots=slot_layout,
     )
     slot_positions = {
         int(slot["slot_index"]): {
@@ -206,7 +211,7 @@ def _render_sheet_pages_html(
         f"{''.join(page_markup)}"
         "</body></html>"
     )
-    return html, len(page_markup)
+    return html, len(page_markup), sheet_layout_metadata
 
 
 def _resolve_item_slots(print_job: PrintJob, ordered_items: list[PrintJobItem]) -> None:
@@ -249,6 +254,7 @@ def execute_print_job_now(*, print_job_id: int, actor_id: int | None = None) -> 
     preview_payloads: list[dict[str, Any]] = []
     render_sides: list[str] = [CARD_SIDE_FRONT]
     logical_item_count = 0
+    sheet_layout_metadata: dict[str, Any] | None = None
 
     with transaction.atomic():
         print_job = PrintJob.objects.select_for_update().get(id=print_job_id)
@@ -367,7 +373,7 @@ def execute_print_job_now(*, print_job_id: int, actor_id: int | None = None) -> 
         if print_job.paper_profile is None:
             html, page_count = _render_card_pages_html(preview_payloads)
         else:
-            html, page_count = _render_sheet_pages_html(
+            html, page_count, sheet_layout_metadata = _render_sheet_pages_html(
                 print_job=print_job,
                 preview_payloads=preview_payloads,
                 ordered_item_slots=ordered_item_slots,
@@ -443,6 +449,8 @@ def execute_print_job_now(*, print_job_id: int, actor_id: int | None = None) -> 
             "last_attempt_duration_ms": duration_ms,
             "last_attempt_status": "succeeded",
         }
+        if sheet_layout_metadata is not None:
+            print_job.execution_metadata["sheet_layout_metadata"] = sheet_layout_metadata
         print_job.status = PrintJob.Status.SUCCEEDED
         print_job.finished_at = completed_at
         print_job.error_detail = ""
