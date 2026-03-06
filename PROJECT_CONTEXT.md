@@ -1,5 +1,5 @@
 # LTF License Manager - Permanent Project Memory
-Last updated: 2026-03-05
+Last updated: 2026-03-06
 
 ## Current Stack (locked)
 - Backend: Django 6+ + DRF + PostgreSQL 18+
@@ -29,6 +29,7 @@ Last updated: 2026-03-05
 - License Card Step 8 final closure (v2): full UAT matrix pass (dual-side + simulation + quick print/history), runtime queue/schema verification, docs/runbook alignment, and rollout/rollback checklists — completed
 - License Card v2 Bug Fix & Polish (post-v0.2.0): P0 fixes (gradient save crash, per-corner radius, asset file-picker reliability), SVG sanitization hardening, deep review phases (designer + render/print), targeted remediation sprint, and Step 7 full regression gate PASS on `ea4ab58` — completed
 - License Card v0.3.2 final docs/rollout pass: README/frontend docs refresh, rollout/rollback checklist finalization, and release tag `v0.3.2` creation/push — completed
+- Card v2.1 (v0.3.3) closure: LP798 geometry precision lock, multi-image asset reliability (including active-by-default uploads), simulation font/refresh parity stabilization, role merge fields + locked date format coverage, and full Step 6 regression gate PASS — completed
 
 ## Key Decisions
 - Material Design 3 is the only UI framework
@@ -41,7 +42,7 @@ Last updated: 2026-03-05
 ## Current Open / Next Priorities (update after every milestone)
 - Gather real Payconiq sandbox credentials and run first live sandbox verification
 - Any remaining Dokploy stability tweaks
-- Post-rollout production observation window for print queue throughput, dual-side simulation usage telemetry, and artifact retention tuning (v0.3.2)
+- Post-rollout production observation window for print queue throughput, simulation refresh latency, asset resolution telemetry, and artifact retention tuning (v0.3.3)
 
 ## Coding & Memory Rules (always follow)
 - Explain ALL JS/TS in extreme beginner detail

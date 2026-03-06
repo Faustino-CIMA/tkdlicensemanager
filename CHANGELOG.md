@@ -15,6 +15,19 @@ All notable changes to this project are documented in this file.
 - Added authenticated API endpoints for processed and thumbnail profile images to avoid reliance on direct `/media` routing.
 - Improved container startup permission handling for media, static, and Celery beat storage paths in Docker Compose deployments.
 
+## [0.3.3] - 2026-03-06
+
+### User-facing
+- Card v2.1 precision/stability closure is complete with exact LP798 geometry parity across preview and print.
+- Multi-image card designs now resolve selected uploaded image assets reliably (including SVG) across simulation/PDF/print.
+- Designer merge fields now include `primary_license_role` and `secondary_license_role`, with locked date formatting applied consistently.
+
+### Technical
+- Enforced deterministic simulation refresh behavior and validated simulation/PDF font-size parity in regression coverage.
+- Added/extended runtime and backend regression checks for LP798 slot geometry, role/date merge context, and print pipeline stability.
+- Fixed multipart asset upload activation defaults by forcing omitted `is_active` to `true` on create and sending explicit `is_active: true` from the designer upload flow.
+- Finalized v2.1 UAT gate documentation and rollout checklist updates for release `v0.3.3`.
+
 ## [0.3.2] - 2026-03-05
 
 ### User-facing

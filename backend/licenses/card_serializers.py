@@ -343,6 +343,13 @@ class CardFontAssetSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("metadata must be an object.")
         return value
 
+    def validate(self, attrs):
+        # Multipart form posts treat missing booleans like unchecked checkboxes (False).
+        # Default new assets to active when the field is omitted.
+        if self.instance is None and "is_active" not in self.initial_data:
+            attrs["is_active"] = True
+        return attrs
+
 
 class CardImageAssetSerializer(serializers.ModelSerializer):
     # Use FileField so SVG uploads can pass through custom sanitizer.
@@ -392,6 +399,13 @@ class CardImageAssetSerializer(serializers.ModelSerializer):
         if not isinstance(value, dict):
             raise serializers.ValidationError("metadata must be an object.")
         return value
+
+    def validate(self, attrs):
+        # Multipart form posts treat missing booleans like unchecked checkboxes (False).
+        # Default new assets to active when the field is omitted.
+        if self.instance is None and "is_active" not in self.initial_data:
+            attrs["is_active"] = True
+        return attrs
 
 
 class MergeFieldSerializer(serializers.Serializer):

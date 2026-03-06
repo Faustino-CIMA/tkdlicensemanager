@@ -1216,6 +1216,8 @@ class LicenseCardDesignerV2FoundationApiTests(TestCase):
                 )
                 self.assertEqual(font_response.status_code, status.HTTP_201_CREATED)
                 self.assertEqual(CardFontAsset.objects.count(), 1)
+                self.assertTrue(bool(font_response.data.get("is_active")))
+                self.assertTrue(CardFontAsset.objects.get(id=font_response.data["id"]).is_active)
 
                 image_response = self.client.post(
                     "/api/card-image-assets/",
@@ -1227,6 +1229,23 @@ class LicenseCardDesignerV2FoundationApiTests(TestCase):
                 )
                 self.assertEqual(image_response.status_code, status.HTTP_201_CREATED)
                 self.assertEqual(CardImageAsset.objects.count(), 1)
+                self.assertTrue(bool(image_response.data.get("is_active")))
+                self.assertTrue(CardImageAsset.objects.get(id=image_response.data["id"]).is_active)
+
+                explicit_inactive_image_response = self.client.post(
+                    "/api/card-image-assets/",
+                    {
+                        "name": "Logo Explicit Inactive",
+                        "image": _build_uploaded_png("logo-explicit-inactive.png"),
+                        "is_active": "false",
+                    },
+                    format="multipart",
+                )
+                self.assertEqual(explicit_inactive_image_response.status_code, status.HTTP_201_CREATED)
+                explicit_inactive_image = CardImageAsset.objects.get(
+                    id=explicit_inactive_image_response.data["id"]
+                )
+                self.assertFalse(explicit_inactive_image.is_active)
 
                 invalid_font_response = self.client.post(
                     "/api/card-font-assets/",

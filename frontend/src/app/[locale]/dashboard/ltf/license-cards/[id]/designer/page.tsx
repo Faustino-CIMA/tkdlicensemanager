@@ -3027,6 +3027,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
     const payload: CardFontAssetUploadInput = {
       name: trimmedName || selectedFile.name,
       file: selectedFile,
+      is_active: true,
     };
     setIsUploadingFontAsset(true);
     setErrorMessage(null);
@@ -3072,6 +3073,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
     const payload: CardImageAssetUploadInput = {
       name: trimmedName || selectedFile.name,
       image: selectedFile,
+      is_active: true,
     };
     setIsUploadingImageAsset(true);
     setErrorMessage(null);

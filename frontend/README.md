@@ -49,8 +49,11 @@ License Card v2 designer capabilities:
 - Side-aware preview requests (`preview-data`, card/sheet PDF, and live simulation HTML).
 - Live print simulation toggle and manual refresh from the designer preview panel.
 - Undo/redo history stack and precision layout tools (align, duplicate, nudge with keyboard shortcuts).
-- Publish flow now protects unsaved changes by persisting draft payload before publish (v0.3.2 stabilization).
-- Asset upload flow supports reliable same-file reselect behavior in the designer asset library.
+- LP798 geometry is aligned to card `85.00x55.00` with exact placement contract for preview/print parity.
+- Publish flow protects unsaved changes by persisting draft payload before publish (v0.3.3 gate-confirmed).
+- Asset upload flow supports reliable same-file reselect behavior and active-by-default uploads.
+- Role merge fields (`primary_license_role`, `secondary_license_role`) and locked date formatting are available in simulation/PDF.
+- Simulation refresh path is deterministic and font-size parity with PDF preview is enforced (v2.1).
 
 Relevant frontend API client helpers (`src/lib/license-card-api.ts`):
 - `getCardTemplateVersionPreviewData()`
