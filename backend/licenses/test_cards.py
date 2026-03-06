@@ -1730,6 +1730,134 @@ class LicenseCardPreviewApiTests(TestCase):
                 self.assertEqual(preview_pdf_response["Content-Type"], "application/pdf")
                 self.assertTrue(preview_pdf_response.content.startswith(b"%PDF"))
 
+    def test_preview_data_explicit_image_asset_id_does_not_fallback_to_member_photo(self):
+        self.template_version.design_payload = {
+            "elements": [
+                {
+                    "id": "strict-image-asset",
+                    "type": "image",
+                    "x_mm": "10.00",
+                    "y_mm": "10.00",
+                    "width_mm": "24.00",
+                    "height_mm": "18.00",
+                    "merge_field": "member.profile_picture_processed",
+                    "source": "member.profile_picture_processed",
+                    "style": {"image_asset_id": 999999},
+                }
+            ]
+        }
+        self.template_version.save(update_fields=["design_payload", "updated_at"])
+        self.client.force_authenticate(user=self.ltf_admin)
+
+        response = self.client.post(
+            self.preview_data_url,
+            {"member_id": self.member.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        image_element = response.data["elements"][0]
+        self.assertEqual(image_element["resolved_source"], "")
+        self.assertEqual(
+            image_element["resolved_source_meta"]["resolved_via"],
+            "style.image_asset_id",
+        )
+        self.assertEqual(image_element["resolved_source_meta"]["status"], "missing")
+        self.assertEqual(image_element["resolved_source_meta"]["asset_status"], "missing")
+
+    def test_preview_and_simulation_resolve_multiple_image_assets_including_svg(self):
+        with tempfile.TemporaryDirectory() as temp_media_root:
+            with self.settings(MEDIA_ROOT=temp_media_root):
+                png_asset = CardImageAsset.objects.create(
+                    name="Preview Asset PNG",
+                    image=_build_uploaded_png("preview-asset-one.png"),
+                    created_by=self.ltf_admin,
+                )
+                svg_asset = CardImageAsset.objects.create(
+                    name="Preview Asset SVG",
+                    image=_build_uploaded_svg("preview-asset-two.svg"),
+                    created_by=self.ltf_admin,
+                )
+                self.template_version.design_payload = {
+                    "elements": [
+                        {
+                            "id": "asset-image-png",
+                            "type": "image",
+                            "x_mm": "8.00",
+                            "y_mm": "8.00",
+                            "width_mm": "20.00",
+                            "height_mm": "20.00",
+                            "source": "member.profile_picture_processed",
+                            "style": {"image_asset_id": png_asset.id},
+                        },
+                        {
+                            "id": "asset-image-svg",
+                            "type": "image",
+                            "x_mm": "34.00",
+                            "y_mm": "8.00",
+                            "width_mm": "20.00",
+                            "height_mm": "20.00",
+                            "merge_field": "member.profile_picture_processed",
+                            "style": {"image_asset_id": svg_asset.id},
+                        },
+                    ]
+                }
+                self.template_version.save(update_fields=["design_payload", "updated_at"])
+                self.client.force_authenticate(user=self.ltf_admin)
+
+                preview_data_response = self.client.post(
+                    self.preview_data_url,
+                    {"member_id": self.member.id},
+                    format="json",
+                )
+                self.assertEqual(preview_data_response.status_code, status.HTTP_200_OK)
+                elements_by_id = {
+                    element["id"]: element for element in preview_data_response.data["elements"]
+                }
+                png_element = elements_by_id["asset-image-png"]
+                svg_element = elements_by_id["asset-image-svg"]
+                for element, expected_asset_id in (
+                    (png_element, png_asset.id),
+                    (svg_element, svg_asset.id),
+                ):
+                    self.assertEqual(
+                        element["resolved_source_meta"]["resolved_via"],
+                        "style.image_asset_id",
+                    )
+                    self.assertEqual(element["resolved_source_meta"]["status"], "resolved")
+                    self.assertEqual(
+                        element["resolved_source_meta"]["image_asset_id"],
+                        expected_asset_id,
+                    )
+                    self.assertTrue(str(element["resolved_source"]).strip())
+                self.assertTrue(
+                    str(svg_element["resolved_source"]).startswith("data:image/svg+xml;base64,")
+                )
+                self.assertIn(
+                    png_asset.id,
+                    preview_data_response.data["render_metadata"]["image_assets"]["resolved_ids"],
+                )
+                self.assertIn(
+                    svg_asset.id,
+                    preview_data_response.data["render_metadata"]["image_assets"]["resolved_ids"],
+                )
+
+                preview_html_response = self.client.post(
+                    self.preview_card_html_url,
+                    {"member_id": self.member.id},
+                    format="json",
+                )
+                self.assertEqual(preview_html_response.status_code, status.HTTP_200_OK)
+                self.assertIn("data:image/svg+xml;base64,", preview_html_response.data["html"])
+
+                preview_pdf_response = self.client.post(
+                    self.preview_card_pdf_url,
+                    {"member_id": self.member.id},
+                    format="json",
+                )
+                self.assertEqual(preview_pdf_response.status_code, status.HTTP_200_OK)
+                self.assertEqual(preview_pdf_response["Content-Type"], "application/pdf")
+                self.assertTrue(preview_pdf_response.content.startswith(b"%PDF"))
+
     def test_qr_custom_mode_supports_tokenized_custom_payload(self):
         self.template_version.design_payload = {
             "schema_version": "v2",
@@ -2506,6 +2634,123 @@ class PrintJobExecutionPipelineTests(TestCase):
             render_pdf_mock.call_args.kwargs.get("base_url"),
             "http://backend.local/",
         )
+
+    def test_print_execution_resolves_multiple_image_assets_without_profile_fallback(self):
+        with tempfile.TemporaryDirectory() as temp_media_root:
+            with self.settings(MEDIA_ROOT=temp_media_root):
+                self.member_one.profile_picture_processed = _build_uploaded_png(
+                    "print-member-profile.png"
+                )
+                self.member_one.save(update_fields=["profile_picture_processed", "updated_at"])
+                png_asset = CardImageAsset.objects.create(
+                    name="Print Asset PNG",
+                    image=_build_uploaded_png("print-asset-one.png"),
+                    created_by=self.ltf_admin,
+                )
+                svg_asset = CardImageAsset.objects.create(
+                    name="Print Asset SVG",
+                    image=_build_uploaded_svg("print-asset-two.svg"),
+                    created_by=self.ltf_admin,
+                )
+                template_version = self._create_published_template_version(
+                    design_payload={
+                        "elements": [
+                            {
+                                "id": "print-asset-png",
+                                "type": "image",
+                                "x_mm": "4.00",
+                                "y_mm": "4.00",
+                                "width_mm": "20.00",
+                                "height_mm": "20.00",
+                                "source": "member.profile_picture_processed",
+                                "style": {"image_asset_id": png_asset.id},
+                            },
+                            {
+                                "id": "print-asset-svg",
+                                "type": "image",
+                                "x_mm": "28.00",
+                                "y_mm": "4.00",
+                                "width_mm": "20.00",
+                                "height_mm": "20.00",
+                                "merge_field": "member.profile_picture_processed",
+                                "style": {"image_asset_id": svg_asset.id},
+                            },
+                        ]
+                    },
+                    paper_profile=None,
+                )
+                created_job = self._create_print_job(
+                    user=self.ltf_admin,
+                    payload={
+                        "club": self.club.id,
+                        "template_version": template_version.id,
+                        "member_ids": [self.member_one.id],
+                        "side": PrintJob.Side.FRONT,
+                    },
+                )
+                job_id = created_job["id"]
+                captured_preview_payloads: list[dict] = []
+
+                import licenses.print_jobs as print_jobs_module
+
+                original_build_preview_data = print_jobs_module.build_preview_data
+
+                def _capture_preview_payload(*args, **kwargs):
+                    payload = original_build_preview_data(*args, **kwargs)
+                    captured_preview_payloads.append(payload)
+                    return payload
+
+                self.client.force_authenticate(user=self.ltf_admin)
+                with patch(
+                    "licenses.print_jobs.build_preview_data",
+                    side_effect=_capture_preview_payload,
+                ):
+                    with patch(
+                        "licenses.print_jobs.render_pdf_bytes_from_html",
+                        return_value=b"%PDF-1.4\n",
+                    ) as render_pdf_mock:
+                        execute_response = self.client.post(
+                            f"/api/print-jobs/{job_id}/execute/",
+                            {},
+                            format="json",
+                        )
+                self.assertIn(
+                    execute_response.status_code,
+                    {status.HTTP_200_OK, status.HTTP_202_ACCEPTED},
+                )
+                self.assertTrue(captured_preview_payloads)
+
+                image_elements = {
+                    element["id"]: element
+                    for element in captured_preview_payloads[0]["elements"]
+                    if element["type"] == "image"
+                }
+                self.assertIn("print-asset-png", image_elements)
+                self.assertIn("print-asset-svg", image_elements)
+                for element_id, expected_asset_id in (
+                    ("print-asset-png", png_asset.id),
+                    ("print-asset-svg", svg_asset.id),
+                ):
+                    element = image_elements[element_id]
+                    self.assertEqual(
+                        element["resolved_source_meta"]["resolved_via"],
+                        "style.image_asset_id",
+                    )
+                    self.assertEqual(element["resolved_source_meta"]["status"], "resolved")
+                    self.assertEqual(
+                        element["resolved_source_meta"]["image_asset_id"],
+                        expected_asset_id,
+                    )
+                    self.assertTrue(str(element["resolved_source"]).strip())
+                self.assertTrue(
+                    str(image_elements["print-asset-svg"]["resolved_source"]).startswith(
+                        "data:image/svg+xml;base64,"
+                    )
+                )
+
+                rendered_html = str(render_pdf_mock.call_args.args[0])
+                self.assertIn("data:image/svg+xml;base64,", rendered_html)
+                self.assertNotIn(">No image<", rendered_html)
 
     def test_pdf_endpoint_returns_404_when_artifact_file_missing(self):
         with tempfile.TemporaryDirectory() as temp_media_root:

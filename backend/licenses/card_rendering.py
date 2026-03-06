@@ -542,7 +542,6 @@ def _resolve_image_source(
     request: HttpRequest | None,
     asset_base_url: str | None,
 ) -> tuple[str, dict[str, Any]]:
-    asset_resolution_meta: dict[str, Any] = {}
     style = element.get("style", {})
     if style is None:
         style = {}
@@ -554,11 +553,21 @@ def _resolve_image_source(
             parsed_image_asset_id = int(str(image_asset_id))
         except (TypeError, ValueError):
             parsed_image_asset_id = -1
-        asset_resolution_meta = {
-            "image_asset_id": parsed_image_asset_id if parsed_image_asset_id > 0 else None,
-            "asset_status": "missing",
-        }
+        if parsed_image_asset_id <= 0:
+            return "", {
+                "image_asset_id": None,
+                "resolved_via": "style.image_asset_id",
+                "status": "invalid",
+                "asset_status": "invalid",
+            }
         resolved_image_asset = image_assets.get(parsed_image_asset_id)
+        if resolved_image_asset is None:
+            return "", {
+                "image_asset_id": parsed_image_asset_id,
+                "resolved_via": "style.image_asset_id",
+                "status": "missing",
+                "asset_status": "missing",
+            }
         if resolved_image_asset and resolved_image_asset.get("usable"):
             preferred_source = (
                 str(resolved_image_asset.get("data_uri") or "").strip()
@@ -569,7 +578,14 @@ def _resolve_image_source(
                     "image_asset_id": parsed_image_asset_id,
                     "resolved_via": "style.image_asset_id",
                     "status": "resolved",
+                    "asset_status": "resolved",
                 }
+        return "", {
+            "image_asset_id": parsed_image_asset_id,
+            "resolved_via": "style.image_asset_id",
+            "status": "unusable",
+            "asset_status": "unusable",
+        }
 
     merge_field = str(element.get("merge_field") or "").strip()
     if merge_field == "member.profile_picture_processed":
@@ -577,7 +593,6 @@ def _resolve_image_source(
             merge_field, context
         )
         return member_source, {
-            **asset_resolution_meta,
             "resolved_via": "member.profile_picture_processed",
             "status": "resolved",
         }
@@ -587,7 +602,6 @@ def _resolve_image_source(
             request,
             asset_base_url=asset_base_url,
         ), {
-            **asset_resolution_meta,
             "resolved_via": "merge_field",
             "status": "resolved",
         }
@@ -598,14 +612,12 @@ def _resolve_image_source(
             "member.profile_picture_processed", ""
         )
         return member_source, {
-            **asset_resolution_meta,
             "resolved_via": "member.profile_picture_processed",
             "status": "resolved",
         }
     if not source:
         member_source = _member_photo_data_uri(member)
         return member_source, {
-            **asset_resolution_meta,
             "resolved_via": "member.profile_picture_processed",
             "status": "resolved" if member_source else "empty",
         }
@@ -621,7 +633,6 @@ def _resolve_image_source(
                 source, context
             )
             return resolved_token_source, {
-                **asset_resolution_meta,
                 "resolved_via": "tokenized_source",
                 "status": "resolved",
             }
@@ -630,7 +641,6 @@ def _resolve_image_source(
             request,
             asset_base_url=asset_base_url,
         ), {
-            **asset_resolution_meta,
             "resolved_via": "tokenized_source",
             "status": "resolved",
         }
@@ -639,7 +649,6 @@ def _resolve_image_source(
         if source == "member.profile_picture_processed":
             resolved_source = _member_photo_data_uri(member) or context.get(source, "")
             return resolved_source, {
-                **asset_resolution_meta,
                 "resolved_via": "merge_source",
                 "status": "resolved",
             }
@@ -648,7 +657,6 @@ def _resolve_image_source(
             request,
             asset_base_url=asset_base_url,
         ), {
-            **asset_resolution_meta,
             "resolved_via": "merge_source",
             "status": "resolved",
         }
@@ -658,7 +666,6 @@ def _resolve_image_source(
         request,
         asset_base_url=asset_base_url,
     ), {
-        **asset_resolution_meta,
         "resolved_via": "source",
         "status": "resolved",
     }

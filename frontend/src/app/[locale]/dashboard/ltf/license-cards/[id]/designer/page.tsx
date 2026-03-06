@@ -137,6 +137,45 @@ type ResizeState = {
   };
 } | null;
 
+type SheetGeometryProfile = {
+  source: "preview-data" | "paper-profile";
+  sheet_width_mm: number;
+  sheet_height_mm: number;
+  card_width_mm: number;
+  card_height_mm: number;
+  margin_top_mm: number;
+  margin_bottom_mm: number;
+  margin_left_mm: number;
+  margin_right_mm: number;
+  horizontal_gap_mm: number;
+  vertical_gap_mm: number;
+  card_corner_radius_mm: number;
+  rows: number;
+  columns: number;
+  slot_count: number;
+};
+
+type SheetGeometrySlot = {
+  slot_index: number;
+  row: number;
+  column: number;
+  x_mm: number;
+  y_mm: number;
+  width_mm: number;
+  height_mm: number;
+  x_end_mm: number;
+  y_end_mm: number;
+  card_corner_radius_mm: number;
+  selected: boolean;
+};
+
+type SheetGeometryParityIssue = {
+  slot_index: number;
+  field: string;
+  expected: number;
+  actual: number;
+};
+
 const ALLOWED_ELEMENT_TYPES: CardElementType[] = [
   "text",
   "image",
@@ -153,6 +192,21 @@ const HISTORY_STACK_LIMIT = 250;
 const DEFAULT_GRID_SIZE_MM = "1.00";
 const DEFAULT_SNAP_THRESHOLD_MM = "1.20";
 const RULER_SIZE_PX = 24;
+const CONTRACT_CARD_WIDTH_MM = 85.0;
+const CONTRACT_CARD_HEIGHT_MM = 55.0;
+const LP798_SHEET_WIDTH_MM = 210.0;
+const LP798_SHEET_HEIGHT_MM = 297.0;
+const LP798_MARGIN_TOP_MM = 10.0;
+const LP798_MARGIN_BOTTOM_MM = 12.0;
+const LP798_MARGIN_LEFT_MM = 15.0;
+const LP798_MARGIN_RIGHT_MM = 15.0;
+const LP798_HORIZONTAL_GAP_MM = 10.0;
+const LP798_VERTICAL_GAP_MM = 0.0;
+const LP798_COLUMNS = 2;
+const LP798_ROWS = 5;
+const LP798_SLOT_COUNT = 10;
+const SHEET_PREVIEW_MAX_WIDTH_PX = 620;
+const SHEET_PREVIEW_MAX_HEIGHT_PX = 720;
 const TEXT_ALIGN_OPTIONS = ["left", "center", "right", "justify"] as const;
 const TEXT_TRANSFORM_OPTIONS = ["none", "uppercase", "lowercase", "capitalize"] as const;
 const TEXT_DECORATION_OPTIONS = ["none", "underline", "line-through"] as const;
@@ -217,6 +271,258 @@ function normalizeSlotSelection(selectedSlots: number[], slotCount: number) {
     }
   }
   return Array.from(unique.values()).sort((a, b) => a - b);
+}
+
+function toFiniteInteger(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.trunc(parsed);
+}
+
+function buildSheetGeometryProfile(
+  previewPaperProfile: CardPreviewDataResponse["paper_profile"] | null | undefined,
+  fallbackPaperProfile: PaperProfile | null
+): SheetGeometryProfile | null {
+  if (!previewPaperProfile && !fallbackPaperProfile) {
+    return null;
+  }
+
+  const fallbackCardWidthMm = toFiniteNumber(
+    fallbackPaperProfile?.card_width_mm,
+    CONTRACT_CARD_WIDTH_MM
+  );
+  const fallbackCardHeightMm = toFiniteNumber(
+    fallbackPaperProfile?.card_height_mm,
+    CONTRACT_CARD_HEIGHT_MM
+  );
+  const fallbackSheetWidthMm = toFiniteNumber(
+    fallbackPaperProfile?.sheet_width_mm,
+    LP798_SHEET_WIDTH_MM
+  );
+  const fallbackSheetHeightMm = toFiniteNumber(
+    fallbackPaperProfile?.sheet_height_mm,
+    LP798_SHEET_HEIGHT_MM
+  );
+  const fallbackMarginTopMm = toFiniteNumber(
+    fallbackPaperProfile?.margin_top_mm,
+    LP798_MARGIN_TOP_MM
+  );
+  const fallbackMarginBottomMm = toFiniteNumber(
+    fallbackPaperProfile?.margin_bottom_mm,
+    LP798_MARGIN_BOTTOM_MM
+  );
+  const fallbackMarginLeftMm = toFiniteNumber(
+    fallbackPaperProfile?.margin_left_mm,
+    LP798_MARGIN_LEFT_MM
+  );
+  const fallbackMarginRightMm = toFiniteNumber(
+    fallbackPaperProfile?.margin_right_mm,
+    LP798_MARGIN_RIGHT_MM
+  );
+  const fallbackHorizontalGapMm = toFiniteNumber(
+    fallbackPaperProfile?.horizontal_gap_mm,
+    LP798_HORIZONTAL_GAP_MM
+  );
+  const fallbackVerticalGapMm = toFiniteNumber(
+    fallbackPaperProfile?.vertical_gap_mm,
+    LP798_VERTICAL_GAP_MM
+  );
+  const fallbackRows = Math.max(1, toFiniteInteger(fallbackPaperProfile?.rows, LP798_ROWS));
+  const fallbackColumns = Math.max(
+    1,
+    toFiniteInteger(fallbackPaperProfile?.columns, LP798_COLUMNS)
+  );
+  const fallbackSlotCount = Math.max(
+    1,
+    toFiniteInteger(fallbackPaperProfile?.slot_count, LP798_SLOT_COUNT)
+  );
+  const fallbackCornerRadiusMm = Math.max(
+    0,
+    toFiniteNumber(fallbackPaperProfile?.card_corner_radius_mm, 0)
+  );
+
+  if (!previewPaperProfile) {
+    return {
+      source: "paper-profile",
+      sheet_width_mm: roundMm(fallbackSheetWidthMm),
+      sheet_height_mm: roundMm(fallbackSheetHeightMm),
+      card_width_mm: roundMm(fallbackCardWidthMm),
+      card_height_mm: roundMm(fallbackCardHeightMm),
+      margin_top_mm: roundMm(fallbackMarginTopMm),
+      margin_bottom_mm: roundMm(fallbackMarginBottomMm),
+      margin_left_mm: roundMm(fallbackMarginLeftMm),
+      margin_right_mm: roundMm(fallbackMarginRightMm),
+      horizontal_gap_mm: roundMm(fallbackHorizontalGapMm),
+      vertical_gap_mm: roundMm(fallbackVerticalGapMm),
+      card_corner_radius_mm: roundMm(fallbackCornerRadiusMm),
+      rows: fallbackRows,
+      columns: fallbackColumns,
+      slot_count: fallbackSlotCount,
+    };
+  }
+
+  return {
+    source: "preview-data",
+    sheet_width_mm: roundMm(toFiniteNumber(previewPaperProfile.sheet_width_mm, fallbackSheetWidthMm)),
+    sheet_height_mm: roundMm(
+      toFiniteNumber(previewPaperProfile.sheet_height_mm, fallbackSheetHeightMm)
+    ),
+    card_width_mm: roundMm(toFiniteNumber(previewPaperProfile.card_width_mm, fallbackCardWidthMm)),
+    card_height_mm: roundMm(
+      toFiniteNumber(previewPaperProfile.card_height_mm, fallbackCardHeightMm)
+    ),
+    margin_top_mm: roundMm(
+      toFiniteNumber(previewPaperProfile.margin_top_mm, fallbackMarginTopMm)
+    ),
+    margin_bottom_mm: roundMm(
+      toFiniteNumber(previewPaperProfile.margin_bottom_mm, fallbackMarginBottomMm)
+    ),
+    margin_left_mm: roundMm(
+      toFiniteNumber(previewPaperProfile.margin_left_mm, fallbackMarginLeftMm)
+    ),
+    margin_right_mm: roundMm(
+      toFiniteNumber(previewPaperProfile.margin_right_mm, fallbackMarginRightMm)
+    ),
+    horizontal_gap_mm: roundMm(
+      toFiniteNumber(previewPaperProfile.horizontal_gap_mm, fallbackHorizontalGapMm)
+    ),
+    vertical_gap_mm: roundMm(
+      toFiniteNumber(previewPaperProfile.vertical_gap_mm, fallbackVerticalGapMm)
+    ),
+    card_corner_radius_mm: roundMm(
+      Math.max(0, toFiniteNumber(previewPaperProfile.card_corner_radius_mm, fallbackCornerRadiusMm))
+    ),
+    rows: Math.max(1, toFiniteInteger(previewPaperProfile.rows, fallbackRows)),
+    columns: Math.max(1, toFiniteInteger(previewPaperProfile.columns, fallbackColumns)),
+    slot_count: Math.max(1, toFiniteInteger(previewPaperProfile.slot_count, fallbackSlotCount)),
+  };
+}
+
+function buildSheetSlotsFromProfile(
+  profile: SheetGeometryProfile,
+  selectedSlots: number[]
+): SheetGeometrySlot[] {
+  const normalizedSelectedSlots = normalizeSlotSelection(selectedSlots, profile.slot_count);
+  const selectedSet = new Set(normalizedSelectedSlots);
+  const slots: SheetGeometrySlot[] = [];
+
+  for (let slotIndex = 0; slotIndex < profile.slot_count; slotIndex += 1) {
+    const row = Math.floor(slotIndex / profile.columns);
+    const column = slotIndex % profile.columns;
+    const xMm = roundMm(
+      profile.margin_left_mm + column * (profile.card_width_mm + profile.horizontal_gap_mm)
+    );
+    const yMm = roundMm(
+      profile.margin_top_mm + row * (profile.card_height_mm + profile.vertical_gap_mm)
+    );
+    const widthMm = roundMm(profile.card_width_mm);
+    const heightMm = roundMm(profile.card_height_mm);
+
+    slots.push({
+      slot_index: slotIndex,
+      row,
+      column,
+      x_mm: xMm,
+      y_mm: yMm,
+      width_mm: widthMm,
+      height_mm: heightMm,
+      x_end_mm: roundMm(xMm + widthMm),
+      y_end_mm: roundMm(yMm + heightMm),
+      card_corner_radius_mm: roundMm(profile.card_corner_radius_mm),
+      selected: selectedSet.has(slotIndex),
+    });
+  }
+
+  return slots;
+}
+
+function normalizePreviewSheetSlot(
+  slot: CardPreviewDataResponse["slots"][number]
+): SheetGeometrySlot {
+  const xMm = roundMm(toFiniteNumber(slot.x_mm, 0));
+  const yMm = roundMm(toFiniteNumber(slot.y_mm, 0));
+  const widthMm = roundMm(Math.max(0, toFiniteNumber(slot.width_mm, CONTRACT_CARD_WIDTH_MM)));
+  const heightMm = roundMm(Math.max(0, toFiniteNumber(slot.height_mm, CONTRACT_CARD_HEIGHT_MM)));
+  return {
+    slot_index: slot.slot_index,
+    row: slot.row,
+    column: slot.column,
+    x_mm: xMm,
+    y_mm: yMm,
+    width_mm: widthMm,
+    height_mm: heightMm,
+    x_end_mm: roundMm(toFiniteNumber(slot.x_end_mm, xMm + widthMm)),
+    y_end_mm: roundMm(toFiniteNumber(slot.y_end_mm, yMm + heightMm)),
+    card_corner_radius_mm: roundMm(Math.max(0, toFiniteNumber(slot.card_corner_radius_mm, 0))),
+    selected: Boolean(slot.selected),
+  };
+}
+
+function compareSheetSlotGeometry(
+  backendSlots: SheetGeometrySlot[],
+  frontendSlots: SheetGeometrySlot[]
+): SheetGeometryParityIssue[] {
+  const issues: SheetGeometryParityIssue[] = [];
+  const frontendSlotByIndex = new Map(frontendSlots.map((slot) => [slot.slot_index, slot]));
+  const mmFields: Array<
+    keyof Pick<SheetGeometrySlot, "x_mm" | "y_mm" | "width_mm" | "height_mm" | "x_end_mm" | "y_end_mm">
+  > = ["x_mm", "y_mm", "width_mm", "height_mm", "x_end_mm", "y_end_mm"];
+
+  for (const backendSlot of backendSlots) {
+    const frontendSlot = frontendSlotByIndex.get(backendSlot.slot_index);
+    if (!frontendSlot) {
+      issues.push({
+        slot_index: backendSlot.slot_index,
+        field: "slot_missing",
+        expected: 1,
+        actual: 0,
+      });
+      continue;
+    }
+
+    for (const field of mmFields) {
+      const expectedValue = roundMm(backendSlot[field]);
+      const actualValue = roundMm(frontendSlot[field]);
+      if (Math.abs(expectedValue - actualValue) > 0.01) {
+        issues.push({
+          slot_index: backendSlot.slot_index,
+          field,
+          expected: expectedValue,
+          actual: actualValue,
+        });
+      }
+    }
+
+    if (backendSlot.row !== frontendSlot.row) {
+      issues.push({
+        slot_index: backendSlot.slot_index,
+        field: "row",
+        expected: backendSlot.row,
+        actual: frontendSlot.row,
+      });
+    }
+    if (backendSlot.column !== frontendSlot.column) {
+      issues.push({
+        slot_index: backendSlot.slot_index,
+        field: "column",
+        expected: backendSlot.column,
+        actual: frontendSlot.column,
+      });
+    }
+  }
+
+  if (backendSlots.length !== frontendSlots.length) {
+    issues.push({
+      slot_index: -1,
+      field: "slot_count",
+      expected: backendSlots.length,
+      actual: frontendSlots.length,
+    });
+  }
+
+  return issues;
 }
 
 function parsePreviewSampleData(sampleDataInput: string): Record<string, unknown> {
@@ -1047,8 +1353,8 @@ export default function LtfAdminLicenseCardDesignerPage() {
 
   const effectivePreviewPaperProfile = previewPaperProfileOverride ?? selectedPaperProfile;
 
-  const canvasWidthMm = toFiniteNumber(selectedCardFormat?.width_mm, 85.6);
-  const canvasHeightMm = toFiniteNumber(selectedCardFormat?.height_mm, 53.98);
+  const canvasWidthMm = CONTRACT_CARD_WIDTH_MM;
+  const canvasHeightMm = CONTRACT_CARD_HEIGHT_MM;
   const canvasScale = useMemo(() => {
     const widthScale = 760 / Math.max(canvasWidthMm, 1);
     const heightScale = 520 / Math.max(canvasHeightMm, 1);
@@ -1089,6 +1395,105 @@ export default function LtfAdminLicenseCardDesignerPage() {
     }
     return 1;
   }, [effectivePreviewPaperProfile, previewData?.paper_profile?.columns]);
+
+  const effectivePreviewSelectedSlots = useMemo(() => {
+    return normalizeSlotSelection(previewSelectedSlots, effectiveSlotCount);
+  }, [effectiveSlotCount, previewSelectedSlots]);
+
+  const sheetGeometryProfile = useMemo(
+    () => buildSheetGeometryProfile(previewData?.paper_profile, effectivePreviewPaperProfile),
+    [effectivePreviewPaperProfile, previewData?.paper_profile]
+  );
+
+  const calculatedSheetSlots = useMemo(() => {
+    if (!sheetGeometryProfile) {
+      return [];
+    }
+    return buildSheetSlotsFromProfile(sheetGeometryProfile, effectivePreviewSelectedSlots);
+  }, [effectivePreviewSelectedSlots, sheetGeometryProfile]);
+
+  const backendSheetSlots = useMemo(() => {
+    if (!Array.isArray(previewData?.slots) || previewData.slots.length === 0) {
+      return [];
+    }
+    return previewData.slots.map((slot) => normalizePreviewSheetSlot(slot));
+  }, [previewData?.slots]);
+
+  const sheetPreviewSlots = useMemo(() => {
+    if (backendSheetSlots.length > 0) {
+      return backendSheetSlots;
+    }
+    return calculatedSheetSlots;
+  }, [backendSheetSlots, calculatedSheetSlots]);
+
+  const sheetPreviewScale = useMemo(() => {
+    if (!sheetGeometryProfile) {
+      return 1;
+    }
+    const widthScale = SHEET_PREVIEW_MAX_WIDTH_PX / Math.max(sheetGeometryProfile.sheet_width_mm, 1);
+    const heightScale =
+      SHEET_PREVIEW_MAX_HEIGHT_PX / Math.max(sheetGeometryProfile.sheet_height_mm, 1);
+    return clamp(Math.min(widthScale, heightScale), 1, 3.5);
+  }, [sheetGeometryProfile]);
+
+  const sheetPreviewWidthPx = (sheetGeometryProfile?.sheet_width_mm || 0) * sheetPreviewScale;
+  const sheetPreviewHeightPx = (sheetGeometryProfile?.sheet_height_mm || 0) * sheetPreviewScale;
+
+  const sheetRulerMarksX = useMemo(() => {
+    if (!sheetGeometryProfile) {
+      return [];
+    }
+    return Array.from(
+      { length: Math.floor(sheetGeometryProfile.sheet_width_mm / 10) + 1 },
+      (_, index) => index * 10
+    );
+  }, [sheetGeometryProfile]);
+
+  const sheetRulerMarksY = useMemo(() => {
+    if (!sheetGeometryProfile) {
+      return [];
+    }
+    return Array.from(
+      { length: Math.floor(sheetGeometryProfile.sheet_height_mm / 10) + 1 },
+      (_, index) => index * 10
+    );
+  }, [sheetGeometryProfile]);
+
+  const sheetLayoutMetadata = useMemo(() => {
+    if (previewData?.layout_metadata) {
+      const maxX = toFiniteNumber(previewData.layout_metadata.max_x_mm, 0);
+      const maxY = toFiniteNumber(previewData.layout_metadata.max_y_mm, 0);
+      const sheetWidth = toFiniteNumber(previewData.layout_metadata.sheet_width_mm, 0);
+      const sheetHeight = toFiniteNumber(previewData.layout_metadata.sheet_height_mm, 0);
+      return {
+        max_x_mm: roundMm(maxX),
+        max_y_mm: roundMm(maxY),
+        sheet_width_mm: roundMm(sheetWidth),
+        sheet_height_mm: roundMm(sheetHeight),
+        within_sheet_bounds: Boolean(previewData.layout_metadata.within_sheet_bounds),
+      };
+    }
+    if (!sheetGeometryProfile) {
+      return null;
+    }
+    const maxX = sheetPreviewSlots.reduce((maxValue, slot) => Math.max(maxValue, slot.x_end_mm), 0);
+    const maxY = sheetPreviewSlots.reduce((maxValue, slot) => Math.max(maxValue, slot.y_end_mm), 0);
+    return {
+      max_x_mm: roundMm(maxX),
+      max_y_mm: roundMm(maxY),
+      sheet_width_mm: roundMm(sheetGeometryProfile.sheet_width_mm),
+      sheet_height_mm: roundMm(sheetGeometryProfile.sheet_height_mm),
+      within_sheet_bounds:
+        maxX <= sheetGeometryProfile.sheet_width_mm && maxY <= sheetGeometryProfile.sheet_height_mm,
+    };
+  }, [previewData?.layout_metadata, sheetGeometryProfile, sheetPreviewSlots]);
+
+  const sheetGeometryParityIssues = useMemo(() => {
+    if (backendSheetSlots.length === 0 || calculatedSheetSlots.length === 0) {
+      return [];
+    }
+    return compareSheetSlotGeometry(backendSheetSlots, calculatedSheetSlots);
+  }, [backendSheetSlots, calculatedSheetSlots]);
 
   const allElementIds = useMemo(() => {
     return new Set(designPayload.elements.map((element) => element.id));
@@ -1138,6 +1543,18 @@ export default function LtfAdminLicenseCardDesignerPage() {
     () => parseOptionalInt(selectedElementStyle.image_asset_id),
     [selectedElementStyle]
   );
+  const selectedImageAsset = useMemo(() => {
+    if (!selectedImageAssetId || selectedImageAssetId <= 0) {
+      return null;
+    }
+    return imageAssets.find((asset) => asset.id === selectedImageAssetId) ?? null;
+  }, [imageAssets, selectedImageAssetId]);
+  const selectedImageAssetIsSvg = useMemo(() => {
+    if (!selectedImageAsset) {
+      return false;
+    }
+    return String(selectedImageAsset.image || "").trim().toLowerCase().endsWith(".svg");
+  }, [selectedImageAsset]);
 
   const selectedQrMergeFields = useMemo(() => {
     const rawValue = selectedElementStyle.merge_fields;
@@ -1987,6 +2404,31 @@ export default function LtfAdminLicenseCardDesignerPage() {
           ...element,
           merge_field: mergeField,
           source: undefined,
+          style: Object.keys(nextStyle).length > 0 ? nextStyle : undefined,
+        };
+      });
+    },
+    [updateSelectedElement]
+  );
+
+  const applySelectedImageAsset = useCallback(
+    (assetId: number | null) => {
+      updateSelectedElement((element) => {
+        if (element.type !== "image") {
+          return element;
+        }
+        const nextStyle = normalizeElementStyle(element);
+        const hasAssetSelection =
+          typeof assetId === "number" && Number.isFinite(assetId) && assetId > 0;
+        if (hasAssetSelection) {
+          nextStyle.image_asset_id = Math.trunc(assetId);
+        } else {
+          delete nextStyle.image_asset_id;
+        }
+        return {
+          ...element,
+          merge_field: hasAssetSelection ? undefined : element.merge_field,
+          source: hasAssetSelection ? undefined : element.source,
           style: Object.keys(nextStyle).length > 0 ? nextStyle : undefined,
         };
       });
@@ -3299,6 +3741,22 @@ export default function LtfAdminLicenseCardDesignerPage() {
     () => Array.from({ length: Math.floor(canvasHeightMm) + 1 }, (_, index) => index),
     [canvasHeightMm]
   );
+  const sheetGeometrySourceLabel = sheetGeometryProfile
+    ? sheetGeometryProfile.source === "preview-data"
+      ? t("licenseCardPreviewSheetGeometrySourceBackend")
+      : t("licenseCardPreviewSheetGeometrySourceFallback")
+    : null;
+  const sheetGeometryFormulaX = sheetGeometryProfile
+    ? `x = ${toMmString(sheetGeometryProfile.margin_left_mm)} + col * (${toMmString(
+        sheetGeometryProfile.card_width_mm
+      )} + ${toMmString(sheetGeometryProfile.horizontal_gap_mm)})`
+    : "";
+  const sheetGeometryFormulaY = sheetGeometryProfile
+    ? `y = ${toMmString(sheetGeometryProfile.margin_top_mm)} + row * (${toMmString(
+        sheetGeometryProfile.card_height_mm
+      )} + ${toMmString(sheetGeometryProfile.vertical_gap_mm)})`
+    : "";
+  const sheetGeometryParityPreview = sheetGeometryParityIssues.slice(0, 6);
 
   const pageTitle = template
     ? t("licenseCardDesignerTitle", { name: template.name })
@@ -3975,6 +4433,178 @@ export default function LtfAdminLicenseCardDesignerPage() {
                 })}
               </p>
             </div>
+            {sheetGeometryProfile ? (
+              <div className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-zinc-900">
+                    {t("licenseCardPreviewSheetGeometryTitle")}
+                  </h3>
+                  <span className="rounded-full border border-zinc-300 bg-white px-2 py-0.5 text-[11px] text-zinc-700">
+                    {t("licenseCardPreviewSheetGeometrySourceLabel", {
+                      source: sheetGeometrySourceLabel || "-",
+                    })}
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-600">
+                  {t("licenseCardPreviewSheetGeometryBoundsLabel", {
+                    sheetWidth: toMmString(sheetLayoutMetadata?.sheet_width_mm || 0),
+                    sheetHeight: toMmString(sheetLayoutMetadata?.sheet_height_mm || 0),
+                    maxX: toMmString(sheetLayoutMetadata?.max_x_mm || 0),
+                    maxY: toMmString(sheetLayoutMetadata?.max_y_mm || 0),
+                  })}
+                </p>
+                <div className="space-y-1 rounded-md border border-zinc-200 bg-white px-2 py-2">
+                  <p className="font-mono text-[11px] text-zinc-700">{sheetGeometryFormulaX}</p>
+                  <p className="font-mono text-[11px] text-zinc-700">{sheetGeometryFormulaY}</p>
+                </div>
+                <p
+                  className={`text-xs ${
+                    sheetGeometryParityIssues.length === 0 ? "text-emerald-700" : "text-amber-700"
+                  }`}
+                >
+                  {sheetGeometryParityIssues.length === 0
+                    ? t("licenseCardPreviewSheetGeometryParityOk")
+                    : t("licenseCardPreviewSheetGeometryParityMismatch", {
+                        count: sheetGeometryParityIssues.length,
+                      })}
+                </p>
+                <div className="overflow-auto rounded-xl border border-zinc-200 bg-white p-3">
+                  <div
+                    className="relative mx-auto"
+                    style={{
+                      width: sheetPreviewWidthPx + RULER_SIZE_PX,
+                      height: sheetPreviewHeightPx + RULER_SIZE_PX,
+                    }}
+                  >
+                    <div
+                      className="pointer-events-none absolute left-0 top-0 border-b border-r border-zinc-300 bg-zinc-100"
+                      style={{ width: RULER_SIZE_PX, height: RULER_SIZE_PX }}
+                    />
+                    <div
+                      className="pointer-events-none absolute top-0 border-b border-zinc-300 bg-zinc-100"
+                      style={{
+                        left: RULER_SIZE_PX,
+                        width: sheetPreviewWidthPx,
+                        height: RULER_SIZE_PX,
+                      }}
+                    >
+                      {sheetRulerMarksX.map((mark) => (
+                        <div
+                          key={`sheet-ruler-x-${mark}`}
+                          className="absolute bottom-0"
+                          style={{ left: mark * sheetPreviewScale }}
+                        >
+                          <div className="h-2 w-px bg-zinc-500" />
+                          <span className="absolute -top-4 left-1 text-[9px] text-zinc-500">
+                            {mark}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div
+                      className="pointer-events-none absolute left-0 border-r border-zinc-300 bg-zinc-100"
+                      style={{
+                        top: RULER_SIZE_PX,
+                        width: RULER_SIZE_PX,
+                        height: sheetPreviewHeightPx,
+                      }}
+                    >
+                      {sheetRulerMarksY.map((mark) => (
+                        <div
+                          key={`sheet-ruler-y-${mark}`}
+                          className="absolute right-0"
+                          style={{ top: mark * sheetPreviewScale }}
+                        >
+                          <div className="h-px w-2 bg-zinc-500" />
+                          <span className="absolute -left-6 -top-1 text-[9px] text-zinc-500">
+                            {mark}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div
+                      className="relative border border-zinc-300 bg-zinc-50"
+                      style={{
+                        width: sheetPreviewWidthPx,
+                        height: sheetPreviewHeightPx,
+                        marginLeft: RULER_SIZE_PX,
+                        marginTop: RULER_SIZE_PX,
+                      }}
+                    >
+                      {sheetPreviewSlots.map((slot) => {
+                        const slotLeftPx = slot.x_mm * sheetPreviewScale;
+                        const slotTopPx = slot.y_mm * sheetPreviewScale;
+                        const slotWidthPx = slot.width_mm * sheetPreviewScale;
+                        const slotHeightPx = slot.height_mm * sheetPreviewScale;
+                        const slotBleedPx = Math.max(0, bleedGuideMm * sheetPreviewScale);
+                        const slotSafeAreaPx = Math.max(0, safeAreaGuideMm * sheetPreviewScale);
+                        return (
+                          <div
+                            key={`sheet-slot-${slot.slot_index}`}
+                            className="absolute overflow-hidden"
+                            style={{
+                              left: slotLeftPx,
+                              top: slotTopPx,
+                              width: slotWidthPx,
+                              height: slotHeightPx,
+                              borderRadius: slot.card_corner_radius_mm * sheetPreviewScale,
+                              border: `1px dashed ${slot.selected ? "#2563eb" : "#94a3b8"}`,
+                              backgroundColor: slot.selected
+                                ? "rgba(37, 99, 235, 0.12)"
+                                : "rgba(148, 163, 184, 0.10)",
+                            }}
+                          >
+                            {slot.selected && showBleedGuide ? (
+                              <div
+                                className="pointer-events-none absolute inset-0"
+                                style={{
+                                  boxShadow: `inset 0 0 0 ${slotBleedPx}px rgba(244, 63, 94, 0.20)`,
+                                }}
+                              />
+                            ) : null}
+                            {slot.selected && showSafeAreaGuide ? (
+                              <div
+                                className="pointer-events-none absolute border border-dashed border-emerald-600/80"
+                                style={{
+                                  left: slotSafeAreaPx,
+                                  top: slotSafeAreaPx,
+                                  width: Math.max(slotWidthPx - slotSafeAreaPx * 2, 0),
+                                  height: Math.max(slotHeightPx - slotSafeAreaPx * 2, 0),
+                                }}
+                              />
+                            ) : null}
+                            <div className="pointer-events-none absolute left-1 top-1 rounded bg-white/90 px-1 py-0.5 font-mono text-[9px] text-zinc-700">
+                              #{slot.slot_index}
+                            </div>
+                            <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-white/90 px-1 py-0.5 font-mono text-[9px] text-zinc-600">
+                              x:{toMmString(slot.x_mm)} y:{toMmString(slot.y_mm)}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+                {sheetGeometryParityPreview.length > 0 ? (
+                  <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-2 text-[11px] text-amber-700">
+                    {sheetGeometryParityPreview.map((issue, issueIndex) => (
+                      <p key={`sheet-geometry-issue-${issueIndex}`}>
+                        {t("licenseCardPreviewSheetGeometryParityIssueLabel", {
+                          slot: issue.slot_index >= 0 ? String(issue.slot_index) : "-",
+                          field: issue.field,
+                          expected: toMmString(issue.expected),
+                          actual: toMmString(issue.actual),
+                        })}
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-xs text-zinc-500">
+                {t("licenseCardPreviewSheetGeometryNoProfile")}
+              </p>
+            )}
             <div className="grid gap-4 lg:grid-cols-3">
               <div className="space-y-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
               <h3 className="text-sm font-semibold text-zinc-900">
@@ -4593,14 +5223,8 @@ export default function LtfAdminLicenseCardDesignerPage() {
                   disabled={!isEditableDraft || imageAssets.length === 0}
                   value={selectedImageAssetId ? String(selectedImageAssetId) : "none"}
                   onValueChange={(value) => {
-                    const nextAssetId = value === "none" ? undefined : Number(value);
-                    setSelectedElementStylePatch({
-                      image_asset_id: nextAssetId,
-                    });
-                    if (nextAssetId) {
-                      setSelectedElementField("merge_field", undefined);
-                      setSelectedElementField("source", undefined);
-                    }
+                    const nextAssetId = value === "none" ? null : Number(value);
+                    applySelectedImageAsset(nextAssetId);
                   }}
                 >
                   <SelectTrigger className="w-full">
@@ -5290,9 +5914,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         disabled={!isEditableDraft || imageAssets.length === 0}
                         value={selectedImageAssetId ? String(selectedImageAssetId) : "none"}
                         onValueChange={(value) => {
-                          setSelectedElementStylePatch({
-                            image_asset_id: value === "none" ? undefined : Number(value),
-                          });
+                          applySelectedImageAsset(value === "none" ? null : Number(value));
                         }}
                       >
                         <SelectTrigger className="w-full">
@@ -5307,6 +5929,27 @@ export default function LtfAdminLicenseCardDesignerPage() {
                           ))}
                         </SelectContent>
                       </Select>
+                      {selectedImageAsset ? (
+                        <p className="text-xs text-emerald-700">
+                          {t("licenseCardInspectorImageAssetSelectedIndicator", {
+                            name: selectedImageAsset.name,
+                            id: selectedImageAsset.id,
+                            format: selectedImageAssetIsSvg
+                              ? t("licenseCardInspectorImageAssetFormatSvg")
+                              : t("licenseCardInspectorImageAssetFormatRaster"),
+                          })}
+                        </p>
+                      ) : selectedImageAssetId ? (
+                        <p className="text-xs text-amber-700">
+                          {t("licenseCardInspectorImageAssetMissingIndicator", {
+                            id: selectedImageAssetId,
+                          })}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-zinc-500">
+                          {t("licenseCardInspectorImageAssetNoneSelectedIndicator")}
+                        </p>
+                      )}
                     </div>
                   ) : null}
                   <div className="grid grid-cols-2 gap-2">
@@ -6071,9 +6714,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                               className="h-6 px-2 text-[10px]"
                               disabled={!isEditableDraft}
                               onClick={() => {
-                                setSelectedElementStylePatch({ image_asset_id: asset.id });
-                                setSelectedElementField("merge_field", undefined);
-                                setSelectedElementField("source", undefined);
+                                applySelectedImageAsset(asset.id);
                               }}
                             >
                               {t("licenseCardAssetLibraryApplyAction")}

@@ -363,6 +363,12 @@ export type CardPreviewDataResponse = {
     sheet_height_mm: string;
     card_width_mm: string;
     card_height_mm: string;
+    margin_top_mm?: string;
+    margin_bottom_mm?: string;
+    margin_left_mm?: string;
+    margin_right_mm?: string;
+    horizontal_gap_mm?: string;
+    vertical_gap_mm?: string;
     card_corner_radius_mm?: string | null;
     rows: number;
     columns: number;
