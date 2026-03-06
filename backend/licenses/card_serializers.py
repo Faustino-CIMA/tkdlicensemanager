@@ -721,6 +721,7 @@ class CardPreviewRequestSerializer(serializers.Serializer):
     license_id = serializers.IntegerField(required=False, min_value=1)
     club_id = serializers.IntegerField(required=False, min_value=1)
     sample_data = serializers.JSONField(required=False)
+    design_payload = serializers.JSONField(required=False)
     include_bleed_guide = serializers.BooleanField(required=False, default=False)
     include_safe_area_guide = serializers.BooleanField(required=False, default=False)
     bleed_mm = serializers.DecimalField(
@@ -749,6 +750,13 @@ class CardPreviewRequestSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 "Unknown sample_data merge key(s): " + ", ".join(unknown_keys)
             )
+        return value
+
+    def validate_design_payload(self, value):
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("design_payload must be an object.")
         return value
 
 

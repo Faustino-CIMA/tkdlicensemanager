@@ -320,6 +320,7 @@ export type CardPreviewRequestInput = {
   license_id?: number;
   club_id?: number;
   sample_data?: Record<string, unknown>;
+  design_payload?: CardDesignPayload;
   include_bleed_guide?: boolean;
   include_safe_area_guide?: boolean;
   bleed_mm?: number | string;
@@ -860,11 +861,13 @@ function normalizeApiErrorMessage(message: string, contentType: string | null): 
 
 async function postPreviewPdf(
   path: string,
-  payload: CardPreviewRequestInput | CardSheetPreviewRequestInput
+  payload: CardPreviewRequestInput | CardSheetPreviewRequestInput,
+  options?: ApiCallOptions
 ) {
   const token = getToken();
   const response = await fetch(`${API_URL}${path}`, {
     method: "POST",
+    signal: options?.signal,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Token ${token}` } : {}),
@@ -886,40 +889,54 @@ async function postPreviewPdf(
 
 export function getCardTemplateVersionPreviewData(
   versionId: number,
-  payload: CardSheetPreviewRequestInput
+  payload: CardSheetPreviewRequestInput,
+  options?: ApiCallOptions
 ) {
   return apiRequest<CardPreviewDataResponse>(
     `/api/card-template-versions/${versionId}/preview-data/`,
     {
       method: "POST",
       body: JSON.stringify(payload),
+      signal: options?.signal,
     }
   );
 }
 
 export function getCardTemplateVersionCardPreviewPdf(
   versionId: number,
-  payload: CardPreviewRequestInput
+  payload: CardPreviewRequestInput,
+  options?: ApiCallOptions
 ) {
-  return postPreviewPdf(`/api/card-template-versions/${versionId}/preview-card-pdf/`, payload);
+  return postPreviewPdf(
+    `/api/card-template-versions/${versionId}/preview-card-pdf/`,
+    payload,
+    options
+  );
 }
 
 export function getCardTemplateVersionSheetPreviewPdf(
   versionId: number,
-  payload: CardSheetPreviewRequestInput
+  payload: CardSheetPreviewRequestInput,
+  options?: ApiCallOptions
 ) {
-  return postPreviewPdf(`/api/card-template-versions/${versionId}/preview-sheet-pdf/`, payload);
+  return postPreviewPdf(
+    `/api/card-template-versions/${versionId}/preview-sheet-pdf/`,
+    payload,
+    options
+  );
 }
 
 export function getCardTemplateVersionCardPreviewHtml(
   versionId: number,
-  payload: CardPreviewRequestInput
+  payload: CardPreviewRequestInput,
+  options?: ApiCallOptions
 ) {
   return apiRequest<CardPreviewHtmlResponse>(
     `/api/card-template-versions/${versionId}/preview-card-html/`,
     {
       method: "POST",
       body: JSON.stringify(payload),
+      signal: options?.signal,
     }
   );
 }

@@ -486,6 +486,7 @@ class CardTemplateVersionViewSet(viewsets.ModelViewSet):
                 license_id=serializer.validated_data.get("license_id"),
                 club_id=serializer.validated_data.get("club_id"),
                 sample_data=serializer.validated_data.get("sample_data") or {},
+                design_payload_override=serializer.validated_data.get("design_payload"),
                 include_bleed_guide=serializer.validated_data.get("include_bleed_guide", False),
                 include_safe_area_guide=serializer.validated_data.get(
                     "include_safe_area_guide", False
@@ -523,6 +524,7 @@ class CardTemplateVersionViewSet(viewsets.ModelViewSet):
                 license_id=serializer.validated_data.get("license_id"),
                 club_id=serializer.validated_data.get("club_id"),
                 sample_data=serializer.validated_data.get("sample_data") or {},
+                design_payload_override=serializer.validated_data.get("design_payload"),
                 include_bleed_guide=serializer.validated_data.get("include_bleed_guide", False),
                 include_safe_area_guide=serializer.validated_data.get(
                     "include_safe_area_guide", False
@@ -564,6 +566,7 @@ class CardTemplateVersionViewSet(viewsets.ModelViewSet):
                 license_id=serializer.validated_data.get("license_id"),
                 club_id=serializer.validated_data.get("club_id"),
                 sample_data=serializer.validated_data.get("sample_data") or {},
+                design_payload_override=serializer.validated_data.get("design_payload"),
                 include_bleed_guide=serializer.validated_data.get("include_bleed_guide", False),
                 include_safe_area_guide=serializer.validated_data.get(
                     "include_safe_area_guide", False
@@ -599,6 +602,7 @@ class CardTemplateVersionViewSet(viewsets.ModelViewSet):
                 license_id=serializer.validated_data.get("license_id"),
                 club_id=serializer.validated_data.get("club_id"),
                 sample_data=serializer.validated_data.get("sample_data") or {},
+                design_payload_override=serializer.validated_data.get("design_payload"),
                 include_bleed_guide=serializer.validated_data.get("include_bleed_guide", False),
                 include_safe_area_guide=serializer.validated_data.get(
                     "include_safe_area_guide", False

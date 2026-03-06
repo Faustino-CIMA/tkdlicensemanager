@@ -224,6 +224,7 @@ const SHAPE_KIND_OPTIONS = [
 const QR_DATA_MODE_OPTIONS = ["single_merge", "multi_merge", "custom"] as const;
 const CARD_SIDES: CardSide[] = ["front", "back"];
 const DEFAULT_ACTIVE_SIDE: CardSide = "front";
+const CSS_PX_PER_MM = 96 / 25.4;
 const CORNER_RADIUS_STYLE_KEYS = [
   "radius_top_left_mm",
   "radius_top_right_mm",
@@ -545,13 +546,44 @@ function openBlobInNewTab(blob: Blob) {
   }, 15000);
 }
 
-function buildCardSimulationSrcDoc(payload: CardPreviewHtmlResponse | null) {
+function calculateCardSimulationScale(
+  payload: CardPreviewHtmlResponse,
+  viewportWidthPx: number,
+  viewportHeightPx: number
+) {
+  const cardWidthMm = Math.max(
+    0.01,
+    toFiniteNumber(payload.card_format?.width_mm, CONTRACT_CARD_WIDTH_MM)
+  );
+  const cardHeightMm = Math.max(
+    0.01,
+    toFiniteNumber(payload.card_format?.height_mm, CONTRACT_CARD_HEIGHT_MM)
+  );
+  const naturalWidthPx = Math.max(1, cardWidthMm * CSS_PX_PER_MM);
+  const naturalHeightPx = Math.max(1, cardHeightMm * CSS_PX_PER_MM);
+  const widthScale = viewportWidthPx / naturalWidthPx;
+  const heightScale = viewportHeightPx / naturalHeightPx;
+  return clamp(Math.min(widthScale, heightScale), 0.1, 12);
+}
+
+function buildCardSimulationSrcDoc(
+  payload: CardPreviewHtmlResponse | null,
+  viewportWidthPx: number,
+  viewportHeightPx: number
+) {
   if (!payload) {
     return "";
   }
   const simulationHtml = payload.html || "";
   const simulationCss = payload.css || "";
-  return `<!doctype html><html><head><meta charset="utf-8"><style>${simulationCss}</style></head><body>${simulationHtml}</body></html>`;
+  const simulationScale = calculateCardSimulationScale(
+    payload,
+    viewportWidthPx,
+    viewportHeightPx
+  );
+  return `<!doctype html><html><head><meta charset="utf-8"><style>:root{--card-simulation-scale:${simulationScale.toFixed(
+    6
+  )};}${simulationCss}</style></head><body>${simulationHtml}</body></html>`;
 }
 
 function getPreviewElementResolvedValue(
@@ -1284,6 +1316,9 @@ export default function LtfAdminLicenseCardDesignerPage() {
   const [isLoadingLiveSimulation, setIsLoadingLiveSimulation] = useState(false);
   const [liveSimulationData, setLiveSimulationData] = useState<CardPreviewHtmlResponse | null>(null);
   const [liveSimulationError, setLiveSimulationError] = useState<string | null>(null);
+  const [liveSimulationRevision, setLiveSimulationRevision] = useState(0);
+  const liveSimulationRequestIdRef = useRef(0);
+  const liveSimulationAbortControllerRef = useRef<AbortController | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const historyPastRef = useRef<EditableDesignPayload[]>([]);
   const historyFutureRef = useRef<EditableDesignPayload[]>([]);
@@ -1617,6 +1652,10 @@ export default function LtfAdminLicenseCardDesignerPage() {
     }),
     [activeSide, designPayload, designPayloadBySide]
   );
+  const previewDesignPayload = useMemo(
+    () => sanitizePayloadBySideForSave(synchronizedPayloadBySide),
+    [synchronizedPayloadBySide]
+  );
   const savedPayloadSnapshot = useMemo(() => {
     if (!selectedVersion) {
       return null;
@@ -1626,8 +1665,8 @@ export default function LtfAdminLicenseCardDesignerPage() {
     );
   }, [selectedVersion]);
   const currentPayloadSnapshot = useMemo(
-    () => JSON.stringify(sanitizePayloadBySideForSave(synchronizedPayloadBySide)),
-    [synchronizedPayloadBySide]
+    () => JSON.stringify(previewDesignPayload),
+    [previewDesignPayload]
   );
   const isDirty = useMemo(() => {
     if (!selectedVersion || selectedVersion.status !== "draft" || !savedPayloadSnapshot) {
@@ -1658,8 +1697,8 @@ export default function LtfAdminLicenseCardDesignerPage() {
     return available.filter((side): side is CardSide => side === "front" || side === "back");
   }, [previewData?.available_sides]);
   const liveSimulationSrcDoc = useMemo(
-    () => buildCardSimulationSrcDoc(liveSimulationData),
-    [liveSimulationData]
+    () => buildCardSimulationSrcDoc(liveSimulationData, canvasWidthPx, canvasHeightPx),
+    [canvasHeightPx, canvasWidthPx, liveSimulationData]
   );
 
   const resetHistory = useCallback(() => {
@@ -1810,8 +1849,13 @@ export default function LtfAdminLicenseCardDesignerPage() {
       setSelectedElementIds([]);
       setSelectedElementId(null);
       setPreviewData(null);
+      liveSimulationAbortControllerRef.current?.abort();
+      liveSimulationAbortControllerRef.current = null;
+      liveSimulationRequestIdRef.current += 1;
+      setIsLoadingLiveSimulation(false);
       setLiveSimulationData(null);
       setLiveSimulationError(null);
+      setLiveSimulationRevision((value) => value + 1);
       setPreviewSelectedSlots([]);
       setPreviewPaperProfileValue(TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE);
       resetHistory();
@@ -1824,8 +1868,13 @@ export default function LtfAdminLicenseCardDesignerPage() {
     setSelectedElementIds([]);
     setSelectedElementId(null);
     setPreviewData(null);
+    liveSimulationAbortControllerRef.current?.abort();
+    liveSimulationAbortControllerRef.current = null;
+    liveSimulationRequestIdRef.current += 1;
+    setIsLoadingLiveSimulation(false);
     setLiveSimulationData(null);
     setLiveSimulationError(null);
+    setLiveSimulationRevision((value) => value + 1);
     setDragState(null);
     setResizeState(null);
     setSnapGuideLines([]);
@@ -2455,8 +2504,13 @@ export default function LtfAdminLicenseCardDesignerPage() {
       setSnapGuideLines([]);
       setLiveMeasurementBounds(null);
       setPreviewData(null);
+      liveSimulationAbortControllerRef.current?.abort();
+      liveSimulationAbortControllerRef.current = null;
+      liveSimulationRequestIdRef.current += 1;
+      setIsLoadingLiveSimulation(false);
       setLiveSimulationData(null);
       setLiveSimulationError(null);
+      setLiveSimulationRevision((value) => value + 1);
       resetHistory();
     },
     [activeSide, designPayload, designPayloadBySide, resetHistory]
@@ -3071,6 +3125,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
   const buildPreviewSheetPayload = useCallback((): CardSheetPreviewRequestInput => {
     const payload: CardSheetPreviewRequestInput = {
       side: activeSide,
+      design_payload: previewDesignPayload,
       include_bleed_guide: showBleedGuide,
       include_safe_area_guide: showSafeAreaGuide,
       bleed_mm: toMmString(bleedGuideMm),
@@ -3118,6 +3173,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
     previewSelectedMember,
     previewSampleDataInput,
     previewSelectedSlots,
+    previewDesignPayload,
     safeAreaGuideMm,
     showBleedGuide,
     showSafeAreaGuide,
@@ -3132,6 +3188,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
       license_id: sheetPayload.license_id,
       club_id: sheetPayload.club_id,
       sample_data: sheetPayload.sample_data,
+      design_payload: sheetPayload.design_payload,
       include_bleed_guide: sheetPayload.include_bleed_guide,
       include_safe_area_guide: sheetPayload.include_safe_area_guide,
       bleed_mm: sheetPayload.bleed_mm,
@@ -3222,19 +3279,35 @@ export default function LtfAdminLicenseCardDesignerPage() {
       setLiveSimulationError(t("licenseCardDesignerNoVersionsSubtitle"));
       return;
     }
+    liveSimulationAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    liveSimulationAbortControllerRef.current = controller;
+    const requestId = liveSimulationRequestIdRef.current + 1;
+    liveSimulationRequestIdRef.current = requestId;
     setIsLoadingLiveSimulation(true);
     setLiveSimulationError(null);
     try {
       const payload = buildPreviewCardPayload();
-      const response = await getCardTemplateVersionCardPreviewHtml(selectedVersion.id, payload);
+      const response = await getCardTemplateVersionCardPreviewHtml(selectedVersion.id, payload, {
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted || requestId !== liveSimulationRequestIdRef.current) {
+        return;
+      }
       setLiveSimulationData(response);
+      setLiveSimulationRevision((value) => value + 1);
     } catch (error) {
+      if (controller.signal.aborted || requestId !== liveSimulationRequestIdRef.current) {
+        return;
+      }
       setLiveSimulationData(null);
       setLiveSimulationError(
         error instanceof Error ? error.message : t("licenseCardPreviewSimulationLoadError")
       );
     } finally {
-      setIsLoadingLiveSimulation(false);
+      if (requestId === liveSimulationRequestIdRef.current) {
+        setIsLoadingLiveSimulation(false);
+      }
     }
   }, [buildPreviewCardPayload, selectedVersion, t]);
 
@@ -3242,8 +3315,21 @@ export default function LtfAdminLicenseCardDesignerPage() {
     if (!isLivePrintSimulationEnabled) {
       return;
     }
-    void handleRefreshLiveSimulation();
-  }, [activeSide, handleRefreshLiveSimulation, isLivePrintSimulationEnabled, selectedVersion?.id]);
+    const timeoutId = window.setTimeout(() => {
+      void handleRefreshLiveSimulation();
+    }, 120);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [handleRefreshLiveSimulation, isLivePrintSimulationEnabled]);
+
+  useEffect(() => {
+    return () => {
+      liveSimulationAbortControllerRef.current?.abort();
+      liveSimulationAbortControllerRef.current = null;
+      liveSimulationRequestIdRef.current += 1;
+    };
+  }, []);
 
   const togglePreviewSlot = (slotIndex: number) => {
     if (effectiveSlotCount <= 0) {
@@ -4779,6 +4865,12 @@ export default function LtfAdminLicenseCardDesignerPage() {
                     const enabled = Boolean(checked);
                     setIsLivePrintSimulationEnabled(enabled);
                     if (!enabled) {
+                      liveSimulationAbortControllerRef.current?.abort();
+                      liveSimulationAbortControllerRef.current = null;
+                      liveSimulationRequestIdRef.current += 1;
+                      setIsLoadingLiveSimulation(false);
+                      setLiveSimulationData(null);
+                      setLiveSimulationRevision((value) => value + 1);
                       setLiveSimulationError(null);
                     }
                   }}
@@ -5053,6 +5145,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                 ) : null}
                 <div className="mx-auto overflow-hidden rounded-lg border border-zinc-300 bg-white shadow-sm">
                   <iframe
+                    key={`live-simulation-${liveSimulationRevision}`}
                     title={t("licenseCardPreviewSimulationFrameTitle")}
                     className="block border-0"
                     style={{ width: canvasWidthPx, height: canvasHeightPx }}

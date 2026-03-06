@@ -2079,6 +2079,146 @@ class LicenseCardPreviewApiTests(TestCase):
         self.assertIn("card-simulation-root", response.data["html"])
         self.assertIn(".card-simulation-root", response.data["css"])
 
+    def test_preview_refresh_override_is_deterministic_for_multiple_elements(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        override_a = {
+            "elements": [
+                {
+                    "id": "refresh-a-1",
+                    "type": "text",
+                    "x_mm": "4.00",
+                    "y_mm": "4.00",
+                    "width_mm": "70.00",
+                    "height_mm": "8.00",
+                    "text": "A1 {{member.first_name}}",
+                    "style": {"font_size_mm": "3.10"},
+                },
+                {
+                    "id": "refresh-a-2",
+                    "type": "text",
+                    "x_mm": "4.00",
+                    "y_mm": "14.00",
+                    "width_mm": "70.00",
+                    "height_mm": "8.00",
+                    "text": "A2 {{member.last_name}}",
+                    "style": {"font_size_mm": "3.10"},
+                },
+            ]
+        }
+        override_b = {
+            "elements": [
+                {
+                    "id": "refresh-b-1",
+                    "type": "text",
+                    "x_mm": "4.00",
+                    "y_mm": "4.00",
+                    "width_mm": "70.00",
+                    "height_mm": "8.00",
+                    "text": "B1 {{member.first_name}}",
+                    "style": {"font_size_mm": "5.20"},
+                },
+                {
+                    "id": "refresh-b-2",
+                    "type": "text",
+                    "x_mm": "4.00",
+                    "y_mm": "14.00",
+                    "width_mm": "70.00",
+                    "height_mm": "8.00",
+                    "text": "B2 {{member.last_name}}",
+                    "style": {"font_size_mm": "5.20"},
+                },
+            ]
+        }
+        request_base = {"member_id": self.member.id, "license_id": self.license.id}
+
+        first_response = self.client.post(
+            self.preview_card_html_url,
+            {**request_base, "design_payload": override_a},
+            format="json",
+        )
+        second_response = self.client.post(
+            self.preview_card_html_url,
+            {**request_base, "design_payload": override_b},
+            format="json",
+        )
+        third_response = self.client.post(
+            self.preview_card_html_url,
+            {**request_base, "design_payload": override_a},
+            format="json",
+        )
+
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(third_response.status_code, status.HTTP_200_OK)
+        self.assertIn("A1 Preview", first_response.data["html"])
+        self.assertIn("A2 MEMBER", first_response.data["html"])
+        self.assertNotIn("B1 Preview", first_response.data["html"])
+        self.assertIn("B1 Preview", second_response.data["html"])
+        self.assertIn("B2 MEMBER", second_response.data["html"])
+        self.assertNotIn("A1 Preview", second_response.data["html"])
+        self.assertEqual(first_response.data["html"], third_response.data["html"])
+        self.assertEqual(first_response.data["css"], third_response.data["css"])
+
+        self.template_version.refresh_from_db()
+        stored_elements = self.template_version.design_payload.get("elements") or []
+        stored_ids = [str(element.get("id")) for element in stored_elements]
+        self.assertIn("shape-bg", stored_ids)
+        self.assertNotIn("refresh-a-1", stored_ids)
+        self.assertNotIn("refresh-b-1", stored_ids)
+
+    def test_preview_simulation_and_pdf_share_font_size_css(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        design_override = {
+            "elements": [
+                {
+                    "id": "font-parity",
+                    "type": "text",
+                    "x_mm": "4.00",
+                    "y_mm": "4.00",
+                    "width_mm": "72.00",
+                    "height_mm": "10.00",
+                    "text": "PARITY {{member.first_name}}",
+                    "style": {"font_size_mm": "4.37"},
+                }
+            ]
+        }
+        request_payload = {
+            "member_id": self.member.id,
+            "license_id": self.license.id,
+            "design_payload": design_override,
+        }
+
+        html_response = self.client.post(self.preview_card_html_url, request_payload, format="json")
+        self.assertEqual(html_response.status_code, status.HTTP_200_OK)
+        self.assertIn("font-size:4.37mm;", html_response.data["html"])
+        self.assertIn("PARITY Preview", html_response.data["html"])
+
+        with patch("licenses.card_rendering._render_pdf", return_value=b"%PDF-1.4\n") as render_pdf_mock:
+            pdf_response = self.client.post(
+                self.preview_card_pdf_url,
+                request_payload,
+                format="json",
+            )
+        self.assertEqual(pdf_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(pdf_response["Content-Type"], "application/pdf")
+
+        rendered_pdf_html = str(render_pdf_mock.call_args.args[0])
+        self.assertIn("font-size:4.37mm;", rendered_pdf_html)
+        self.assertIn("PARITY Preview", rendered_pdf_html)
+
+    def test_preview_rejects_non_object_design_payload_override(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            self.preview_card_html_url,
+            {
+                "member_id": self.member.id,
+                "design_payload": ["invalid", "override"],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("design_payload", response.data)
+
     def test_preview_card_html_renders_distinct_per_corner_radius_values(self):
         self.template_version.design_payload = {
             "elements": [

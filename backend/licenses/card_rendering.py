@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
+from functools import lru_cache
 from html import escape
 from io import BytesIO
 import json
@@ -79,6 +80,7 @@ _LTF_MONTH_ABBREVIATIONS = (
     "Nov",
     "Dec",
 )
+_SORTED_ALLOWED_MERGE_FIELDS = tuple(sorted(ALLOWED_MERGE_FIELDS))
 
 
 def _error_from_validation(exc: ValidationError) -> CardRenderError:
@@ -345,11 +347,20 @@ def format_ltf_date(value: date | datetime | None) -> str:
     if value is None:
         return ""
     date_value = value.date() if isinstance(value, datetime) else value
-    month_index = int(date_value.month) - 1
+    return _format_ltf_date_parts(
+        int(date_value.year),
+        int(date_value.month),
+        int(date_value.day),
+    )
+
+
+@lru_cache(maxsize=4096)
+def _format_ltf_date_parts(year: int, month: int, day: int) -> str:
+    month_index = int(month) - 1
     if month_index < 0 or month_index >= len(_LTF_MONTH_ABBREVIATIONS):
         return ""
     month_abbreviation = _LTF_MONTH_ABBREVIATIONS[month_index]
-    return f"{int(date_value.day):02d} {month_abbreviation} {int(date_value.year):04d}"
+    return f"{int(day):02d} {month_abbreviation} {int(year):04d}"
 
 
 def _calculate_member_age(member: Member | None) -> str:
@@ -516,7 +527,7 @@ def _build_context(
     for key, value in flattened_sample_data.items():
         context[key] = _stringify_context_value(value)
 
-    return {key: context.get(key, "") for key in sorted(ALLOWED_MERGE_FIELDS)}
+    return {key: context.get(key, "") for key in _SORTED_ALLOWED_MERGE_FIELDS}
 
 
 def _resolve_merge_value(key: str, context: dict[str, str]) -> str:
@@ -1157,13 +1168,19 @@ def build_preview_data(
     selected_slots: list[int] | None = None,
     request: HttpRequest | None = None,
     asset_base_url: str | None = None,
+    design_payload_override: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if template_version.card_format_id is None:
         raise CardRenderError("Template version must have a card format.")
 
+    source_design_payload = (
+        design_payload_override
+        if design_payload_override is not None
+        else template_version.design_payload
+    )
     try:
         normalized_design_payload = normalize_design_payload(
-            template_version.design_payload
+            source_design_payload
         )
         validate_design_payload_schema(
             normalized_design_payload,
@@ -1174,8 +1191,8 @@ def build_preview_data(
         raise _error_from_validation(exc) from exc
 
     has_explicit_sides = bool(
-        isinstance(template_version.design_payload, dict)
-        and "sides" in template_version.design_payload
+        isinstance(source_design_payload, dict)
+        and "sides" in source_design_payload
     )
     active_side = _normalize_preview_side(side)
     active_side_payload = _extract_side_payload(
@@ -1269,6 +1286,11 @@ def build_preview_data(
             "unit": "mm",
             "precision_mm": "0.01",
             "geometry_rounding": "quantize_0.01",
+            "design_payload_source": (
+                "request_override"
+                if design_payload_override is not None
+                else "template_version"
+            ),
             "active_side": active_side,
             "available_sides": available_sides,
             "font_assets": {
@@ -1843,20 +1865,38 @@ def _render_card_fragment(preview_data: dict[str, Any]) -> str:
     )
 
 
+def _build_document_css(
+    *,
+    font_face_css: str,
+    page_size_mm: tuple[str, str] | None = None,
+) -> str:
+    page_rule = ""
+    if page_size_mm is not None:
+        page_rule = f"@page {{ size: {page_size_mm[0]}mm {page_size_mm[1]}mm; margin: 0; }}"
+    return (
+        f"{page_rule}"
+        "html,body{margin:0;padding:0;}"
+        "body{font-family:Inter,Arial,sans-serif;-webkit-text-size-adjust:100%;text-size-adjust:100%;}"
+        "*,*::before,*::after{box-sizing:border-box;}"
+        f"{font_face_css}"
+    )
+
+
 def _render_card_document_html(preview_data: dict[str, Any]) -> str:
     card_format = preview_data["card_format"]
     width_mm = str(card_format["width_mm"])
     height_mm = str(card_format["height_mm"])
     card_fragment = _render_card_fragment(preview_data)
     font_face_css = _build_embedded_font_face_css(preview_data)
+    document_css = _build_document_css(
+        font_face_css=font_face_css,
+        page_size_mm=(width_mm, height_mm),
+    )
     return (
         "<!doctype html>"
         "<html><head><meta charset='utf-8'>"
         "<style>"
-        f"@page {{ size: {width_mm}mm {height_mm}mm; margin: 0; }}"
-        "html,body{margin:0;padding:0;}"
-        "body{font-family:Inter,Arial,sans-serif;}"
-        f"{font_face_css}"
+        f"{document_css}"
         "</style>"
         "</head><body>"
         f"{card_fragment}"
@@ -1871,6 +1911,13 @@ def _render_sheet_document_html(preview_data: dict[str, Any]) -> str:
     slots = preview_data.get("slots") or []
     card_fragment = _render_card_fragment(preview_data)
     font_face_css = _build_embedded_font_face_css(preview_data)
+    document_css = _build_document_css(
+        font_face_css=font_face_css,
+        page_size_mm=(
+            str(paper_profile["sheet_width_mm"]),
+            str(paper_profile["sheet_height_mm"]),
+        ),
+    )
     slot_markup: list[str] = []
     for slot in slots:
         selected = bool(slot.get("selected"))
@@ -1890,10 +1937,7 @@ def _render_sheet_document_html(preview_data: dict[str, Any]) -> str:
         "<!doctype html>"
         "<html><head><meta charset='utf-8'>"
         "<style>"
-        f"@page {{ size: {paper_profile['sheet_width_mm']}mm {paper_profile['sheet_height_mm']}mm; margin: 0; }}"
-        "html,body{margin:0;padding:0;}"
-        "body{font-family:Inter,Arial,sans-serif;}"
-        f"{font_face_css}"
+        f"{document_css}"
         "</style>"
         "</head><body>"
         f"<div style=\"position:relative;width:{paper_profile['sheet_width_mm']}mm;"
@@ -1927,18 +1971,35 @@ def build_card_simulation_payload(preview_data: dict[str, Any]) -> dict[str, str
     width_mm = str(card_format.get("width_mm") or "85.00")
     height_mm = str(card_format.get("height_mm") or "55.00")
     font_face_css = _build_embedded_font_face_css(preview_data)
+    document_css = _build_document_css(font_face_css=font_face_css)
     css = (
-        f"{font_face_css}"
-        "html,body{margin:0;padding:0;}"
+        f"{document_css}"
+        "html,body{width:100%;height:100%;}"
+        ".card-simulation-viewport{"
+        "position:relative;"
+        "width:100%;"
+        "height:100%;"
+        "overflow:hidden;"
+        "display:flex;"
+        "align-items:flex-start;"
+        "justify-content:flex-start;"
+        "background:#ffffff;"
+        "}"
         ".card-simulation-root{"
         f"width:{escape(width_mm)}mm;"
         f"height:{escape(height_mm)}mm;"
         "position:relative;"
         "overflow:hidden;"
+        "transform-origin:top left;"
+        "transform:scale(var(--card-simulation-scale,1));"
         "}"
         ".card-canvas{position:relative;}"
     )
-    html = f'<div class="card-simulation-root">{_render_card_fragment(preview_data)}</div>'
+    html = (
+        '<div class="card-simulation-viewport">'
+        f'<div class="card-simulation-root">{_render_card_fragment(preview_data)}</div>'
+        "</div>"
+    )
     return {"html": html, "css": css}
 
 
