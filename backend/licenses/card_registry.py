@@ -36,7 +36,7 @@ MERGE_FIELD_REGISTRY = [
     {
         "key": "member.date_of_birth",
         "label": "Member date of birth",
-        "description": "Date of birth in ISO format.",
+        "description": "Date of birth in DD Mon YYYY format.",
     },
     {
         "key": "member.age",
@@ -47,6 +47,16 @@ MERGE_FIELD_REGISTRY = [
         "key": "member.profile_picture_processed",
         "label": "Member processed profile picture",
         "description": "Resolved URL or source for the processed profile picture.",
+    },
+    {
+        "key": "primary_license_role",
+        "label": "Primary license role",
+        "description": "Primary license role assigned to the member.",
+    },
+    {
+        "key": "secondary_license_role",
+        "label": "Secondary license role",
+        "description": "Secondary license role assigned to the member.",
     },
     {
         "key": "club.name",
@@ -71,12 +81,12 @@ MERGE_FIELD_REGISTRY = [
     {
         "key": "license.start_date",
         "label": "License start date",
-        "description": "License start date.",
+        "description": "License start date in DD Mon YYYY format.",
     },
     {
         "key": "license.end_date",
         "label": "License end date",
-        "description": "License end date.",
+        "description": "License end date in DD Mon YYYY format.",
     },
     {
         "key": "license.status",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from html import escape
 from io import BytesIO
@@ -64,6 +65,20 @@ _ALLOWED_INLINE_IMAGE_MIME_PREFIXES = (
     "image/bmp",
 )
 _BLOCKED_SOURCE_PREFIXES = ("javascript:", "vbscript:", "file:")
+_LTF_MONTH_ABBREVIATIONS = (
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+)
 
 
 def _error_from_validation(exc: ValidationError) -> CardRenderError:
@@ -303,6 +318,10 @@ def _flatten_sample_data(sample_data: dict[str, Any]) -> dict[str, Any]:
 def _stringify_context_value(value: Any) -> str:
     if value is None:
         return ""
+    if isinstance(value, datetime):
+        return format_ltf_date(value)
+    if isinstance(value, date):
+        return format_ltf_date(value)
     if isinstance(value, (str, int, float, Decimal)):
         return str(value)
     if isinstance(value, bool):
@@ -320,6 +339,17 @@ def _default_validation_url(license_record: License | None) -> str:
     if license_record is not None:
         return f"{base}/verify-license/{license_record.id}"
     return f"{base}/verify-license/sample"
+
+
+def format_ltf_date(value: date | datetime | None) -> str:
+    if value is None:
+        return ""
+    date_value = value.date() if isinstance(value, datetime) else value
+    month_index = int(date_value.month) - 1
+    if month_index < 0 or month_index >= len(_LTF_MONTH_ABBREVIATIONS):
+        return ""
+    month_abbreviation = _LTF_MONTH_ABBREVIATIONS[month_index]
+    return f"{int(date_value.day):02d} {month_abbreviation} {int(date_value.year):04d}"
 
 
 def _calculate_member_age(member: Member | None) -> str:
@@ -445,13 +475,19 @@ def _build_context(
         "member.ltf_licenseid": member.ltf_licenseid if member else "",
         "member.sex": member.sex if member else "",
         "member.date_of_birth": (
-            member.date_of_birth.isoformat() if member and member.date_of_birth else ""
+            format_ltf_date(member.date_of_birth) if member and member.date_of_birth else ""
         ),
         "member.age": _calculate_member_age(member),
         "member.profile_picture_processed": (
             member.profile_picture_processed.url
             if member and getattr(member, "profile_picture_processed", None)
             else ""
+        ),
+        "primary_license_role": (
+            str(member.primary_license_role) if member and member.primary_license_role else ""
+        ),
+        "secondary_license_role": (
+            str(member.secondary_license_role) if member and member.secondary_license_role else ""
         ),
         "club.name": club.name if club else "",
         "club.logo_print_url": _resolve_club_logo_print_url(club),
@@ -462,10 +498,14 @@ def _build_context(
         ),
         "license.year": str(license_record.year) if license_record else "",
         "license.start_date": (
-            license_record.start_date.isoformat() if license_record and license_record.start_date else ""
+            format_ltf_date(license_record.start_date)
+            if license_record and license_record.start_date
+            else ""
         ),
         "license.end_date": (
-            license_record.end_date.isoformat() if license_record and license_record.end_date else ""
+            format_ltf_date(license_record.end_date)
+            if license_record and license_record.end_date
+            else ""
         ),
         "license.status": str(license_record.status) if license_record else "",
         "license.validity_badge": _compute_validity_badge(license_record),

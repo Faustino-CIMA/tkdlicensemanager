@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from io import BytesIO, StringIO
 from pathlib import Path
@@ -1408,6 +1408,8 @@ class LicenseCardDesignerV2FoundationApiTests(TestCase):
         self.assertIn("member.age", keys)
         self.assertIn("license.validity_badge", keys)
         self.assertIn("club.logo_print_url", keys)
+        self.assertIn("primary_license_role", keys)
+        self.assertIn("secondary_license_role", keys)
 
 
 class LicenseCardPreviewApiTests(TestCase):
@@ -1519,6 +1521,123 @@ class LicenseCardPreviewApiTests(TestCase):
         qr_element = next(item for item in elements if item["id"] == "license-qr")
         self.assertTrue(qr_element["resolved_value"])
         self.assertTrue(qr_element["qr_data_uri"].startswith("data:image/png;base64,"))
+
+    def test_preview_data_and_simulation_use_ltf_date_format_and_role_merge_fields(self):
+        self.member.date_of_birth = date(2016, 11, 9)
+        self.member.primary_license_role = Member.LicenseRole.ATHLETE
+        self.member.secondary_license_role = Member.LicenseRole.COACH
+        self.member.save(
+            update_fields=[
+                "date_of_birth",
+                "primary_license_role",
+                "secondary_license_role",
+                "updated_at",
+            ]
+        )
+        self.license.start_date = date(2016, 1, 9)
+        self.license.end_date = date(2016, 11, 9)
+        self.license.save(update_fields=["start_date", "end_date", "updated_at"])
+        self.template_version.design_payload = {
+            "elements": [
+                {
+                    "id": "dob-text",
+                    "type": "text",
+                    "x_mm": "4.00",
+                    "y_mm": "4.00",
+                    "width_mm": "76.00",
+                    "height_mm": "6.00",
+                    "text": "DOB {{member.date_of_birth}}",
+                },
+                {
+                    "id": "start-text",
+                    "type": "text",
+                    "x_mm": "4.00",
+                    "y_mm": "12.00",
+                    "width_mm": "76.00",
+                    "height_mm": "6.00",
+                    "text": "START {{license.start_date}}",
+                },
+                {
+                    "id": "end-text",
+                    "type": "text",
+                    "x_mm": "4.00",
+                    "y_mm": "20.00",
+                    "width_mm": "76.00",
+                    "height_mm": "6.00",
+                    "text": "END {{license.end_date}}",
+                },
+                {
+                    "id": "primary-role-text",
+                    "type": "text",
+                    "x_mm": "4.00",
+                    "y_mm": "28.00",
+                    "width_mm": "76.00",
+                    "height_mm": "6.00",
+                    "text": "PRIMARY {{primary_license_role}}",
+                },
+                {
+                    "id": "secondary-role-text",
+                    "type": "text",
+                    "x_mm": "4.00",
+                    "y_mm": "36.00",
+                    "width_mm": "76.00",
+                    "height_mm": "6.00",
+                    "text": "SECONDARY {{secondary_license_role}}",
+                },
+            ],
+            "metadata": {"unit": "mm"},
+        }
+        self.template_version.save(update_fields=["design_payload", "updated_at"])
+        self.client.force_authenticate(user=self.ltf_admin)
+        payload = {"member_id": self.member.id, "license_id": self.license.id}
+
+        preview_data_response = self.client.post(self.preview_data_url, payload, format="json")
+        self.assertEqual(preview_data_response.status_code, status.HTTP_200_OK)
+        context = preview_data_response.data["context"]
+        self.assertEqual(context["member.date_of_birth"], "09 Nov 2016")
+        self.assertEqual(context["license.start_date"], "09 Jan 2016")
+        self.assertEqual(context["license.end_date"], "09 Nov 2016")
+        self.assertEqual(context["primary_license_role"], "athlete")
+        self.assertEqual(context["secondary_license_role"], "coach")
+
+        resolved_by_id = {
+            element["id"]: element["resolved_text"]
+            for element in preview_data_response.data["elements"]
+            if "resolved_text" in element
+        }
+        self.assertEqual(resolved_by_id["dob-text"], "DOB 09 Nov 2016")
+        self.assertEqual(resolved_by_id["start-text"], "START 09 Jan 2016")
+        self.assertEqual(resolved_by_id["end-text"], "END 09 Nov 2016")
+        self.assertEqual(resolved_by_id["primary-role-text"], "PRIMARY athlete")
+        self.assertEqual(resolved_by_id["secondary-role-text"], "SECONDARY coach")
+
+        preview_html_response = self.client.post(self.preview_card_html_url, payload, format="json")
+        self.assertEqual(preview_html_response.status_code, status.HTTP_200_OK)
+        self.assertIn("DOB 09 Nov 2016", preview_html_response.data["html"])
+        self.assertIn("START 09 Jan 2016", preview_html_response.data["html"])
+        self.assertIn("END 09 Nov 2016", preview_html_response.data["html"])
+        self.assertIn("PRIMARY athlete", preview_html_response.data["html"])
+        self.assertIn("SECONDARY coach", preview_html_response.data["html"])
+
+    def test_preview_card_pdf_receives_ltf_date_formatted_context(self):
+        self.member.date_of_birth = date(2016, 11, 9)
+        self.member.save(update_fields=["date_of_birth", "updated_at"])
+        self.license.start_date = date(2016, 1, 9)
+        self.license.end_date = date(2016, 11, 9)
+        self.license.save(update_fields=["start_date", "end_date", "updated_at"])
+        self.client.force_authenticate(user=self.ltf_admin)
+        with patch("licenses.card_views.render_card_pdf_bytes", return_value=b"%PDF-1.4\n") as render_pdf_mock:
+            response = self.client.post(
+                self.preview_card_pdf_url,
+                {"member_id": self.member.id, "license_id": self.license.id},
+                format="json",
+            )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        preview_payload = render_pdf_mock.call_args.args[0]
+        self.assertEqual(preview_payload["context"]["member.date_of_birth"], "09 Nov 2016")
+        self.assertEqual(preview_payload["context"]["license.start_date"], "09 Jan 2016")
+        self.assertEqual(preview_payload["context"]["license.end_date"], "09 Nov 2016")
 
     def test_preview_data_preserves_equal_z_index_input_order(self):
         self.template_version.design_payload = {
@@ -2462,6 +2581,105 @@ class PrintJobExecutionPipelineTests(TestCase):
                     final_state.execution_metadata.get("render_sides"),
                     expected_render_sides,
                 )
+
+    def test_print_execution_uses_ltf_date_format_and_role_merge_fields(self):
+        self.member_one.date_of_birth = date(2016, 11, 9)
+        self.member_one.primary_license_role = Member.LicenseRole.ATHLETE
+        self.member_one.secondary_license_role = Member.LicenseRole.COACH
+        self.member_one.save(
+            update_fields=[
+                "date_of_birth",
+                "primary_license_role",
+                "secondary_license_role",
+                "updated_at",
+            ]
+        )
+        self.license_one.start_date = date(2016, 1, 9)
+        self.license_one.end_date = date(2016, 11, 9)
+        self.license_one.save(update_fields=["start_date", "end_date", "updated_at"])
+        template_version = self._create_published_template_version(
+            design_payload={
+                "elements": [
+                    {
+                        "id": "print-dob",
+                        "type": "text",
+                        "x_mm": "4.00",
+                        "y_mm": "4.00",
+                        "width_mm": "70.00",
+                        "height_mm": "6.00",
+                        "text": "DOB {{member.date_of_birth}}",
+                    },
+                    {
+                        "id": "print-start",
+                        "type": "text",
+                        "x_mm": "4.00",
+                        "y_mm": "12.00",
+                        "width_mm": "70.00",
+                        "height_mm": "6.00",
+                        "text": "START {{license.start_date}}",
+                    },
+                    {
+                        "id": "print-end",
+                        "type": "text",
+                        "x_mm": "4.00",
+                        "y_mm": "20.00",
+                        "width_mm": "70.00",
+                        "height_mm": "6.00",
+                        "text": "END {{license.end_date}}",
+                    },
+                    {
+                        "id": "print-primary-role",
+                        "type": "text",
+                        "x_mm": "4.00",
+                        "y_mm": "28.00",
+                        "width_mm": "70.00",
+                        "height_mm": "6.00",
+                        "text": "PRIMARY {{primary_license_role}}",
+                    },
+                    {
+                        "id": "print-secondary-role",
+                        "type": "text",
+                        "x_mm": "4.00",
+                        "y_mm": "36.00",
+                        "width_mm": "70.00",
+                        "height_mm": "6.00",
+                        "text": "SECONDARY {{secondary_license_role}}",
+                    },
+                ]
+            },
+            paper_profile=None,
+        )
+        created_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": template_version.id,
+                "license_ids": [self.license_one.id],
+                "side": PrintJob.Side.FRONT,
+            },
+        )
+        job_id = created_job["id"]
+        self.client.force_authenticate(user=self.ltf_admin)
+        with patch(
+            "licenses.print_jobs.render_pdf_bytes_from_html",
+            return_value=b"%PDF-1.4\n",
+        ) as render_pdf_mock:
+            execute_response = self.client.post(
+                f"/api/print-jobs/{job_id}/execute/",
+                {},
+                format="json",
+            )
+        self.assertIn(
+            execute_response.status_code,
+            {status.HTTP_200_OK, status.HTTP_202_ACCEPTED},
+        )
+
+        rendered_html = str(render_pdf_mock.call_args.args[0])
+        self.assertIn("DOB 09 Nov 2016", rendered_html)
+        self.assertIn("START 09 Jan 2016", rendered_html)
+        self.assertIn("END 09 Nov 2016", rendered_html)
+        self.assertIn("PRIMARY athlete", rendered_html)
+        self.assertIn("SECONDARY coach", rendered_html)
 
     def test_enqueue_failure_moves_job_to_failed_with_retryable_state(self):
         created_job = self._create_print_job(
