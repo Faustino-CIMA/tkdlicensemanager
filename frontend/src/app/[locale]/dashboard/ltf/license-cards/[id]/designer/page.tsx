@@ -249,6 +249,11 @@ function roundMm(value: number) {
   return Number(value.toFixed(2));
 }
 
+function getRulerMarkOffsetPx(markMm: number, scale: number, maxExtentPx: number) {
+  const markOffsetPx = markMm * scale;
+  return clamp(markOffsetPx, 0, Math.max(0, maxExtentPx - 1));
+}
+
 function toMmString(value: number) {
   return roundMm(value).toFixed(2);
 }
@@ -4576,18 +4581,25 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         height: RULER_SIZE_PX,
                       }}
                     >
-                      {sheetRulerMarksX.map((mark) => (
-                        <div
-                          key={`sheet-ruler-x-${mark}`}
-                          className="absolute bottom-0"
-                          style={{ left: mark * sheetPreviewScale }}
-                        >
-                          <div className="h-2 w-px bg-zinc-500" />
-                          <span className="absolute -top-4 left-1 text-[9px] text-zinc-500">
-                            {mark}
-                          </span>
-                        </div>
-                      ))}
+                      {sheetRulerMarksX.map((mark) => {
+                        const markOffsetPx = getRulerMarkOffsetPx(
+                          mark,
+                          sheetPreviewScale,
+                          sheetPreviewWidthPx
+                        );
+                        return (
+                          <div
+                            key={`sheet-ruler-x-${mark}`}
+                            className="absolute bottom-0"
+                            style={{ left: markOffsetPx }}
+                          >
+                            <div className="h-2 w-px bg-zinc-500" />
+                            <span className="absolute left-1 top-0 text-[9px] text-zinc-500">
+                              {mark}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                     <div
                       className="pointer-events-none absolute left-0 border-r border-zinc-300 bg-zinc-100"
@@ -4597,18 +4609,25 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         height: sheetPreviewHeightPx,
                       }}
                     >
-                      {sheetRulerMarksY.map((mark) => (
-                        <div
-                          key={`sheet-ruler-y-${mark}`}
-                          className="absolute right-0"
-                          style={{ top: mark * sheetPreviewScale }}
-                        >
-                          <div className="h-px w-2 bg-zinc-500" />
-                          <span className="absolute -left-6 -top-1 text-[9px] text-zinc-500">
-                            {mark}
-                          </span>
-                        </div>
-                      ))}
+                      {sheetRulerMarksY.map((mark) => {
+                        const markOffsetPx = getRulerMarkOffsetPx(
+                          mark,
+                          sheetPreviewScale,
+                          sheetPreviewHeightPx
+                        );
+                        return (
+                          <div
+                            key={`sheet-ruler-y-${mark}`}
+                            className="absolute right-0"
+                            style={{ top: markOffsetPx }}
+                          >
+                            <div className="h-px w-2 bg-zinc-500" />
+                            <span className="absolute left-0 -top-1 text-[9px] text-zinc-500">
+                              {mark}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                     <div
                       className="relative border border-zinc-300 bg-zinc-50"
@@ -4932,25 +4951,28 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         height: RULER_SIZE_PX,
                       }}
                     >
-                      {rulerMarksX.map((mark) => (
-                        <div
-                          key={`ruler-x-${mark}`}
-                          className="absolute bottom-0"
-                          style={{ left: mark * canvasScale }}
-                        >
+                      {rulerMarksX.map((mark) => {
+                        const markOffsetPx = getRulerMarkOffsetPx(mark, canvasScale, canvasWidthPx);
+                        return (
                           <div
-                            className="w-px bg-zinc-500"
-                            style={{
-                              height: mark % 10 === 0 ? 12 : mark % 5 === 0 ? 8 : 5,
-                            }}
-                          />
-                          {mark % 10 === 0 ? (
-                            <span className="absolute -top-4 left-1 text-[9px] text-zinc-500">
-                              {mark}
-                            </span>
-                          ) : null}
-                        </div>
-                      ))}
+                            key={`ruler-x-${mark}`}
+                            className="absolute bottom-0"
+                            style={{ left: markOffsetPx }}
+                          >
+                            <div
+                              className="w-px bg-zinc-500"
+                              style={{
+                                height: mark % 10 === 0 ? 12 : mark % 5 === 0 ? 8 : 5,
+                              }}
+                            />
+                            {mark % 10 === 0 ? (
+                              <span className="absolute left-1 top-0 text-[9px] text-zinc-500">
+                                {mark}
+                              </span>
+                            ) : null}
+                          </div>
+                        );
+                      })}
                     </div>
                     <div
                       className="pointer-events-none absolute left-0 border-r border-zinc-300 bg-zinc-100"
@@ -4960,25 +4982,28 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         height: canvasHeightPx,
                       }}
                     >
-                      {rulerMarksY.map((mark) => (
-                        <div
-                          key={`ruler-y-${mark}`}
-                          className="absolute right-0"
-                          style={{ top: mark * canvasScale }}
-                        >
+                      {rulerMarksY.map((mark) => {
+                        const markOffsetPx = getRulerMarkOffsetPx(mark, canvasScale, canvasHeightPx);
+                        return (
                           <div
-                            className="h-px bg-zinc-500"
-                            style={{
-                              width: mark % 10 === 0 ? 12 : mark % 5 === 0 ? 8 : 5,
-                            }}
-                          />
-                          {mark % 10 === 0 ? (
-                            <span className="absolute -left-5 -top-1 text-[9px] text-zinc-500">
-                              {mark}
-                            </span>
-                          ) : null}
-                        </div>
-                      ))}
+                            key={`ruler-y-${mark}`}
+                            className="absolute right-0"
+                            style={{ top: markOffsetPx }}
+                          >
+                            <div
+                              className="h-px bg-zinc-500"
+                              style={{
+                                width: mark % 10 === 0 ? 12 : mark % 5 === 0 ? 8 : 5,
+                              }}
+                            />
+                            {mark % 10 === 0 ? (
+                              <span className="absolute left-0 -top-1 text-[9px] text-zinc-500">
+                                {mark}
+                              </span>
+                            ) : null}
+                          </div>
+                        );
+                      })}
                     </div>
                   </>
                 ) : null}
@@ -4991,6 +5016,8 @@ export default function LtfAdminLicenseCardDesignerPage() {
                     height: canvasHeightPx,
                     marginLeft: showRulers ? RULER_SIZE_PX : 0,
                     marginTop: showRulers ? RULER_SIZE_PX : 0,
+                    padding: 0,
+                    boxSizing: "content-box",
                   }}
                   onDragOver={onCanvasDragOver}
                   onDrop={onCanvasDrop}
