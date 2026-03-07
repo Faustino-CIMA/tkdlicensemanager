@@ -1899,7 +1899,11 @@ def _build_document_css(
     )
 
 
-def _render_card_document_html(preview_data: dict[str, Any]) -> str:
+def _build_card_document_parts(
+    preview_data: dict[str, Any],
+    *,
+    include_page_size: bool,
+) -> tuple[str, str]:
     card_format = preview_data["card_format"]
     width_mm = str(card_format["width_mm"])
     height_mm = str(card_format["height_mm"])
@@ -1907,7 +1911,15 @@ def _render_card_document_html(preview_data: dict[str, Any]) -> str:
     font_face_css = _build_embedded_font_face_css(preview_data)
     document_css = _build_document_css(
         font_face_css=font_face_css,
-        page_size_mm=(width_mm, height_mm),
+        page_size_mm=(width_mm, height_mm) if include_page_size else None,
+    )
+    return card_fragment, document_css
+
+
+def _render_card_document_html(preview_data: dict[str, Any]) -> str:
+    card_fragment, document_css = _build_card_document_parts(
+        preview_data,
+        include_page_size=True,
     )
     return (
         "<!doctype html>"
@@ -1984,40 +1996,11 @@ def render_card_fragment_html(preview_data: dict[str, Any]) -> str:
 
 
 def build_card_simulation_payload(preview_data: dict[str, Any]) -> dict[str, str]:
-    card_format = preview_data.get("card_format") or {}
-    width_mm = str(card_format.get("width_mm") or "85.00")
-    height_mm = str(card_format.get("height_mm") or "55.00")
-    font_face_css = _build_embedded_font_face_css(preview_data)
-    document_css = _build_document_css(font_face_css=font_face_css)
-    css = (
-        f"{document_css}"
-        "html,body{width:100%;height:100%;}"
-        ".card-simulation-viewport{"
-        "position:relative;"
-        "width:100%;"
-        "height:100%;"
-        "overflow:hidden;"
-        "display:flex;"
-        "align-items:flex-start;"
-        "justify-content:flex-start;"
-        "background:#ffffff;"
-        "}"
-        ".card-simulation-root{"
-        f"width:{escape(width_mm)}mm;"
-        f"height:{escape(height_mm)}mm;"
-        "position:relative;"
-        "overflow:hidden;"
-        "transform-origin:top left;"
-        "transform:scale(var(--card-simulation-scale,1));"
-        "}"
-        ".card-canvas{position:relative;}"
+    card_fragment, document_css = _build_card_document_parts(
+        preview_data,
+        include_page_size=False,
     )
-    html = (
-        '<div class="card-simulation-viewport">'
-        f'<div class="card-simulation-root">{_render_card_fragment(preview_data)}</div>'
-        "</div>"
-    )
-    return {"html": html, "css": css}
+    return {"html": card_fragment, "css": document_css}
 
 
 def render_pdf_bytes_from_html(html: str, *, base_url: str | None = None) -> bytes:

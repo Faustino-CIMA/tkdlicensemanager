@@ -20,6 +20,10 @@ import {
 } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { apiRequest } from "@/lib/api";
+import {
+  buildCardSimulationSrcDoc,
+  calculateCardSimulationFrameLayout,
+} from "@/lib/card-simulation";
 import { getDashboardRouteForRole } from "@/lib/dashboard-routing";
 import {
   buildShapeGradientStylePatch,
@@ -224,7 +228,6 @@ const SHAPE_KIND_OPTIONS = [
 const QR_DATA_MODE_OPTIONS = ["single_merge", "multi_merge", "custom"] as const;
 const CARD_SIDES: CardSide[] = ["front", "back"];
 const DEFAULT_ACTIVE_SIDE: CardSide = "front";
-const CSS_PX_PER_MM = 96 / 25.4;
 const CORNER_RADIUS_STYLE_KEYS = [
   "radius_top_left_mm",
   "radius_top_right_mm",
@@ -549,46 +552,6 @@ function openBlobInNewTab(blob: Blob) {
   window.setTimeout(() => {
     window.URL.revokeObjectURL(url);
   }, 15000);
-}
-
-function calculateCardSimulationScale(
-  payload: CardPreviewHtmlResponse,
-  viewportWidthPx: number,
-  viewportHeightPx: number
-) {
-  const cardWidthMm = Math.max(
-    0.01,
-    toFiniteNumber(payload.card_format?.width_mm, CONTRACT_CARD_WIDTH_MM)
-  );
-  const cardHeightMm = Math.max(
-    0.01,
-    toFiniteNumber(payload.card_format?.height_mm, CONTRACT_CARD_HEIGHT_MM)
-  );
-  const naturalWidthPx = Math.max(1, cardWidthMm * CSS_PX_PER_MM);
-  const naturalHeightPx = Math.max(1, cardHeightMm * CSS_PX_PER_MM);
-  const widthScale = viewportWidthPx / naturalWidthPx;
-  const heightScale = viewportHeightPx / naturalHeightPx;
-  return clamp(Math.min(widthScale, heightScale), 0.1, 12);
-}
-
-function buildCardSimulationSrcDoc(
-  payload: CardPreviewHtmlResponse | null,
-  viewportWidthPx: number,
-  viewportHeightPx: number
-) {
-  if (!payload) {
-    return "";
-  }
-  const simulationHtml = payload.html || "";
-  const simulationCss = payload.css || "";
-  const simulationScale = calculateCardSimulationScale(
-    payload,
-    viewportWidthPx,
-    viewportHeightPx
-  );
-  return `<!doctype html><html><head><meta charset="utf-8"><style>:root{--card-simulation-scale:${simulationScale.toFixed(
-    6
-  )};}${simulationCss}</style></head><body>${simulationHtml}</body></html>`;
 }
 
 function getPreviewElementResolvedValue(
@@ -1701,9 +1664,13 @@ export default function LtfAdminLicenseCardDesignerPage() {
     }
     return available.filter((side): side is CardSide => side === "front" || side === "back");
   }, [previewData?.available_sides]);
-  const liveSimulationSrcDoc = useMemo(
-    () => buildCardSimulationSrcDoc(liveSimulationData, canvasWidthPx, canvasHeightPx),
+  const liveSimulationFrameLayout = useMemo(
+    () => calculateCardSimulationFrameLayout(liveSimulationData, canvasWidthPx, canvasHeightPx),
     [canvasHeightPx, canvasWidthPx, liveSimulationData]
+  );
+  const liveSimulationSrcDoc = useMemo(
+    () => buildCardSimulationSrcDoc(liveSimulationData),
+    [liveSimulationData]
   );
 
   const resetHistory = useCallback(() => {
@@ -3322,11 +3289,11 @@ export default function LtfAdminLicenseCardDesignerPage() {
     if (!isLivePrintSimulationEnabled) {
       return;
     }
-    const timeoutId = window.setTimeout(() => {
+    const frameId = window.requestAnimationFrame(() => {
       void handleRefreshLiveSimulation();
-    }, 120);
+    });
     return () => {
-      window.clearTimeout(timeoutId);
+      window.cancelAnimationFrame(frameId);
     };
   }, [handleRefreshLiveSimulation, isLivePrintSimulationEnabled]);
 
@@ -5173,13 +5140,23 @@ export default function LtfAdminLicenseCardDesignerPage() {
                   </p>
                 ) : null}
                 <div className="mx-auto overflow-hidden rounded-lg border border-zinc-300 bg-white shadow-sm">
-                  <iframe
-                    key={`live-simulation-${liveSimulationRevision}`}
-                    title={t("licenseCardPreviewSimulationFrameTitle")}
-                    className="block border-0"
+                  <div
+                    className="relative"
                     style={{ width: canvasWidthPx, height: canvasHeightPx }}
-                    srcDoc={liveSimulationSrcDoc}
-                  />
+                  >
+                    <iframe
+                      key={`live-simulation-${liveSimulationRevision}`}
+                      title={t("licenseCardPreviewSimulationFrameTitle")}
+                      className="block border-0"
+                      style={{
+                        width: liveSimulationFrameLayout.naturalWidthPx,
+                        height: liveSimulationFrameLayout.naturalHeightPx,
+                        transform: `scale(${liveSimulationFrameLayout.scale.toFixed(6)})`,
+                        transformOrigin: "top left",
+                      }}
+                      srcDoc={liveSimulationSrcDoc}
+                    />
+                  </div>
                 </div>
               </div>
             ) : null}

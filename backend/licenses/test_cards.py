@@ -2185,8 +2185,10 @@ class LicenseCardPreviewApiTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["active_side"], "back")
         self.assertIn("back", response.data["available_sides"])
-        self.assertIn("card-simulation-root", response.data["html"])
-        self.assertIn(".card-simulation-root", response.data["css"])
+        self.assertIn('class="card-canvas"', response.data["html"])
+        self.assertIn("html,body{margin:0;padding:0;}", response.data["css"])
+        self.assertNotIn("card-simulation-root", response.data["html"])
+        self.assertNotIn("--card-simulation-scale", response.data["css"])
 
     def test_preview_refresh_override_is_deterministic_for_multiple_elements(self):
         self.client.force_authenticate(user=self.ltf_admin)
@@ -2275,7 +2277,7 @@ class LicenseCardPreviewApiTests(TestCase):
         self.assertNotIn("refresh-a-1", stored_ids)
         self.assertNotIn("refresh-b-1", stored_ids)
 
-    def test_preview_simulation_and_pdf_share_font_size_css(self):
+    def test_preview_simulation_and_pdf_share_font_size_and_positioning_css(self):
         self.client.force_authenticate(user=self.ltf_admin)
         design_override = {
             "elements": [
@@ -2300,7 +2302,9 @@ class LicenseCardPreviewApiTests(TestCase):
         html_response = self.client.post(self.preview_card_html_url, request_payload, format="json")
         self.assertEqual(html_response.status_code, status.HTTP_200_OK)
         self.assertIn("font-size:4.37mm;", html_response.data["html"])
+        self.assertIn("left:4.00mm;top:4.00mm;width:72.00mm;height:10.00mm;", html_response.data["html"])
         self.assertIn("PARITY Preview", html_response.data["html"])
+        self.assertNotIn("card-simulation-root", html_response.data["html"])
 
         with patch("licenses.card_rendering._render_pdf", return_value=b"%PDF-1.4\n") as render_pdf_mock:
             pdf_response = self.client.post(
@@ -2313,7 +2317,21 @@ class LicenseCardPreviewApiTests(TestCase):
 
         rendered_pdf_html = str(render_pdf_mock.call_args.args[0])
         self.assertIn("font-size:4.37mm;", rendered_pdf_html)
+        self.assertIn("left:4.00mm;top:4.00mm;width:72.00mm;height:10.00mm;", rendered_pdf_html)
         self.assertIn("PARITY Preview", rendered_pdf_html)
+        body_start = rendered_pdf_html.find("<body>")
+        body_end = rendered_pdf_html.rfind("</body>")
+        self.assertGreaterEqual(body_start, 0)
+        self.assertGreater(body_end, body_start)
+        rendered_pdf_body_fragment = rendered_pdf_html[body_start + len("<body>") : body_end]
+        self.assertEqual(html_response.data["html"], rendered_pdf_body_fragment)
+
+        expected_page_rule = (
+            "@page { size: "
+            f"{Decimal(str(self.card_format.width_mm)).quantize(Decimal('0.01'))}mm "
+            f"{Decimal(str(self.card_format.height_mm)).quantize(Decimal('0.01'))}mm; margin: 0; }}"
+        )
+        self.assertIn(expected_page_rule + html_response.data["css"], rendered_pdf_html)
 
     def test_preview_rejects_non_object_design_payload_override(self):
         self.client.force_authenticate(user=self.ltf_admin)
