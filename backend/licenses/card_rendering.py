@@ -250,7 +250,7 @@ def _resolve_active_font_assets(font_ids: set[int]) -> dict[int, dict[str, Any]]
     return resolved
 
 
-def _resolve_active_image_assets(
+def _resolve_image_assets(
     image_ids: set[int],
     *,
     request: HttpRequest | None,
@@ -258,27 +258,32 @@ def _resolve_active_image_assets(
 ) -> dict[int, dict[str, Any]]:
     if not image_ids:
         return {}
-    queryset = CardImageAsset.objects.filter(id__in=image_ids, is_active=True).order_by("id")
+    queryset = CardImageAsset.objects.filter(id__in=image_ids).order_by("id")
     resolved: dict[int, dict[str, Any]] = {}
     for image_asset in queryset:
-        data_uri = _file_to_data_uri(image_asset.image, fallback_mime="image/png")
-        url_value = ""
-        if image_asset.image:
-            try:
-                url_value = str(image_asset.image.url)
-            except Exception:  # pragma: no cover - storage backend dependent
-                url_value = ""
-        normalized_url = _normalize_source_url(
-            url_value,
-            request=request,
-            asset_base_url=asset_base_url,
-        )
+        is_active = bool(image_asset.is_active)
+        data_uri = ""
+        normalized_url = ""
+        if is_active:
+            data_uri = _file_to_data_uri(image_asset.image, fallback_mime="image/png")
+            url_value = ""
+            if image_asset.image:
+                try:
+                    url_value = str(image_asset.image.url)
+                except Exception:  # pragma: no cover - storage backend dependent
+                    url_value = ""
+            normalized_url = _normalize_source_url(
+                url_value,
+                request=request,
+                asset_base_url=asset_base_url,
+            )
         resolved[int(image_asset.id)] = {
             "id": int(image_asset.id),
             "name": str(image_asset.name),
+            "is_active": is_active,
             "data_uri": data_uri,
             "url": normalized_url,
-            "usable": bool(data_uri or normalized_url),
+            "usable": bool(is_active and (data_uri or normalized_url)),
         }
     return resolved
 
@@ -618,6 +623,13 @@ def _resolve_image_source(
                 "resolved_via": "style.image_asset_id",
                 "status": "missing",
                 "asset_status": "missing",
+            }
+        if not bool(resolved_image_asset.get("is_active", True)):
+            return "", {
+                "image_asset_id": parsed_image_asset_id,
+                "resolved_via": "style.image_asset_id",
+                "status": "inactive",
+                "asset_status": "inactive",
             }
         if resolved_image_asset and resolved_image_asset.get("usable"):
             preferred_source = (
@@ -1213,7 +1225,7 @@ def build_preview_data(
         active_design_payload
     )
     resolved_font_assets = _resolve_active_font_assets(requested_font_ids)
-    resolved_image_assets = _resolve_active_image_assets(
+    resolved_image_assets = _resolve_image_assets(
         requested_image_ids,
         request=request,
         asset_base_url=asset_base_url,
@@ -1257,6 +1269,11 @@ def build_preview_data(
         image_id
         for image_id, image_payload in resolved_image_assets.items()
         if not bool(image_payload.get("usable"))
+    )
+    resolved_image_ids = sorted(
+        image_id
+        for image_id, image_payload in resolved_image_assets.items()
+        if bool(image_payload.get("is_active"))
     )
     payload: dict[str, Any] = {
         "template_version_id": template_version.id,
@@ -1313,7 +1330,7 @@ def build_preview_data(
             },
             "image_assets": {
                 "requested_ids": sorted(requested_image_ids),
-                "resolved_ids": sorted(resolved_image_assets.keys()),
+                "resolved_ids": resolved_image_ids,
                 "missing_ids": missing_image_ids,
                 "unavailable_ids": unavailable_image_ids,
             },

@@ -1902,6 +1902,96 @@ class LicenseCardPreviewApiTests(TestCase):
         self.assertEqual(image_element["resolved_source_meta"]["status"], "missing")
         self.assertEqual(image_element["resolved_source_meta"]["asset_status"], "missing")
 
+    def test_preview_data_multi_image_active_and_inactive_assets_keep_explicit_priority(self):
+        with tempfile.TemporaryDirectory() as temp_media_root:
+            with self.settings(MEDIA_ROOT=temp_media_root):
+                active_asset = CardImageAsset.objects.create(
+                    name="Active Asset PNG",
+                    image=_build_uploaded_png("active-asset.png"),
+                    created_by=self.ltf_admin,
+                )
+                inactive_asset = CardImageAsset.objects.create(
+                    name="Inactive Asset SVG",
+                    image=_build_uploaded_svg("inactive-asset.svg"),
+                    created_by=self.ltf_admin,
+                    is_active=False,
+                )
+                self.template_version.design_payload = {
+                    "elements": [
+                        {
+                            "id": "asset-image-active",
+                            "type": "image",
+                            "x_mm": "8.00",
+                            "y_mm": "8.00",
+                            "width_mm": "20.00",
+                            "height_mm": "20.00",
+                            "source": "member.profile_picture_processed",
+                            "style": {"image_asset_id": active_asset.id},
+                        },
+                        {
+                            "id": "asset-image-inactive",
+                            "type": "image",
+                            "x_mm": "34.00",
+                            "y_mm": "8.00",
+                            "width_mm": "20.00",
+                            "height_mm": "20.00",
+                            "merge_field": "member.profile_picture_processed",
+                            "source": "member.profile_picture_processed",
+                            "style": {"image_asset_id": inactive_asset.id},
+                        },
+                    ]
+                }
+                self.template_version.save(update_fields=["design_payload", "updated_at"])
+                self.client.force_authenticate(user=self.ltf_admin)
+
+                preview_data_response = self.client.post(
+                    self.preview_data_url,
+                    {"member_id": self.member.id},
+                    format="json",
+                )
+                self.assertEqual(preview_data_response.status_code, status.HTTP_200_OK)
+                elements_by_id = {
+                    element["id"]: element for element in preview_data_response.data["elements"]
+                }
+
+                active_element = elements_by_id["asset-image-active"]
+                self.assertTrue(str(active_element["resolved_source"]).strip())
+                self.assertEqual(
+                    active_element["resolved_source_meta"]["resolved_via"],
+                    "style.image_asset_id",
+                )
+                self.assertEqual(active_element["resolved_source_meta"]["status"], "resolved")
+                self.assertEqual(
+                    active_element["resolved_source_meta"]["asset_status"],
+                    "resolved",
+                )
+                self.assertEqual(
+                    active_element["resolved_source_meta"]["image_asset_id"],
+                    active_asset.id,
+                )
+
+                inactive_element = elements_by_id["asset-image-inactive"]
+                self.assertEqual(inactive_element["resolved_source"], "")
+                self.assertEqual(
+                    inactive_element["resolved_source_meta"]["resolved_via"],
+                    "style.image_asset_id",
+                )
+                self.assertEqual(inactive_element["resolved_source_meta"]["status"], "inactive")
+                self.assertEqual(
+                    inactive_element["resolved_source_meta"]["asset_status"],
+                    "inactive",
+                )
+                self.assertEqual(
+                    inactive_element["resolved_source_meta"]["image_asset_id"],
+                    inactive_asset.id,
+                )
+
+                image_metadata = preview_data_response.data["render_metadata"]["image_assets"]
+                self.assertIn(active_asset.id, image_metadata["resolved_ids"])
+                self.assertNotIn(inactive_asset.id, image_metadata["resolved_ids"])
+                self.assertIn(inactive_asset.id, image_metadata["unavailable_ids"])
+                self.assertNotIn(inactive_asset.id, image_metadata["missing_ids"])
+
     def test_preview_and_simulation_resolve_multiple_image_assets_including_svg(self):
         with tempfile.TemporaryDirectory() as temp_media_root:
             with self.settings(MEDIA_ROOT=temp_media_root):
