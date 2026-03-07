@@ -5,7 +5,7 @@ Modern, secure Taekwondo license management for the Luxembourg Taekwondo Federat
 ## Release Notes
 
 - See `CHANGELOG.md` for user-facing and technical release notes.
-- Current stable release: `v0.3.3` (Card v2.1 precision/stability closure).
+- Current stable release: `v0.3.4` (Card v2.1 recovery round finalization).
 
 ## CI (GitHub Actions)
 
@@ -374,7 +374,7 @@ Role split:
 - LTF Admin: manages templates/versions, dual-side designer payloads, simulation previews, and can execute/retry/cancel any print job.
 - Club Admin: can quick-print from own-club members or licenses, execute/retry/cancel own-club print jobs, and view own-club print history.
 
-### License Card v2.1 Quick Usage (v0.3.3)
+### License Card v2.1 Quick Usage (v0.3.4)
 
 LTF Admin flow:
 1. Open `/{locale}/dashboard/ltf/license-cards`.
@@ -387,13 +387,12 @@ Club Admin flow:
 2. Select members/licenses and run quick print using the latest published template.
 3. Confirm job reaches `succeeded` and artifact download works from history.
 
-v0.3.3 closure notes:
-- LP798 geometry contract is locked to exact placement math (card `85.00x55.00`, margins/gaps `15/10/15` and `10/0`).
-- Multiple image objects now reliably resolve selected image assets (including SVG) without profile fallback side effects.
-- Merge fields now include `primary_license_role` and `secondary_license_role`.
-- Locked LTF date format is enforced across preview, simulation, PDF, and print execution.
-- Simulation refresh is deterministic and font-size parity is aligned with card PDF preview output.
-- Full v2.1 gate results are recorded in `docs/license-card-v2-1-step6-uat.md`.
+v0.3.4 recovery notes:
+- Recovery Step 4 full gate is complete and recorded in `docs/license-card-v2-1-recovery-step4-uat.md` (`23 PASS`, `0 FAIL`).
+- LP798 geometry and sheet-slot placement remain locked (`85.00x55.00`, margins/gaps `15/10/15` and `10/0`) with guide neutrality preserved.
+- Multi-image asset reliability is confirmed for explicit PNG and SVG asset selection without fallback regression.
+- Ruler/snap controls remain wired in the v2 designer (`showRulers`, `snapToGrid`, `snapToElements`) and simulation/PDF parity checks passed.
+- Locked LTF date formatting and role merge fields (`primary_license_role`, `secondary_license_role`) remain consistent across preview, simulation, PDF, and print execution.
 
 Primary API workflow:
 - Template manager/designer:

@@ -347,7 +347,7 @@ DASHBOARD_OVERVIEW_CACHE_TTL_SECONDS = config(
 SPECTACULAR_SETTINGS = {
     "TITLE": "LTF License Manager API",
     "DESCRIPTION": "API for managing LTF Taekwondo licenses",
-    "VERSION": "0.3.3",
+    "VERSION": "0.3.4",
 }
 
 CORS_ALLOWED_ORIGINS = split_csv(

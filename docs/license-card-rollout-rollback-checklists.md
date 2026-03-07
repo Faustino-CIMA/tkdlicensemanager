@@ -2,18 +2,18 @@
 
 Use this checklist for production rollout of the License Card v2 feature set (dual-side template designer, simulation previews, print jobs, quick print, history).
 
-Release target: `v0.3.3`.
+Release target: `v0.3.4`.
 
-## Final Release Preparation (v0.3.3)
+## Final Release Preparation (v0.3.4)
 
-- [ ] Confirm v2.1 Step 6 UAT report is PASS (`docs/license-card-v2-1-step6-uat.md`).
+- [ ] Confirm v2.1 Recovery Step 4 UAT report is PASS (`docs/license-card-v2-1-recovery-step4-uat.md`).
 - [ ] Confirm release commit SHA and branch (`git rev-parse --short HEAD`, `git branch --show-current`).
-- [ ] Confirm release tag locally (`git tag -l v0.3.3`).
-- [ ] Push branch and tag to origin (`git push`, `git push origin v0.3.3`).
+- [ ] Confirm release tag locally (`git tag -l v0.3.4`).
+- [ ] Push branch and tag to origin (`git push`, `git push origin v0.3.4`).
 - [ ] Announce release scope:
-  - LP798 geometry contract locked (`85x55`, margins/gaps exact),
-  - asset reliability fixes merged (multi-image resolution + active-by-default uploads),
-  - simulation refresh/font parity and new role merge fields validated.
+  - Recovery Step 4 gate PASS (`23 PASS`, `0 FAIL`),
+  - LP798 geometry and simulation/PDF parity reconfirmed,
+  - image asset reliability and ruler/snap designer controls reconfirmed.
 
 ## Rollout Checklist
 
@@ -68,7 +68,7 @@ Release target: `v0.3.3`.
   - `docker compose exec backend python manage.py test --keepdb --noinput licenses.test_cards.LicenseCardPreviewApiTests`
 - [ ] Validate print-job create/execute/download on a small sample.
 - [ ] Announce rollback completion with reason, timestamp, and restored revision.
-- [ ] If rollback is needed after `v0.3.3`, prefer previous stable tag/sha and re-run v2.1 smoke subset.
+- [ ] If rollback is needed after `v0.3.4`, prefer previous stable tag/sha and re-run v2.1 smoke subset.
 
 ## Data Safety Notes
 

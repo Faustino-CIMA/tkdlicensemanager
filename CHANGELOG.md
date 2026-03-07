@@ -15,6 +15,18 @@ All notable changes to this project are documented in this file.
 - Added authenticated API endpoints for processed and thumbnail profile images to avoid reliance on direct `/media` routing.
 - Improved container startup permission handling for media, static, and Celery beat storage paths in Docker Compose deployments.
 
+## [0.3.4] - 2026-03-07
+
+### User-facing
+- Card v2.1 Recovery Step 4 final gate is complete and release-ready.
+- LP798 geometry placement and multi-image asset behavior were revalidated end-to-end (including SVG assets).
+- Designer ruler/snap controls and simulation/PDF parity remain stable after recovery fixes.
+
+### Technical
+- Added final recovery UAT report with full matrix coverage in `docs/license-card-v2-1-recovery-step4-uat.md` (`23 PASS`, `0 FAIL`).
+- Re-ran backend card regression suite (`licenses.test_cards`), runtime preview/simulation/PDF assertions, and print execution/duplicate-guard checks.
+- Refreshed release runbooks and project memory for patch release rollout (`README.md`, `PROJECT_CONTEXT.md`, `docs/license-card-rollout-rollback-checklists.md`).
+
 ## [0.3.3] - 2026-03-06
 
 ### User-facing
