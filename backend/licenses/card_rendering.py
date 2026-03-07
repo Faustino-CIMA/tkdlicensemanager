@@ -603,8 +603,16 @@ def _resolve_image_source(
         style = {}
     if not isinstance(style, dict):
         style = {}
+    has_explicit_image_asset = "image_asset_id" in style
     image_asset_id = style.get("image_asset_id")
-    if image_asset_id is not None:
+    if has_explicit_image_asset:
+        if image_asset_id is None:
+            return "", {
+                "image_asset_id": None,
+                "resolved_via": "style.image_asset_id",
+                "status": "invalid",
+                "asset_status": "invalid",
+            }
         try:
             parsed_image_asset_id = int(str(image_asset_id))
         except (TypeError, ValueError):

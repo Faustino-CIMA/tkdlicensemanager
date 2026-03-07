@@ -195,7 +195,6 @@ const PREVIEW_LOOKUP_LIMIT = 20;
 const HISTORY_STACK_LIMIT = 250;
 const DEFAULT_GRID_SIZE_MM = "1.00";
 const DEFAULT_SNAP_THRESHOLD_MM = "1.20";
-const RULER_SIZE_PX = 24;
 const CONTRACT_CARD_WIDTH_MM = 85.0;
 const CONTRACT_CARD_HEIGHT_MM = 55.0;
 const LP798_SHEET_WIDTH_MM = 210.0;
@@ -250,11 +249,6 @@ function clamp(value: number, min: number, max: number) {
 
 function roundMm(value: number) {
   return Number(value.toFixed(2));
-}
-
-function getRulerMarkOffsetPx(markMm: number, scale: number, maxExtentPx: number) {
-  const markOffsetPx = markMm * scale;
-  return clamp(markOffsetPx, 0, Math.max(0, maxExtentPx - 1));
 }
 
 function toMmString(value: number) {
@@ -1230,7 +1224,6 @@ export default function LtfAdminLicenseCardDesignerPage() {
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
   const [snapGuideLines, setSnapGuideLines] = useState<SnapGuideLine[]>([]);
   const [liveMeasurementBounds, setLiveMeasurementBounds] = useState<ElementBounds | null>(null);
-  const [showRulers, setShowRulers] = useState(true);
   const [showGrid, setShowGrid] = useState(true);
   const [gridSizeMmInput, setGridSizeMmInput] = useState(DEFAULT_GRID_SIZE_MM);
   const [snapToGrid, setSnapToGrid] = useState(true);
@@ -1284,7 +1277,6 @@ export default function LtfAdminLicenseCardDesignerPage() {
   const [isLoadingLiveSimulation, setIsLoadingLiveSimulation] = useState(false);
   const [liveSimulationData, setLiveSimulationData] = useState<CardPreviewHtmlResponse | null>(null);
   const [liveSimulationError, setLiveSimulationError] = useState<string | null>(null);
-  const [liveSimulationRevision, setLiveSimulationRevision] = useState(0);
   const liveSimulationRequestIdRef = useRef(0);
   const liveSimulationAbortControllerRef = useRef<AbortController | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -1442,26 +1434,6 @@ export default function LtfAdminLicenseCardDesignerPage() {
   const sheetPreviewWidthPx = (sheetGeometryProfile?.sheet_width_mm || 0) * sheetPreviewScale;
   const sheetPreviewHeightPx = (sheetGeometryProfile?.sheet_height_mm || 0) * sheetPreviewScale;
 
-  const sheetRulerMarksX = useMemo(() => {
-    if (!sheetGeometryProfile) {
-      return [];
-    }
-    return Array.from(
-      { length: Math.floor(sheetGeometryProfile.sheet_width_mm / 10) + 1 },
-      (_, index) => index * 10
-    );
-  }, [sheetGeometryProfile]);
-
-  const sheetRulerMarksY = useMemo(() => {
-    if (!sheetGeometryProfile) {
-      return [];
-    }
-    return Array.from(
-      { length: Math.floor(sheetGeometryProfile.sheet_height_mm / 10) + 1 },
-      (_, index) => index * 10
-    );
-  }, [sheetGeometryProfile]);
-
   const sheetLayoutMetadata = useMemo(() => {
     if (previewData?.layout_metadata) {
       const maxX = toFiniteNumber(previewData.layout_metadata.max_x_mm, 0);
@@ -1546,12 +1518,17 @@ export default function LtfAdminLicenseCardDesignerPage() {
     () => parseOptionalInt(selectedElementStyle.image_asset_id),
     [selectedElementStyle]
   );
+  const activeImageAssets = useMemo(
+    () => imageAssets.filter((asset) => asset.is_active),
+    [imageAssets]
+  );
   const selectedImageAsset = useMemo(() => {
     if (!selectedImageAssetId || selectedImageAssetId <= 0) {
       return null;
     }
     return imageAssets.find((asset) => asset.id === selectedImageAssetId) ?? null;
   }, [imageAssets, selectedImageAssetId]);
+  const selectedImageAssetIsActive = Boolean(selectedImageAsset?.is_active);
   const selectedImageAssetIsSvg = useMemo(() => {
     if (!selectedImageAsset) {
       return false;
@@ -1665,8 +1642,8 @@ export default function LtfAdminLicenseCardDesignerPage() {
     return available.filter((side): side is CardSide => side === "front" || side === "back");
   }, [previewData?.available_sides]);
   const liveSimulationFrameLayout = useMemo(
-    () => calculateCardSimulationFrameLayout(liveSimulationData, canvasWidthPx, canvasHeightPx),
-    [canvasHeightPx, canvasWidthPx, liveSimulationData]
+    () => calculateCardSimulationFrameLayout(liveSimulationData),
+    [liveSimulationData]
   );
   const liveSimulationSrcDoc = useMemo(
     () => buildCardSimulationSrcDoc(liveSimulationData),
@@ -1827,7 +1804,6 @@ export default function LtfAdminLicenseCardDesignerPage() {
       setIsLoadingLiveSimulation(false);
       setLiveSimulationData(null);
       setLiveSimulationError(null);
-      setLiveSimulationRevision((value) => value + 1);
       setPreviewSelectedSlots([]);
       setPreviewPaperProfileValue(TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE);
       resetHistory();
@@ -1846,7 +1822,6 @@ export default function LtfAdminLicenseCardDesignerPage() {
     setIsLoadingLiveSimulation(false);
     setLiveSimulationData(null);
     setLiveSimulationError(null);
-    setLiveSimulationRevision((value) => value + 1);
     setDragState(null);
     setResizeState(null);
     setSnapGuideLines([]);
@@ -2482,7 +2457,6 @@ export default function LtfAdminLicenseCardDesignerPage() {
       setIsLoadingLiveSimulation(false);
       setLiveSimulationData(null);
       setLiveSimulationError(null);
-      setLiveSimulationRevision((value) => value + 1);
       resetHistory();
     },
     [activeSide, designPayload, designPayloadBySide, resetHistory]
@@ -3268,8 +3242,17 @@ export default function LtfAdminLicenseCardDesignerPage() {
       if (controller.signal.aborted || requestId !== liveSimulationRequestIdRef.current) {
         return;
       }
-      setLiveSimulationData(response);
-      setLiveSimulationRevision((value) => value + 1);
+      setLiveSimulationData((previousSimulation) => {
+        if (
+          previousSimulation &&
+          previousSimulation.html === response.html &&
+          previousSimulation.css === response.css &&
+          previousSimulation.active_side === response.active_side
+        ) {
+          return previousSimulation;
+        }
+        return response;
+      });
     } catch (error) {
       if (controller.signal.aborted || requestId !== liveSimulationRequestIdRef.current) {
         return;
@@ -3793,14 +3776,6 @@ export default function LtfAdminLicenseCardDesignerPage() {
     barcode: t("licenseCardDesignerToolBarcode"),
   } satisfies Record<CardElementType, string>;
   const selectedCount = effectiveSelectedElementIds.length;
-  const rulerMarksX = useMemo(
-    () => Array.from({ length: Math.floor(canvasWidthMm) + 1 }, (_, index) => index),
-    [canvasWidthMm]
-  );
-  const rulerMarksY = useMemo(
-    () => Array.from({ length: Math.floor(canvasHeightMm) + 1 }, (_, index) => index),
-    [canvasHeightMm]
-  );
   const sheetGeometrySourceLabel = sheetGeometryProfile
     ? sheetGeometryProfile.source === "preview-data"
       ? t("licenseCardPreviewSheetGeometrySourceBackend")
@@ -4150,13 +4125,6 @@ export default function LtfAdminLicenseCardDesignerPage() {
           </Button>
         </div>
         <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
-          <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
-            <Checkbox
-              checked={showRulers}
-              onCheckedChange={(checked) => setShowRulers(Boolean(checked))}
-            />
-            {t("licenseCardEditorShowRulersToggle")}
-          </label>
           <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
             <Checkbox
               checked={showGrid}
@@ -4530,133 +4498,63 @@ export default function LtfAdminLicenseCardDesignerPage() {
                 </p>
                 <div className="overflow-auto rounded-xl border border-zinc-200 bg-white p-3">
                   <div
-                    className="relative mx-auto"
+                    className="relative mx-auto border border-zinc-300 bg-zinc-50"
                     style={{
-                      width: sheetPreviewWidthPx + RULER_SIZE_PX,
-                      height: sheetPreviewHeightPx + RULER_SIZE_PX,
+                      width: sheetPreviewWidthPx,
+                      height: sheetPreviewHeightPx,
                     }}
                   >
-                    <div
-                      className="pointer-events-none absolute left-0 top-0 border-b border-r border-zinc-300 bg-zinc-100"
-                      style={{ width: RULER_SIZE_PX, height: RULER_SIZE_PX }}
-                    />
-                    <div
-                      className="pointer-events-none absolute top-0 border-b border-zinc-300 bg-zinc-100"
-                      style={{
-                        left: RULER_SIZE_PX,
-                        width: sheetPreviewWidthPx,
-                        height: RULER_SIZE_PX,
-                      }}
-                    >
-                      {sheetRulerMarksX.map((mark) => {
-                        const markOffsetPx = getRulerMarkOffsetPx(
-                          mark,
-                          sheetPreviewScale,
-                          sheetPreviewWidthPx
-                        );
-                        return (
-                          <div
-                            key={`sheet-ruler-x-${mark}`}
-                            className="absolute bottom-0"
-                            style={{ left: markOffsetPx }}
-                          >
-                            <div className="h-2 w-px bg-zinc-500" />
-                            <span className="absolute left-1 top-0 text-[9px] text-zinc-500">
-                              {mark}
-                            </span>
+                    {sheetPreviewSlots.map((slot) => {
+                      const slotLeftPx = slot.x_mm * sheetPreviewScale;
+                      const slotTopPx = slot.y_mm * sheetPreviewScale;
+                      const slotWidthPx = slot.width_mm * sheetPreviewScale;
+                      const slotHeightPx = slot.height_mm * sheetPreviewScale;
+                      const slotBleedPx = Math.max(0, bleedGuideMm * sheetPreviewScale);
+                      const slotSafeAreaPx = Math.max(0, safeAreaGuideMm * sheetPreviewScale);
+                      return (
+                        <div
+                          key={`sheet-slot-${slot.slot_index}`}
+                          className="absolute overflow-hidden"
+                          style={{
+                            left: slotLeftPx,
+                            top: slotTopPx,
+                            width: slotWidthPx,
+                            height: slotHeightPx,
+                            borderRadius: slot.card_corner_radius_mm * sheetPreviewScale,
+                            border: `1px dashed ${slot.selected ? "#2563eb" : "#94a3b8"}`,
+                            backgroundColor: slot.selected
+                              ? "rgba(37, 99, 235, 0.12)"
+                              : "rgba(148, 163, 184, 0.10)",
+                          }}
+                        >
+                          {slot.selected && showBleedGuide ? (
+                            <div
+                              className="pointer-events-none absolute inset-0"
+                              style={{
+                                boxShadow: `inset 0 0 0 ${slotBleedPx}px rgba(244, 63, 94, 0.20)`,
+                              }}
+                            />
+                          ) : null}
+                          {slot.selected && showSafeAreaGuide ? (
+                            <div
+                              className="pointer-events-none absolute border border-dashed border-emerald-600/80"
+                              style={{
+                                left: slotSafeAreaPx,
+                                top: slotSafeAreaPx,
+                                width: Math.max(slotWidthPx - slotSafeAreaPx * 2, 0),
+                                height: Math.max(slotHeightPx - slotSafeAreaPx * 2, 0),
+                              }}
+                            />
+                          ) : null}
+                          <div className="pointer-events-none absolute left-1 top-1 rounded bg-white/90 px-1 py-0.5 font-mono text-[9px] text-zinc-700">
+                            #{slot.slot_index}
                           </div>
-                        );
-                      })}
-                    </div>
-                    <div
-                      className="pointer-events-none absolute left-0 border-r border-zinc-300 bg-zinc-100"
-                      style={{
-                        top: RULER_SIZE_PX,
-                        width: RULER_SIZE_PX,
-                        height: sheetPreviewHeightPx,
-                      }}
-                    >
-                      {sheetRulerMarksY.map((mark) => {
-                        const markOffsetPx = getRulerMarkOffsetPx(
-                          mark,
-                          sheetPreviewScale,
-                          sheetPreviewHeightPx
-                        );
-                        return (
-                          <div
-                            key={`sheet-ruler-y-${mark}`}
-                            className="absolute right-0"
-                            style={{ top: markOffsetPx }}
-                          >
-                            <div className="h-px w-2 bg-zinc-500" />
-                            <span className="absolute left-0 -top-1 text-[9px] text-zinc-500">
-                              {mark}
-                            </span>
+                          <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-white/90 px-1 py-0.5 font-mono text-[9px] text-zinc-600">
+                            x:{toMmString(slot.x_mm)} y:{toMmString(slot.y_mm)}
                           </div>
-                        );
-                      })}
-                    </div>
-                    <div
-                      className="relative border border-zinc-300 bg-zinc-50"
-                      style={{
-                        width: sheetPreviewWidthPx,
-                        height: sheetPreviewHeightPx,
-                        marginLeft: RULER_SIZE_PX,
-                        marginTop: RULER_SIZE_PX,
-                      }}
-                    >
-                      {sheetPreviewSlots.map((slot) => {
-                        const slotLeftPx = slot.x_mm * sheetPreviewScale;
-                        const slotTopPx = slot.y_mm * sheetPreviewScale;
-                        const slotWidthPx = slot.width_mm * sheetPreviewScale;
-                        const slotHeightPx = slot.height_mm * sheetPreviewScale;
-                        const slotBleedPx = Math.max(0, bleedGuideMm * sheetPreviewScale);
-                        const slotSafeAreaPx = Math.max(0, safeAreaGuideMm * sheetPreviewScale);
-                        return (
-                          <div
-                            key={`sheet-slot-${slot.slot_index}`}
-                            className="absolute overflow-hidden"
-                            style={{
-                              left: slotLeftPx,
-                              top: slotTopPx,
-                              width: slotWidthPx,
-                              height: slotHeightPx,
-                              borderRadius: slot.card_corner_radius_mm * sheetPreviewScale,
-                              border: `1px dashed ${slot.selected ? "#2563eb" : "#94a3b8"}`,
-                              backgroundColor: slot.selected
-                                ? "rgba(37, 99, 235, 0.12)"
-                                : "rgba(148, 163, 184, 0.10)",
-                            }}
-                          >
-                            {slot.selected && showBleedGuide ? (
-                              <div
-                                className="pointer-events-none absolute inset-0"
-                                style={{
-                                  boxShadow: `inset 0 0 0 ${slotBleedPx}px rgba(244, 63, 94, 0.20)`,
-                                }}
-                              />
-                            ) : null}
-                            {slot.selected && showSafeAreaGuide ? (
-                              <div
-                                className="pointer-events-none absolute border border-dashed border-emerald-600/80"
-                                style={{
-                                  left: slotSafeAreaPx,
-                                  top: slotSafeAreaPx,
-                                  width: Math.max(slotWidthPx - slotSafeAreaPx * 2, 0),
-                                  height: Math.max(slotHeightPx - slotSafeAreaPx * 2, 0),
-                                }}
-                              />
-                            ) : null}
-                            <div className="pointer-events-none absolute left-1 top-1 rounded bg-white/90 px-1 py-0.5 font-mono text-[9px] text-zinc-700">
-                              #{slot.slot_index}
-                            </div>
-                            <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-white/90 px-1 py-0.5 font-mono text-[9px] text-zinc-600">
-                              x:{toMmString(slot.x_mm)} y:{toMmString(slot.y_mm)}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
                 {sheetGeometryParityPreview.length > 0 ? (
@@ -4858,7 +4756,6 @@ export default function LtfAdminLicenseCardDesignerPage() {
                       liveSimulationRequestIdRef.current += 1;
                       setIsLoadingLiveSimulation(false);
                       setLiveSimulationData(null);
-                      setLiveSimulationRevision((value) => value + 1);
                       setLiveSimulationError(null);
                     }
                   }}
@@ -4900,89 +4797,16 @@ export default function LtfAdminLicenseCardDesignerPage() {
               <div
                 className="relative mx-auto"
                 style={{
-                  width: canvasWidthPx + (showRulers ? RULER_SIZE_PX : 0),
-                  height: canvasHeightPx + (showRulers ? RULER_SIZE_PX : 0),
+                  width: canvasWidthPx,
+                  height: canvasHeightPx,
                 }}
               >
-                {showRulers ? (
-                  <>
-                    <div
-                      className="pointer-events-none absolute left-0 top-0 border-b border-r border-zinc-300 bg-zinc-100"
-                      style={{ width: RULER_SIZE_PX, height: RULER_SIZE_PX }}
-                    />
-                    <div
-                      className="pointer-events-none absolute top-0 border-b border-zinc-300 bg-zinc-100"
-                      style={{
-                        left: RULER_SIZE_PX,
-                        width: canvasWidthPx,
-                        height: RULER_SIZE_PX,
-                      }}
-                    >
-                      {rulerMarksX.map((mark) => {
-                        const markOffsetPx = getRulerMarkOffsetPx(mark, canvasScale, canvasWidthPx);
-                        return (
-                          <div
-                            key={`ruler-x-${mark}`}
-                            className="absolute bottom-0"
-                            style={{ left: markOffsetPx }}
-                          >
-                            <div
-                              className="w-px bg-zinc-500"
-                              style={{
-                                height: mark % 10 === 0 ? 12 : mark % 5 === 0 ? 8 : 5,
-                              }}
-                            />
-                            {mark % 10 === 0 ? (
-                              <span className="absolute left-1 top-0 text-[9px] text-zinc-500">
-                                {mark}
-                              </span>
-                            ) : null}
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div
-                      className="pointer-events-none absolute left-0 border-r border-zinc-300 bg-zinc-100"
-                      style={{
-                        top: RULER_SIZE_PX,
-                        width: RULER_SIZE_PX,
-                        height: canvasHeightPx,
-                      }}
-                    >
-                      {rulerMarksY.map((mark) => {
-                        const markOffsetPx = getRulerMarkOffsetPx(mark, canvasScale, canvasHeightPx);
-                        return (
-                          <div
-                            key={`ruler-y-${mark}`}
-                            className="absolute right-0"
-                            style={{ top: markOffsetPx }}
-                          >
-                            <div
-                              className="h-px bg-zinc-500"
-                              style={{
-                                width: mark % 10 === 0 ? 12 : mark % 5 === 0 ? 8 : 5,
-                              }}
-                            />
-                            {mark % 10 === 0 ? (
-                              <span className="absolute left-0 -top-1 text-[9px] text-zinc-500">
-                                {mark}
-                              </span>
-                            ) : null}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </>
-                ) : null}
-
                 <div
                   ref={canvasRef}
                   className="relative bg-white shadow-md"
                   style={{
                     width: canvasWidthPx,
                     height: canvasHeightPx,
-                    marginLeft: showRulers ? RULER_SIZE_PX : 0,
-                    marginTop: showRulers ? RULER_SIZE_PX : 0,
                     padding: 0,
                     boxSizing: "content-box",
                   }}
@@ -5142,17 +4966,17 @@ export default function LtfAdminLicenseCardDesignerPage() {
                 <div className="mx-auto overflow-hidden rounded-lg border border-zinc-300 bg-white shadow-sm">
                   <div
                     className="relative"
-                    style={{ width: canvasWidthPx, height: canvasHeightPx }}
+                    style={{
+                      width: liveSimulationFrameLayout.renderedWidthPx,
+                      height: liveSimulationFrameLayout.renderedHeightPx,
+                    }}
                   >
                     <iframe
-                      key={`live-simulation-${liveSimulationRevision}`}
                       title={t("licenseCardPreviewSimulationFrameTitle")}
                       className="block border-0"
                       style={{
-                        width: liveSimulationFrameLayout.naturalWidthPx,
-                        height: liveSimulationFrameLayout.naturalHeightPx,
-                        transform: `scale(${liveSimulationFrameLayout.scale.toFixed(6)})`,
-                        transformOrigin: "top left",
+                        width: liveSimulationFrameLayout.renderedWidthPx,
+                        height: liveSimulationFrameLayout.renderedHeightPx,
                       }}
                       srcDoc={liveSimulationSrcDoc}
                     />
@@ -5280,7 +5104,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
             <p className="text-xs text-zinc-500">
               {t("licenseCardAssetLibrarySummary", {
                 fontCount: fontAssets.length,
-                imageCount: imageAssets.length,
+                imageCount: activeImageAssets.length,
               })}
             </p>
             {selectedElement?.type === "text" ? (
@@ -5319,8 +5143,12 @@ export default function LtfAdminLicenseCardDesignerPage() {
                   {t("licenseCardAssetLibraryImageQuickSelectLabel")}
                 </label>
                 <Select
-                  disabled={!isEditableDraft || imageAssets.length === 0}
-                  value={selectedImageAssetId ? String(selectedImageAssetId) : "none"}
+                  disabled={!isEditableDraft || activeImageAssets.length === 0}
+                  value={
+                    selectedImageAssetId && selectedImageAssetIsActive
+                      ? String(selectedImageAssetId)
+                      : "none"
+                  }
                   onValueChange={(value) => {
                     const nextAssetId = value === "none" ? null : Number(value);
                     applySelectedImageAsset(nextAssetId);
@@ -5333,7 +5161,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">{t("licenseCardDesignerNoMergeFieldOption")}</SelectItem>
-                    {imageAssets.map((asset) => (
+                    {activeImageAssets.map((asset) => (
                       <SelectItem key={asset.id} value={String(asset.id)}>
                         {asset.name}
                       </SelectItem>
@@ -5901,7 +5729,10 @@ export default function LtfAdminLicenseCardDesignerPage() {
                           }
                           const nextStyle = normalizeElementStyle(element);
                           if (nextMode === "asset") {
-                            const fallbackAssetId = selectedImageAssetId ?? imageAssets[0]?.id ?? null;
+                            const fallbackAssetId =
+                              (selectedImageAssetIsActive ? selectedImageAssetId : null) ??
+                              activeImageAssets[0]?.id ??
+                              null;
                             if (fallbackAssetId) {
                               nextStyle.image_asset_id = fallbackAssetId;
                             }
@@ -6010,8 +5841,12 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         {t("licenseCardInspectorImageAssetLabel")}
                       </label>
                       <Select
-                        disabled={!isEditableDraft || imageAssets.length === 0}
-                        value={selectedImageAssetId ? String(selectedImageAssetId) : "none"}
+                        disabled={!isEditableDraft || activeImageAssets.length === 0}
+                        value={
+                          selectedImageAssetId && selectedImageAssetIsActive
+                            ? String(selectedImageAssetId)
+                            : "none"
+                        }
                         onValueChange={(value) => {
                           applySelectedImageAsset(value === "none" ? null : Number(value));
                         }}
@@ -6021,14 +5856,14 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">{t("licenseCardDesignerNoMergeFieldOption")}</SelectItem>
-                          {imageAssets.map((asset) => (
+                          {activeImageAssets.map((asset) => (
                             <SelectItem key={asset.id} value={String(asset.id)}>
                               {asset.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                      {selectedImageAsset ? (
+                      {selectedImageAsset && selectedImageAssetIsActive ? (
                         <p className="text-xs text-emerald-700">
                           {t("licenseCardInspectorImageAssetSelectedIndicator", {
                             name: selectedImageAsset.name,
@@ -6803,7 +6638,13 @@ export default function LtfAdminLicenseCardDesignerPage() {
                           className="flex items-center justify-between gap-2 rounded border border-zinc-200 bg-white px-2 py-1"
                         >
                           <div className="min-w-0">
-                            <p className="truncate text-xs font-medium text-zinc-800">{asset.name}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="truncate text-xs font-medium text-zinc-800">{asset.name}</p>
+                              <StatusBadge
+                                label={asset.is_active ? t("activeLabel") : t("inactiveLabel")}
+                                tone={asset.is_active ? "success" : "warning"}
+                              />
+                            </div>
                             <p className="truncate text-[10px] text-zinc-500">{asset.image}</p>
                           </div>
                           {selectedElement?.type === "image" ? (
@@ -6811,7 +6652,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                               size="sm"
                               variant="outline"
                               className="h-6 px-2 text-[10px]"
-                              disabled={!isEditableDraft}
+                              disabled={!isEditableDraft || !asset.is_active}
                               onClick={() => {
                                 applySelectedImageAsset(asset.id);
                               }}

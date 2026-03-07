@@ -26,7 +26,7 @@ function buildSimulationPayload(overrides?: Partial<CardPreviewHtmlResponse>): C
 }
 
 describe("card simulation utilities", () => {
-  it("builds srcDoc from backend canonical html/css without scale var injection", () => {
+  it("builds scaled srcDoc from backend canonical html/css", () => {
     const payload = buildSimulationPayload();
 
     const srcDoc = buildCardSimulationSrcDoc(payload);
@@ -34,26 +34,28 @@ describe("card simulation utilities", () => {
     expect(srcDoc).toContain(payload.css);
     expect(srcDoc).toContain(payload.html);
     expect(srcDoc).not.toContain("--card-simulation-scale");
+    expect(srcDoc).toContain("#card-simulation-root");
+    expect(srcDoc).toContain("transform:scale(0.750000)");
   });
 
-  it("calculates deterministic frame layout from mm-based card format", () => {
+  it("matches browser PDF preview point scale", () => {
     const payload = buildSimulationPayload();
 
-    const layout = calculateCardSimulationFrameLayout(payload, 760, 492);
+    const layout = calculateCardSimulationFrameLayout(payload);
 
     expect(layout.naturalWidthPx).toBeCloseTo((85 * 96) / 25.4, 6);
     expect(layout.naturalHeightPx).toBeCloseTo((55 * 96) / 25.4, 6);
-    expect(layout.scale).toBeCloseTo(Math.min(760 / layout.naturalWidthPx, 492 / layout.naturalHeightPx), 6);
+    expect(layout.scale).toBeCloseTo(72 / 96, 6);
     expect(layout.renderedWidthPx).toBeCloseTo(layout.naturalWidthPx * layout.scale, 6);
     expect(layout.renderedHeightPx).toBeCloseTo(layout.naturalHeightPx * layout.scale, 6);
   });
 
-  it("uses safe fallbacks for empty payload and tiny viewport values", () => {
-    const layout = calculateCardSimulationFrameLayout(null, 0, 0);
+  it("uses safe fallbacks for empty payload values", () => {
+    const layout = calculateCardSimulationFrameLayout(null);
 
     expect(layout.naturalWidthPx).toBeCloseTo((85 * 96) / 25.4, 6);
     expect(layout.naturalHeightPx).toBeCloseTo((55 * 96) / 25.4, 6);
-    expect(layout.scale).toBe(0.1);
+    expect(layout.scale).toBeCloseTo(72 / 96, 6);
     expect(buildCardSimulationSrcDoc(null)).toBe("");
   });
 });

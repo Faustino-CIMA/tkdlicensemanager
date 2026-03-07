@@ -839,7 +839,6 @@
     "licenseCardEditorBringForwardAction": "Bring forward",
     "licenseCardEditorSendBackwardAction": "Send backward",
     "licenseCardEditorDuplicateAction": "Duplicate",
-    "licenseCardEditorShowRulersToggle": "Show rulers",
     "licenseCardEditorShowGridToggle": "Show grid",
     "licenseCardEditorGridSizeLabel": "Grid size (mm)",
     "licenseCardEditorSnapToGridToggle": "Snap to grid",
