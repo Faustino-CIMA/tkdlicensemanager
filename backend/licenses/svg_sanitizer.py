@@ -18,13 +18,20 @@ SVG_CONTENT_TYPES = {"image/svg+xml", "image/svg"}
 _DANGEROUS_TOKEN_PATTERN = re.compile(r"\b(?:javascript|vbscript|file)\s*:", re.IGNORECASE)
 _EVENT_HANDLER_PATTERN = re.compile(r"\bon[a-z0-9_-]+\s*=", re.IGNORECASE)
 _BLOCKED_TAG_PATTERN = re.compile(r"<\s*(?:script|foreignobject)\b", re.IGNORECASE)
-_EXTERNAL_HREF_PATTERN = re.compile(
-    r"\b(?:href|xlink:href)\s*=\s*([\"'])\s*(?!#)[^\"']+\1",
-    re.IGNORECASE,
+_HREF_ATTRIBUTE_PATTERN = re.compile(
+    r"\b(?:href|xlink:href)\s*=\s*(?:([\"'])(.*?)\1|([^\s>]+))",
+    re.IGNORECASE | re.DOTALL,
 )
-_EXTERNAL_URL_FUNCTION_PATTERN = re.compile(
-    r"url\(\s*([\"'])?\s*(?!#)[^)]*",
-    re.IGNORECASE,
+_URL_FUNCTION_PATTERN = re.compile(
+    r"url\(\s*([^)]+?)\s*\)",
+    re.IGNORECASE | re.DOTALL,
+)
+_ALLOWED_DATA_IMAGE_URI_PREFIXES = (
+    "data:image/png;base64,",
+    "data:image/jpeg;base64,",
+    "data:image/jpg;base64,",
+    "data:image/webp;base64,",
+    "data:image/gif;base64,",
 )
 
 
@@ -91,6 +98,32 @@ def _decode_svg_text(payload: bytes) -> str:
     return decoded
 
 
+def _normalize_reference_target(raw_target: str) -> str:
+    target = str(raw_target or "").strip()
+    if len(target) >= 2 and target[0] == target[-1] and target[0] in {"'", '"'}:
+        target = target[1:-1].strip()
+    return target
+
+
+def _is_allowed_data_image_uri(target: str) -> bool:
+    normalized_target = str(target or "").strip().lower()
+    return any(
+        normalized_target.startswith(prefix)
+        for prefix in _ALLOWED_DATA_IMAGE_URI_PREFIXES
+    )
+
+
+def _is_allowed_href_target(target: str) -> bool:
+    normalized_target = _normalize_reference_target(target)
+    if not normalized_target:
+        return True
+    if normalized_target.startswith("#"):
+        return True
+    if normalized_target.lower().startswith("data:"):
+        return _is_allowed_data_image_uri(normalized_target)
+    return False
+
+
 def _assert_svg_is_safe(svg_text: str) -> None:
     if _BLOCKED_TAG_PATTERN.search(svg_text):
         raise SvgSanitizationError("SVG payload contains blocked tags.")
@@ -98,9 +131,20 @@ def _assert_svg_is_safe(svg_text: str) -> None:
         raise SvgSanitizationError("SVG payload contains blocked event handler attributes.")
     if _DANGEROUS_TOKEN_PATTERN.search(svg_text):
         raise SvgSanitizationError("SVG payload contains blocked protocol content.")
-    if _EXTERNAL_HREF_PATTERN.search(svg_text):
-        raise SvgSanitizationError("SVG payload cannot reference external href resources.")
-    if _EXTERNAL_URL_FUNCTION_PATTERN.search(svg_text):
+    for match in _HREF_ATTRIBUTE_PATTERN.finditer(svg_text):
+        quoted_target = match.group(2) or ""
+        unquoted_target = match.group(3) or ""
+        reference_target = _normalize_reference_target(quoted_target or unquoted_target)
+        if not _is_allowed_href_target(reference_target):
+            raise SvgSanitizationError("SVG payload cannot reference external href resources.")
+    for match in _URL_FUNCTION_PATTERN.finditer(svg_text):
+        reference_target = _normalize_reference_target(match.group(1))
+        if not reference_target:
+            continue
+        if reference_target.startswith("#"):
+            continue
+        if reference_target.lower().startswith("data:") and _is_allowed_data_image_uri(reference_target):
+            continue
         raise SvgSanitizationError("SVG payload cannot reference external style resources.")
 
 

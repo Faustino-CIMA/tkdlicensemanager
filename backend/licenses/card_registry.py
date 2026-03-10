@@ -24,6 +24,11 @@ MERGE_FIELD_REGISTRY = [
         "description": "Combined first and last name.",
     },
     {
+        "key": "member.current_grade",
+        "label": "Current grade",
+        "description": "Member current grade or belt rank.",
+    },
+    {
         "key": "member.ltf_licenseid",
         "label": "Member license id",
         "description": "Official LTF license identifier.",

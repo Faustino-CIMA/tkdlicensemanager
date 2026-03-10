@@ -488,6 +488,11 @@ def _build_context(
         "member.full_name": (
             f"{member.first_name} {member.last_name}".strip() if member else ""
         ),
+        "member.current_grade": (
+            str(getattr(member, "current_grade", "") or member.belt_rank or "")
+            if member
+            else ""
+        ),
         "member.ltf_licenseid": member.ltf_licenseid if member else "",
         "member.sex": member.sex if member else "",
         "member.date_of_birth": (

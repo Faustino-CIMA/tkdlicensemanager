@@ -454,6 +454,7 @@ class LicenseCardRoleAccessTests(TestCase):
         merge_fields_response = self.client.get("/api/merge-fields/")
         self.assertEqual(merge_fields_response.status_code, status.HTTP_200_OK)
         self.assertTrue(any(item["key"] == "member.first_name" for item in merge_fields_response.data))
+        self.assertTrue(any(item["key"] == "member.current_grade" for item in merge_fields_response.data))
 
         for user in [self.coach, self.member_user, self.ltf_finance]:
             with self.subTest(role=user.role):
@@ -1345,6 +1346,46 @@ class LicenseCardDesignerV2FoundationApiTests(TestCase):
                 self.assertNotIn("javascript:", lowered_payload)
                 self.assertNotIn("href=", lowered_payload)
 
+    def test_svg_upload_preserves_internal_svg_references(self):
+        structured_svg = (
+            "<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' viewBox='0 0 16 16'>"
+            "<defs>"
+            "<linearGradient id='badgeGradient' x1='0%' y1='0%' x2='100%' y2='100%'>"
+            "<stop offset='0%' stop-color='#22c55e'/>"
+            "<stop offset='100%' stop-color='#16a34a'/>"
+            "</linearGradient>"
+            "<clipPath id='badgeClip'><rect x='1' y='1' width='14' height='14' rx='2' ry='2'/></clipPath>"
+            "<path id='badgeShape' d='M1 1 H15 V15 H1 Z'/>"
+            "</defs>"
+            "<g clip-path='url(#badgeClip)'>"
+            "<use xlink:href='#badgeShape' fill='url(#badgeGradient)'/>"
+            "<image x='3' y='3' width='10' height='10' "
+            "href='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO6Nn90AAAAASUVORK5CYII='/>"
+            "</g>"
+            "</svg>"
+        )
+        with tempfile.TemporaryDirectory() as temp_media_root:
+            with self.settings(MEDIA_ROOT=temp_media_root):
+                self.client.force_authenticate(user=self.ltf_admin)
+                response = self.client.post(
+                    "/api/card-image-assets/",
+                    {
+                        "name": "Structured SVG",
+                        "image": _build_uploaded_svg("structured.svg", payload=structured_svg),
+                    },
+                    format="multipart",
+                )
+                self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+                image_asset = CardImageAsset.objects.get(id=response.data["id"])
+                with image_asset.image.open("rb") as image_stream:
+                    stored_payload = image_stream.read().decode("utf-8")
+                lowered_payload = stored_payload.lower()
+                self.assertIn("<svg", lowered_payload)
+                self.assertIn("#badgeclip", lowered_payload)
+                self.assertIn("#badgegradient", lowered_payload)
+                self.assertIn("clip-path", lowered_payload)
+                self.assertIn("data:image/png;base64,", lowered_payload)
+
     def test_svg_upload_rejects_malformed_non_text_payload(self):
         malformed_payload = SimpleUploadedFile(
             "broken.svg",
@@ -1425,6 +1466,7 @@ class LicenseCardDesignerV2FoundationApiTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         keys = {item["key"] for item in response.data}
         self.assertIn("member.age", keys)
+        self.assertIn("member.current_grade", keys)
         self.assertIn("license.validity_badge", keys)
         self.assertIn("club.logo_print_url", keys)
         self.assertIn("primary_license_role", keys)
@@ -1543,11 +1585,13 @@ class LicenseCardPreviewApiTests(TestCase):
 
     def test_preview_data_and_simulation_use_ltf_date_format_and_role_merge_fields(self):
         self.member.date_of_birth = date(2016, 11, 9)
+        self.member.belt_rank = "Blue Belt"
         self.member.primary_license_role = Member.LicenseRole.ATHLETE
         self.member.secondary_license_role = Member.LicenseRole.COACH
         self.member.save(
             update_fields=[
                 "date_of_birth",
+                "belt_rank",
                 "primary_license_role",
                 "secondary_license_role",
                 "updated_at",
@@ -1603,6 +1647,15 @@ class LicenseCardPreviewApiTests(TestCase):
                     "height_mm": "6.00",
                     "text": "SECONDARY {{secondary_license_role}}",
                 },
+                {
+                    "id": "current-grade-text",
+                    "type": "text",
+                    "x_mm": "4.00",
+                    "y_mm": "44.00",
+                    "width_mm": "76.00",
+                    "height_mm": "6.00",
+                    "text": "GRADE {{member.current_grade}}",
+                },
             ],
             "metadata": {"unit": "mm"},
         }
@@ -1618,6 +1671,7 @@ class LicenseCardPreviewApiTests(TestCase):
         self.assertEqual(context["license.end_date"], "09 Nov 2016")
         self.assertEqual(context["primary_license_role"], "athlete")
         self.assertEqual(context["secondary_license_role"], "coach")
+        self.assertEqual(context["member.current_grade"], "Blue Belt")
 
         resolved_by_id = {
             element["id"]: element["resolved_text"]
@@ -1629,6 +1683,7 @@ class LicenseCardPreviewApiTests(TestCase):
         self.assertEqual(resolved_by_id["end-text"], "END 09 Nov 2016")
         self.assertEqual(resolved_by_id["primary-role-text"], "PRIMARY athlete")
         self.assertEqual(resolved_by_id["secondary-role-text"], "SECONDARY coach")
+        self.assertEqual(resolved_by_id["current-grade-text"], "GRADE Blue Belt")
 
         preview_html_response = self.client.post(self.preview_card_html_url, payload, format="json")
         self.assertEqual(preview_html_response.status_code, status.HTTP_200_OK)
@@ -1637,6 +1692,7 @@ class LicenseCardPreviewApiTests(TestCase):
         self.assertIn("END 09 Nov 2016", preview_html_response.data["html"])
         self.assertIn("PRIMARY athlete", preview_html_response.data["html"])
         self.assertIn("SECONDARY coach", preview_html_response.data["html"])
+        self.assertIn("GRADE Blue Belt", preview_html_response.data["html"])
 
     def test_preview_card_pdf_receives_ltf_date_formatted_context(self):
         self.member.date_of_birth = date(2016, 11, 9)
@@ -2085,6 +2141,82 @@ class LicenseCardPreviewApiTests(TestCase):
                 self.assertEqual(preview_pdf_response.status_code, status.HTTP_200_OK)
                 self.assertEqual(preview_pdf_response["Content-Type"], "application/pdf")
                 self.assertTrue(preview_pdf_response.content.startswith(b"%PDF"))
+
+    def test_preview_and_pdf_keep_svg_internal_references_with_image_asset_id(self):
+        structured_svg = (
+            "<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' viewBox='0 0 16 16'>"
+            "<defs>"
+            "<linearGradient id='badgeGradient' x1='0%' y1='0%' x2='100%' y2='100%'>"
+            "<stop offset='0%' stop-color='#22c55e'/>"
+            "<stop offset='100%' stop-color='#16a34a'/>"
+            "</linearGradient>"
+            "<clipPath id='badgeClip'><rect x='1' y='1' width='14' height='14' rx='2' ry='2'/></clipPath>"
+            "<path id='badgeShape' d='M1 1 H15 V15 H1 Z'/>"
+            "</defs>"
+            "<g clip-path='url(#badgeClip)'>"
+            "<use xlink:href='#badgeShape' fill='url(#badgeGradient)'/>"
+            "<image x='3' y='3' width='10' height='10' "
+            "href='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO6Nn90AAAAASUVORK5CYII='/>"
+            "</g>"
+            "</svg>"
+        )
+        with tempfile.TemporaryDirectory() as temp_media_root:
+            with self.settings(MEDIA_ROOT=temp_media_root):
+                svg_asset = CardImageAsset.objects.create(
+                    name="Structured Preview Asset SVG",
+                    image=_build_uploaded_svg("structured-preview-asset.svg", payload=structured_svg),
+                    created_by=self.ltf_admin,
+                )
+                self.template_version.design_payload = {
+                    "elements": [
+                        {
+                            "id": "asset-image-svg-structured",
+                            "type": "image",
+                            "x_mm": "10.00",
+                            "y_mm": "8.00",
+                            "width_mm": "24.00",
+                            "height_mm": "20.00",
+                            "style": {"image_asset_id": svg_asset.id},
+                        }
+                    ]
+                }
+                self.template_version.save(update_fields=["design_payload", "updated_at"])
+                self.client.force_authenticate(user=self.ltf_admin)
+
+                preview_data_response = self.client.post(
+                    self.preview_data_url,
+                    {"member_id": self.member.id},
+                    format="json",
+                )
+                self.assertEqual(preview_data_response.status_code, status.HTTP_200_OK)
+                svg_element = preview_data_response.data["elements"][0]
+                self.assertEqual(svg_element["resolved_source_meta"]["resolved_via"], "style.image_asset_id")
+                self.assertEqual(svg_element["resolved_source_meta"]["status"], "resolved")
+                self.assertEqual(
+                    svg_element["resolved_source_meta"]["image_asset_id"],
+                    svg_asset.id,
+                )
+                self.assertTrue(
+                    str(svg_element["resolved_source"]).startswith("data:image/svg+xml;base64,")
+                )
+
+                preview_html_response = self.client.post(
+                    self.preview_card_html_url,
+                    {"member_id": self.member.id},
+                    format="json",
+                )
+                self.assertEqual(preview_html_response.status_code, status.HTTP_200_OK)
+                self.assertIn("data:image/svg+xml;base64,", preview_html_response.data["html"])
+
+                with patch("licenses.card_rendering._render_pdf", return_value=b"%PDF-1.4\n") as render_pdf_mock:
+                    preview_pdf_response = self.client.post(
+                        self.preview_card_pdf_url,
+                        {"member_id": self.member.id},
+                        format="json",
+                    )
+                self.assertEqual(preview_pdf_response.status_code, status.HTTP_200_OK)
+                rendered_pdf_html = str(render_pdf_mock.call_args.args[0])
+                self.assertIn("data:image/svg+xml;base64,", rendered_pdf_html)
 
     def test_qr_custom_mode_supports_tokenized_custom_payload(self):
         self.template_version.design_payload = {
