@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from functools import lru_cache
@@ -10,7 +11,7 @@ import json
 import math
 import mimetypes
 from typing import Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import unquote_to_bytes, urljoin, urlparse
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -182,6 +183,89 @@ def _guess_mime_type_from_name(filename: str, *, fallback: str) -> str:
     return guessed_mime_type or fallback
 
 
+def _is_svg_mime_type(mime_type: str) -> bool:
+    normalized_mime = str(mime_type or "").strip().lower()
+    return normalized_mime in {"image/svg+xml", "image/svg"}
+
+
+def _is_svg_file_name(file_name: str) -> bool:
+    return str(file_name or "").strip().lower().endswith(".svg")
+
+
+def _looks_like_svg_bytes(file_bytes: bytes) -> bool:
+    if not file_bytes:
+        return False
+    probe_bytes = bytes(file_bytes[:4096]).lstrip(b"\xef\xbb\xbf \t\r\n")
+    if not probe_bytes:
+        return False
+    lowered_probe = probe_bytes.lower()
+    if lowered_probe.startswith(b"<?xml"):
+        declaration_end = lowered_probe.find(b"?>")
+        if declaration_end != -1:
+            lowered_probe = lowered_probe[declaration_end + 2 :].lstrip()
+    if lowered_probe.startswith(b"<svg"):
+        return True
+    return b"<svg" in lowered_probe[:1024]
+
+
+def _decode_base64_payload(payload: str) -> bytes | None:
+    compact_payload = "".join(str(payload or "").split())
+    if not compact_payload:
+        return None
+    try:
+        return base64.b64decode(compact_payload, validate=True)
+    except (ValueError, binascii.Error):
+        padding_length = (-len(compact_payload)) % 4
+        padded_payload = compact_payload + ("=" * padding_length)
+        try:
+            return base64.b64decode(padded_payload, validate=True)
+        except (ValueError, binascii.Error):
+            return None
+
+
+def _build_svg_data_uri(file_bytes: bytes) -> str:
+    if not file_bytes:
+        return ""
+    try:
+        sanitized_bytes = sanitize_svg_bytes(file_bytes)
+    except SvgSanitizationError:
+        return ""
+    if not sanitized_bytes:
+        return ""
+    encoded_payload = base64.b64encode(sanitized_bytes).decode("ascii")
+    return f"data:image/svg+xml;base64,{encoded_payload}"
+
+
+def _canonicalize_svg_data_uri(source: str) -> str:
+    normalized_source = str(source or "").strip()
+    if not normalized_source:
+        return ""
+    lowered_source = normalized_source.lower()
+    if not lowered_source.startswith("data:"):
+        return ""
+    comma_index = normalized_source.find(",")
+    if comma_index <= 5:
+        return ""
+    raw_meta = normalized_source[5:comma_index]
+    compact_meta = "".join(raw_meta.lower().split())
+    if not (
+        compact_meta.startswith("image/svg+xml")
+        or compact_meta.startswith("image/svg")
+    ):
+        return ""
+    raw_payload = normalized_source[comma_index + 1 :]
+    if ";base64" in compact_meta:
+        decoded_payload = _decode_base64_payload(raw_payload)
+    else:
+        try:
+            decoded_payload = unquote_to_bytes(raw_payload)
+        except Exception:
+            decoded_payload = None
+    if decoded_payload is None:
+        return ""
+    return _build_svg_data_uri(decoded_payload)
+
+
 def _file_to_data_uri(file_field, *, fallback_mime: str) -> str:
     if not file_field or not getattr(file_field, "name", ""):
         return ""
@@ -192,13 +276,14 @@ def _file_to_data_uri(file_field, *, fallback_mime: str) -> str:
         return ""
     if not file_bytes:
         return ""
-    mime_type = _guess_mime_type_from_name(str(file_field.name), fallback=fallback_mime)
-    if mime_type in {"image/svg+xml", "image/svg"} or str(file_field.name).lower().endswith(".svg"):
-        try:
-            file_bytes = sanitize_svg_bytes(file_bytes)
-        except SvgSanitizationError:
-            return ""
-        mime_type = "image/svg+xml"
+    file_name = str(file_field.name)
+    mime_type = _guess_mime_type_from_name(file_name, fallback=fallback_mime)
+    if (
+        _is_svg_mime_type(mime_type)
+        or _is_svg_file_name(file_name)
+        or _looks_like_svg_bytes(file_bytes)
+    ):
+        return _build_svg_data_uri(file_bytes)
     return f"data:{mime_type};base64,{base64.b64encode(file_bytes).decode('ascii')}"
 
 
@@ -262,28 +347,36 @@ def _resolve_image_assets(
     resolved: dict[int, dict[str, Any]] = {}
     for image_asset in queryset:
         is_active = bool(image_asset.is_active)
+        image_name = str(getattr(image_asset.image, "name", ""))
+        is_svg_asset = _is_svg_file_name(image_name)
         data_uri = ""
         normalized_url = ""
         if is_active:
             data_uri = _file_to_data_uri(image_asset.image, fallback_mime="image/png")
+            if data_uri.startswith("data:image/svg+xml;base64,"):
+                is_svg_asset = True
             url_value = ""
             if image_asset.image:
                 try:
                     url_value = str(image_asset.image.url)
                 except Exception:  # pragma: no cover - storage backend dependent
                     url_value = ""
-            normalized_url = _normalize_source_url(
-                url_value,
-                request=request,
-                asset_base_url=asset_base_url,
-            )
+            if not is_svg_asset:
+                normalized_url = _normalize_source_url(
+                    url_value,
+                    request=request,
+                    asset_base_url=asset_base_url,
+                )
         resolved[int(image_asset.id)] = {
             "id": int(image_asset.id),
             "name": str(image_asset.name),
             "is_active": is_active,
+            "is_svg": is_svg_asset,
             "data_uri": data_uri,
             "url": normalized_url,
-            "usable": bool(is_active and (data_uri or normalized_url)),
+            "usable": bool(
+                is_active and (data_uri if is_svg_asset else (data_uri or normalized_url))
+            ),
         }
     return resolved
 
@@ -571,12 +664,13 @@ def _normalize_source_url(
     if normalized_compact.startswith("//"):
         return ""
     if normalized_compact.startswith("data:"):
-        comma_index = normalized_compact.find(",")
+        comma_index = normalized_source.find(",")
         if comma_index <= 5:
             return ""
-        data_meta = normalized_compact[5:comma_index]
-        if data_meta.startswith("image/svg+xml"):
-            return ""
+        data_meta_raw = normalized_source[5:comma_index]
+        data_meta = "".join(data_meta_raw.lower().split())
+        if data_meta.startswith("image/svg+xml") or data_meta.startswith("image/svg"):
+            return _canonicalize_svg_data_uri(normalized_source)
         if ";base64" not in data_meta:
             return ""
         if not any(data_meta.startswith(prefix) for prefix in _ALLOWED_INLINE_IMAGE_MIME_PREFIXES):
@@ -645,17 +739,28 @@ def _resolve_image_source(
                 "asset_status": "inactive",
             }
         if resolved_image_asset and resolved_image_asset.get("usable"):
-            preferred_source = (
-                str(resolved_image_asset.get("data_uri") or "").strip()
-                or str(resolved_image_asset.get("url") or "").strip()
-            )
-            if preferred_source:
-                return preferred_source, {
-                    "image_asset_id": parsed_image_asset_id,
-                    "resolved_via": "style.image_asset_id",
-                    "status": "resolved",
-                    "asset_status": "resolved",
-                }
+            candidate_sources: list[str] = []
+            data_uri_source = str(resolved_image_asset.get("data_uri") or "").strip()
+            if data_uri_source:
+                candidate_sources.append(data_uri_source)
+            is_svg_asset = bool(resolved_image_asset.get("is_svg"))
+            if not is_svg_asset:
+                url_source = str(resolved_image_asset.get("url") or "").strip()
+                if url_source:
+                    candidate_sources.append(url_source)
+            for candidate_source in candidate_sources:
+                normalized_candidate = _normalize_source_url(
+                    candidate_source,
+                    request,
+                    asset_base_url=asset_base_url,
+                )
+                if normalized_candidate:
+                    return normalized_candidate, {
+                        "image_asset_id": parsed_image_asset_id,
+                        "resolved_via": "style.image_asset_id",
+                        "status": "resolved",
+                        "asset_status": "resolved",
+                    }
         return "", {
             "image_asset_id": parsed_image_asset_id,
             "resolved_via": "style.image_asset_id",

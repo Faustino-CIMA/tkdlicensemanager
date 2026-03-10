@@ -566,6 +566,24 @@ function getPreviewElementResolvedValue(
   return "-";
 }
 
+function extractImageSourcesFromSimulationHtml(simulationHtml: string): string[] {
+  if (!simulationHtml.trim()) {
+    return [];
+  }
+  const imageSourceRegex = /<img[^>]+src=(?:"([^"]+)"|'([^']+)')[^>]*>/gi;
+  const sources: string[] = [];
+  const matches = simulationHtml.matchAll(imageSourceRegex);
+  for (const match of matches) {
+    const rawSource = typeof match[1] === "string" ? match[1] : match[2];
+    const normalizedSource = String(rawSource || "").trim();
+    if (!normalizedSource) {
+      continue;
+    }
+    sources.push(normalizedSource);
+  }
+  return sources;
+}
+
 type DesignerLookupFieldProps = {
   label: string;
   searchPlaceholder: string;
@@ -1649,6 +1667,23 @@ export default function LtfAdminLicenseCardDesignerPage() {
     () => buildCardSimulationSrcDoc(liveSimulationData),
     [liveSimulationData]
   );
+  const liveSimulationImageSources = useMemo(
+    () => extractImageSourcesFromSimulationHtml(String(liveSimulationData?.html || "")),
+    [liveSimulationData?.html]
+  );
+  const liveSimulationIframeKey = useMemo(() => {
+    if (!liveSimulationData) {
+      return "live-simulation-empty";
+    }
+    const sourceFingerprint = liveSimulationImageSources.join("|").slice(0, 180);
+    return [
+      String(liveSimulationData.template_version_id),
+      liveSimulationData.active_side,
+      String(liveSimulationData.html.length),
+      String(liveSimulationData.css.length),
+      sourceFingerprint,
+    ].join(":");
+  }, [liveSimulationData, liveSimulationImageSources]);
 
   const resetHistory = useCallback(() => {
     historyPastRef.current = [];
@@ -3287,6 +3322,48 @@ export default function LtfAdminLicenseCardDesignerPage() {
       liveSimulationRequestIdRef.current += 1;
     };
   }, []);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") {
+      return;
+    }
+    if (!selectedElement || selectedElement.type !== "image") {
+      return;
+    }
+    const matchedPreviewElement =
+      previewData?.elements.find((element) => element.id === selectedElement.id) ?? null;
+    const matchedPreviewMeta = matchedPreviewElement?.resolved_source_meta;
+    const resolvedPreviewSource = String(matchedPreviewElement?.resolved_source || "");
+    const simulationSvgSources = liveSimulationImageSources.filter((source) =>
+      source.startsWith("data:image/svg+xml;base64,")
+    );
+    console.debug("[CardDesigner][ImageSourceDebug]", {
+      element_id: selectedElement.id,
+      active_side: activeSide,
+      source_mode: selectedImageSourceMode,
+      selected_image_asset_id: selectedImageAssetId,
+      selected_image_asset_name: selectedImageAsset?.name || null,
+      selected_image_is_svg: selectedImageAssetIsSvg,
+      preview_resolved_via: matchedPreviewMeta?.resolved_via || null,
+      preview_resolved_status: matchedPreviewMeta?.status || null,
+      preview_asset_status: matchedPreviewMeta?.asset_status || null,
+      preview_resolved_source_is_svg_data_uri:
+        resolvedPreviewSource.startsWith("data:image/svg+xml;base64,"),
+      simulation_image_count: liveSimulationImageSources.length,
+      simulation_svg_image_count: simulationSvgSources.length,
+      simulation_first_image_source: liveSimulationImageSources[0] || null,
+      simulation_first_svg_source: simulationSvgSources[0] || null,
+    });
+  }, [
+    activeSide,
+    liveSimulationImageSources,
+    previewData?.elements,
+    selectedElement,
+    selectedImageAsset?.name,
+    selectedImageAssetId,
+    selectedImageAssetIsSvg,
+    selectedImageSourceMode,
+  ]);
 
   const togglePreviewSlot = (slotIndex: number) => {
     if (effectiveSlotCount <= 0) {
@@ -4972,6 +5049,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                     }}
                   >
                     <iframe
+                      key={liveSimulationIframeKey}
                       title={t("licenseCardPreviewSimulationFrameTitle")}
                       className="block border-0"
                       style={{

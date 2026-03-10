@@ -1,3 +1,4 @@
+import base64
 from datetime import date, timedelta
 from decimal import Decimal
 from io import BytesIO, StringIO
@@ -2217,6 +2218,116 @@ class LicenseCardPreviewApiTests(TestCase):
                 self.assertEqual(preview_pdf_response.status_code, status.HTTP_200_OK)
                 rendered_pdf_html = str(render_pdf_mock.call_args.args[0])
                 self.assertIn("data:image/svg+xml;base64,", rendered_pdf_html)
+
+    def test_preview_and_pdf_embed_svg_asset_without_file_extension(self):
+        with tempfile.TemporaryDirectory() as temp_media_root:
+            with self.settings(MEDIA_ROOT=temp_media_root):
+                svg_asset = CardImageAsset.objects.create(
+                    name="Extensionless SVG Asset",
+                    image=_build_uploaded_svg("extensionless-svg-asset"),
+                    created_by=self.ltf_admin,
+                )
+                self.template_version.design_payload = {
+                    "elements": [
+                        {
+                            "id": "asset-image-svg-no-extension",
+                            "type": "image",
+                            "x_mm": "10.00",
+                            "y_mm": "8.00",
+                            "width_mm": "24.00",
+                            "height_mm": "20.00",
+                            "merge_field": "member.profile_picture_processed",
+                            "source": "member.profile_picture_processed",
+                            "style": {"image_asset_id": svg_asset.id},
+                        }
+                    ]
+                }
+                self.template_version.save(update_fields=["design_payload", "updated_at"])
+                self.client.force_authenticate(user=self.ltf_admin)
+
+                preview_data_response = self.client.post(
+                    self.preview_data_url,
+                    {"member_id": self.member.id},
+                    format="json",
+                )
+                self.assertEqual(preview_data_response.status_code, status.HTTP_200_OK)
+                svg_element = preview_data_response.data["elements"][0]
+                self.assertEqual(svg_element["resolved_source_meta"]["resolved_via"], "style.image_asset_id")
+                self.assertEqual(svg_element["resolved_source_meta"]["status"], "resolved")
+                self.assertEqual(
+                    svg_element["resolved_source_meta"]["image_asset_id"],
+                    svg_asset.id,
+                )
+                self.assertTrue(
+                    str(svg_element["resolved_source"]).startswith("data:image/svg+xml;base64,")
+                )
+                self.assertFalse(
+                    str(svg_element["resolved_source"]).startswith("data:image/png;base64,")
+                )
+
+                preview_html_response = self.client.post(
+                    self.preview_card_html_url,
+                    {"member_id": self.member.id},
+                    format="json",
+                )
+                self.assertEqual(preview_html_response.status_code, status.HTTP_200_OK)
+                self.assertIn("data:image/svg+xml;base64,", preview_html_response.data["html"])
+
+                with patch("licenses.card_rendering._render_pdf", return_value=b"%PDF-1.4\n") as render_pdf_mock:
+                    preview_pdf_response = self.client.post(
+                        self.preview_card_pdf_url,
+                        {"member_id": self.member.id},
+                        format="json",
+                    )
+                self.assertEqual(preview_pdf_response.status_code, status.HTTP_200_OK)
+                rendered_pdf_html = str(render_pdf_mock.call_args.args[0])
+                self.assertIn("data:image/svg+xml;base64,", rendered_pdf_html)
+
+    def test_preview_data_sanitizes_inline_svg_data_uri_source_to_base64(self):
+        unsafe_inline_svg_source = (
+            "data:image/svg+xml;utf8,"
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' onload='alert(1)'>"
+            "<rect x='1' y='1' width='8' height='8' fill='#22c55e'/>"
+            "</svg>"
+        )
+        self.template_version.design_payload = {
+            "elements": [
+                {
+                    "id": "inline-svg-source",
+                    "type": "image",
+                    "x_mm": "8.00",
+                    "y_mm": "8.00",
+                    "width_mm": "20.00",
+                    "height_mm": "20.00",
+                    "source": unsafe_inline_svg_source,
+                }
+            ]
+        }
+        self.template_version.save(update_fields=["design_payload", "updated_at"])
+        self.client.force_authenticate(user=self.ltf_admin)
+
+        preview_data_response = self.client.post(
+            self.preview_data_url,
+            {"member_id": self.member.id},
+            format="json",
+        )
+        self.assertEqual(preview_data_response.status_code, status.HTTP_200_OK)
+        svg_element = preview_data_response.data["elements"][0]
+        resolved_source = str(svg_element.get("resolved_source") or "")
+        self.assertTrue(resolved_source.startswith("data:image/svg+xml;base64,"))
+        encoded_payload = resolved_source.split(",", 1)[1]
+        decoded_payload = base64.b64decode(encoded_payload).decode("utf-8", errors="ignore").lower()
+        self.assertIn("<svg", decoded_payload)
+        self.assertNotIn("onload", decoded_payload)
+        self.assertNotIn("javascript:", decoded_payload)
+
+        preview_html_response = self.client.post(
+            self.preview_card_html_url,
+            {"member_id": self.member.id},
+            format="json",
+        )
+        self.assertEqual(preview_html_response.status_code, status.HTTP_200_OK)
+        self.assertIn("data:image/svg+xml;base64,", preview_html_response.data["html"])
 
     def test_qr_custom_mode_supports_tokenized_custom_payload(self):
         self.template_version.design_payload = {

@@ -1,5 +1,5 @@
 # LTF License Manager - Permanent Project Memory
-Last updated: 2026-03-07
+Last updated: 2026-03-10
 
 ## Current Stack (locked)
 - Backend: Django 6+ + DRF + PostgreSQL 18+
@@ -32,6 +32,7 @@ Last updated: 2026-03-07
 - Card v2.1 (v0.3.3) closure: LP798 geometry precision lock, multi-image asset reliability (including active-by-default uploads), simulation font/refresh parity stabilization, role merge fields + locked date format coverage, and full Step 6 regression gate PASS — completed
 - Card v2.1 Recovery Step 4 (v0.3.4): final recovery gate rerun PASS (`23/23`), release-readiness docs refresh (README/context/rollout checklist), and release tag `v0.3.4` prepared — completed
 - Card v2.1 Consolidated Final Fix (post-recovery): strict `style.image_asset_id` guardrail, active-only image asset selection UX, simulation PDF-point scaling alignment, iframe refresh stability improvements, and fresh before/after evidence + backend/frontend test reruns — completed
+- Card v2.1 Final Targeted SVG Fix: canonical SVG data-URI sanitization/normalization in render pipeline, strict SVG asset embedding for preview/PDF, simulation iframe refresh keying, and inspector image-source debug telemetry — completed
 
 ## Key Decisions
 - Material Design 3 is the only UI framework

@@ -406,6 +406,12 @@ export type CardPreviewDataResponse = {
       merge_field: string;
       resolved_text?: string;
       resolved_source?: string;
+      resolved_source_meta?: {
+        image_asset_id?: number | null;
+        resolved_via?: string;
+        status?: string;
+        asset_status?: string;
+      };
       resolved_value?: string;
       qr_data_uri?: string;
       barcode_placeholder?: string;
