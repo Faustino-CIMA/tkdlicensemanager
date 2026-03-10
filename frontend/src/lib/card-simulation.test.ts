@@ -42,20 +42,30 @@ describe("card simulation utilities", () => {
     const payload = buildSimulationPayload();
 
     const layout = calculateCardSimulationFrameLayout(payload);
+    const expectedNaturalWidthPx = ((85 * 96) / 25.4) * (96 / 72);
+    const expectedNaturalHeightPx = ((55 * 96) / 25.4) * (96 / 72);
+    const expectedRenderedWidthPx = (85 * 96) / 25.4;
+    const expectedRenderedHeightPx = (55 * 96) / 25.4;
 
-    expect(layout.naturalWidthPx).toBeCloseTo((85 * 96) / 25.4, 6);
-    expect(layout.naturalHeightPx).toBeCloseTo((55 * 96) / 25.4, 6);
+    expect(layout.naturalWidthPx).toBeCloseTo(expectedNaturalWidthPx, 6);
+    expect(layout.naturalHeightPx).toBeCloseTo(expectedNaturalHeightPx, 6);
     expect(layout.scale).toBeCloseTo(72 / 96, 6);
-    expect(layout.renderedWidthPx).toBeCloseTo(layout.naturalWidthPx * layout.scale, 6);
-    expect(layout.renderedHeightPx).toBeCloseTo(layout.naturalHeightPx * layout.scale, 6);
+    expect(layout.renderedWidthPx).toBeCloseTo(expectedRenderedWidthPx, 6);
+    expect(layout.renderedHeightPx).toBeCloseTo(expectedRenderedHeightPx, 6);
   });
 
   it("uses safe fallbacks for empty payload values", () => {
     const layout = calculateCardSimulationFrameLayout(null);
+    const expectedNaturalWidthPx = ((85 * 96) / 25.4) * (96 / 72);
+    const expectedNaturalHeightPx = ((55 * 96) / 25.4) * (96 / 72);
+    const expectedRenderedWidthPx = (85 * 96) / 25.4;
+    const expectedRenderedHeightPx = (55 * 96) / 25.4;
 
-    expect(layout.naturalWidthPx).toBeCloseTo((85 * 96) / 25.4, 6);
-    expect(layout.naturalHeightPx).toBeCloseTo((55 * 96) / 25.4, 6);
+    expect(layout.naturalWidthPx).toBeCloseTo(expectedNaturalWidthPx, 6);
+    expect(layout.naturalHeightPx).toBeCloseTo(expectedNaturalHeightPx, 6);
     expect(layout.scale).toBeCloseTo(72 / 96, 6);
+    expect(layout.renderedWidthPx).toBeCloseTo(expectedRenderedWidthPx, 6);
+    expect(layout.renderedHeightPx).toBeCloseTo(expectedRenderedHeightPx, 6);
     expect(buildCardSimulationSrcDoc(null)).toBe("");
   });
 });
