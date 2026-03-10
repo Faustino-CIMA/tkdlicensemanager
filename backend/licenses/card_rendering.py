@@ -236,34 +236,47 @@ def _build_svg_data_uri(file_bytes: bytes) -> str:
     return f"data:image/svg+xml;base64,{encoded_payload}"
 
 
-def _canonicalize_svg_data_uri(source: str) -> str:
+def _decode_svg_data_uri_payload(source: str) -> bytes | None:
     normalized_source = str(source or "").strip()
     if not normalized_source:
-        return ""
+        return None
     lowered_source = normalized_source.lower()
     if not lowered_source.startswith("data:"):
-        return ""
+        return None
     comma_index = normalized_source.find(",")
     if comma_index <= 5:
-        return ""
+        return None
     raw_meta = normalized_source[5:comma_index]
     compact_meta = "".join(raw_meta.lower().split())
     if not (
         compact_meta.startswith("image/svg+xml")
         or compact_meta.startswith("image/svg")
     ):
-        return ""
+        return None
     raw_payload = normalized_source[comma_index + 1 :]
     if ";base64" in compact_meta:
-        decoded_payload = _decode_base64_payload(raw_payload)
-    else:
-        try:
-            decoded_payload = unquote_to_bytes(raw_payload)
-        except Exception:
-            decoded_payload = None
+        return _decode_base64_payload(raw_payload)
+    try:
+        return unquote_to_bytes(raw_payload)
+    except Exception:
+        return None
+
+
+def _canonicalize_svg_data_uri(source: str) -> str:
+    decoded_payload = _decode_svg_data_uri_payload(source)
     if decoded_payload is None:
         return ""
     return _build_svg_data_uri(decoded_payload)
+
+
+def _canonicalize_svg_data_uri_without_sanitization(source: str) -> str:
+    decoded_payload = _decode_svg_data_uri_payload(source)
+    if decoded_payload is None:
+        return ""
+    if not _looks_like_svg_bytes(decoded_payload):
+        return ""
+    encoded_payload = base64.b64encode(decoded_payload).decode("ascii")
+    return f"data:image/svg+xml;base64,{encoded_payload}"
 
 
 def _file_to_data_uri(file_field, *, fallback_mime: str) -> str:
@@ -654,6 +667,7 @@ def _normalize_source_url(
     request: HttpRequest | None,
     *,
     asset_base_url: str | None = None,
+    allow_svg_data_uri_fallback: bool = False,
 ) -> str:
     normalized_source = str(source or "").strip()
     if not normalized_source:
@@ -670,7 +684,12 @@ def _normalize_source_url(
         data_meta_raw = normalized_source[5:comma_index]
         data_meta = "".join(data_meta_raw.lower().split())
         if data_meta.startswith("image/svg+xml") or data_meta.startswith("image/svg"):
-            return _canonicalize_svg_data_uri(normalized_source)
+            canonical_svg = _canonicalize_svg_data_uri(normalized_source)
+            if canonical_svg:
+                return canonical_svg
+            if allow_svg_data_uri_fallback:
+                return _canonicalize_svg_data_uri_without_sanitization(normalized_source)
+            return ""
         if ";base64" not in data_meta:
             return ""
         if not any(data_meta.startswith(prefix) for prefix in _ALLOWED_INLINE_IMAGE_MIME_PREFIXES):
@@ -753,6 +772,7 @@ def _resolve_image_source(
                     candidate_source,
                     request,
                     asset_base_url=asset_base_url,
+                    allow_svg_data_uri_fallback=is_svg_asset,
                 )
                 if normalized_candidate:
                     return normalized_candidate, {

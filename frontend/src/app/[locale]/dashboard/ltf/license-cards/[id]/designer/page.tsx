@@ -584,6 +584,15 @@ function extractImageSourcesFromSimulationHtml(simulationHtml: string): string[]
   return sources;
 }
 
+function createSimulationContentFingerprint(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16);
+}
+
 type DesignerLookupFieldProps = {
   label: string;
   searchPlaceholder: string;
@@ -1675,15 +1684,15 @@ export default function LtfAdminLicenseCardDesignerPage() {
     if (!liveSimulationData) {
       return "live-simulation-empty";
     }
-    const sourceFingerprint = liveSimulationImageSources.join("|").slice(0, 180);
+    const contentFingerprint = createSimulationContentFingerprint(
+      `${liveSimulationData.html}::${liveSimulationData.css}`
+    );
     return [
       String(liveSimulationData.template_version_id),
       liveSimulationData.active_side,
-      String(liveSimulationData.html.length),
-      String(liveSimulationData.css.length),
-      sourceFingerprint,
+      contentFingerprint,
     ].join(":");
-  }, [liveSimulationData, liveSimulationImageSources]);
+  }, [liveSimulationData]);
 
   const resetHistory = useCallback(() => {
     historyPastRef.current = [];
@@ -3334,6 +3343,9 @@ export default function LtfAdminLicenseCardDesignerPage() {
       previewData?.elements.find((element) => element.id === selectedElement.id) ?? null;
     const matchedPreviewMeta = matchedPreviewElement?.resolved_source_meta;
     const resolvedPreviewSource = String(matchedPreviewElement?.resolved_source || "");
+    const simulationMatchingSourceIndex = resolvedPreviewSource
+      ? liveSimulationImageSources.findIndex((source) => source === resolvedPreviewSource)
+      : -1;
     const simulationSvgSources = liveSimulationImageSources.filter((source) =>
       source.startsWith("data:image/svg+xml;base64,")
     );
@@ -3349,8 +3361,14 @@ export default function LtfAdminLicenseCardDesignerPage() {
       preview_asset_status: matchedPreviewMeta?.asset_status || null,
       preview_resolved_source_is_svg_data_uri:
         resolvedPreviewSource.startsWith("data:image/svg+xml;base64,"),
+      preview_resolved_source_prefix: resolvedPreviewSource
+        ? resolvedPreviewSource.slice(0, 140)
+        : null,
       simulation_image_count: liveSimulationImageSources.length,
       simulation_svg_image_count: simulationSvgSources.length,
+      simulation_contains_preview_resolved_source: simulationMatchingSourceIndex >= 0,
+      simulation_matching_source_index:
+        simulationMatchingSourceIndex >= 0 ? simulationMatchingSourceIndex : null,
       simulation_first_image_source: liveSimulationImageSources[0] || null,
       simulation_first_svg_source: simulationSvgSources[0] || null,
     });

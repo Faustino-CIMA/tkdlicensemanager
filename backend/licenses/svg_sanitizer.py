@@ -43,6 +43,9 @@ def _build_svg_cleaner() -> Cleaner:
     allowed_tags = tuple(getattr(settings, "CARD_SVG_ALLOWED_TAGS", ()))
     allowed_attributes = tuple(getattr(settings, "CARD_SVG_ALLOWED_ATTRIBUTES", ()))
     allowed_css = tuple(getattr(settings, "CARD_SVG_ALLOWED_CSS_PROPERTIES", ()))
+    allowed_protocols = tuple(
+        getattr(settings, "CARD_SVG_ALLOWED_PROTOCOLS", ("http", "https", "data"))
+    )
     normalized_tags = sorted(
         {
             normalized
@@ -59,12 +62,22 @@ def _build_svg_cleaner() -> Cleaner:
             if normalized
         }
     )
+    normalized_protocols = sorted(
+        {
+            normalized
+            for protocol in allowed_protocols
+            for normalized in {str(protocol).strip().lower()}
+            if normalized
+        }
+    )
     cleaner_kwargs: dict[str, Any] = {
         "tags": normalized_tags,
         "attributes": {"*": normalized_attributes},
         "strip": True,
         "strip_comments": True,
     }
+    if normalized_protocols:
+        cleaner_kwargs["protocols"] = normalized_protocols
     if CSSSanitizer is not None:
         cleaner_kwargs["css_sanitizer"] = CSSSanitizer(
             allowed_css_properties=list(allowed_css)
