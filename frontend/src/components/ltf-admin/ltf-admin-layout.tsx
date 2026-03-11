@@ -36,6 +36,11 @@ export function LtfAdminLayout({ title, subtitle, children }: LtfAdminLayoutProp
       matchChildren: true,
     },
     {
+      href: `/${locale}/dashboard/ltf/printer-profiles`,
+      label: t("navPrinterProfiles"),
+      matchChildren: true,
+    },
+    {
       href: `/${locale}/dashboard/ltf/settings`,
       label: t("navSettings"),
       matchChildren: true,
