@@ -20,15 +20,18 @@ import { getClubs } from "@/lib/club-admin-api";
 import {
   CardTemplate,
   PaperProfile,
+  PrinterProfile,
   PrintJobInput,
   createPrintJob,
   executePrintJob,
   getCardTemplates,
   getPaperProfiles,
+  getPrinterProfiles,
 } from "@/lib/license-card-api";
 
 const QUICK_PRINT_STORAGE_KEY = "club_quick_print_payload";
 const TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE = "__template_default__";
+const NO_PRINTER_PROFILE_VALUE = "__no_printer_profile__";
 const DEFAULT_BLEED_MM = "2.00";
 const DEFAULT_SAFE_AREA_MM = "3.00";
 
@@ -123,10 +126,14 @@ export default function ClubQuickPrintPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [templates, setTemplates] = useState<CardTemplate[]>([]);
   const [paperProfiles, setPaperProfiles] = useState<PaperProfile[]>([]);
+  const [printerProfiles, setPrinterProfiles] = useState<PrinterProfile[]>([]);
   const [clubNameById, setClubNameById] = useState<Record<number, string>>({});
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [selectedPaperProfileValue, setSelectedPaperProfileValue] = useState(
     TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE
+  );
+  const [selectedPrinterProfileValue, setSelectedPrinterProfileValue] = useState(
+    NO_PRINTER_PROFILE_VALUE
   );
   const [selectedSlots, setSelectedSlots] = useState<number[]>([]);
   const [includeBleedGuide, setIncludeBleedGuide] = useState(false);
@@ -143,10 +150,11 @@ export default function ClubQuickPrintPage() {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const [clubsResponse, templatesResponse, profilesResponse] = await Promise.all([
+      const [clubsResponse, templatesResponse, profilesResponse, printerProfilesResponse] = await Promise.all([
         getClubs(),
         getCardTemplates(),
         getPaperProfiles(),
+        getPrinterProfiles(),
       ]);
       setClubNameById(
         clubsResponse.reduce<Record<number, string>>((acc, club) => {
@@ -156,6 +164,7 @@ export default function ClubQuickPrintPage() {
       );
       setTemplates(templatesResponse);
       setPaperProfiles(profilesResponse);
+      setPrinterProfiles(printerProfilesResponse);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : t("quickPrintLoadError"));
     } finally {
@@ -236,6 +245,18 @@ export default function ClubQuickPrintPage() {
     setSelectedSlots([]);
   }, [selectedTemplateId]);
 
+  useEffect(() => {
+    if (selectedPrinterProfileValue === NO_PRINTER_PROFILE_VALUE) {
+      return;
+    }
+    const hasSelectedProfile = printerProfiles.some(
+      (profile) => String(profile.id) === selectedPrinterProfileValue
+    );
+    if (!hasSelectedProfile) {
+      setSelectedPrinterProfileValue(NO_PRINTER_PROFILE_VALUE);
+    }
+  }, [printerProfiles, selectedPrinterProfileValue]);
+
   const selectedPaperProfile = useMemo(() => {
     if (!selectedVersion) {
       return null;
@@ -252,6 +273,14 @@ export default function ClubQuickPrintPage() {
       null
     );
   }, [paperProfilesForSelectedTemplate, selectedPaperProfileValue, selectedVersion]);
+
+  const selectedPrinterProfileId = useMemo(() => {
+    if (selectedPrinterProfileValue === NO_PRINTER_PROFILE_VALUE) {
+      return null;
+    }
+    const parsedValue = Number(selectedPrinterProfileValue);
+    return Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : null;
+  }, [selectedPrinterProfileValue]);
 
   const slotCount = selectedPaperProfile ? Number(selectedPaperProfile.slot_count) : 0;
   const slotColumns = selectedPaperProfile
@@ -321,6 +350,7 @@ export default function ClubQuickPrintPage() {
       ...(selectedPaperProfileValue !== TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE
         ? { paper_profile: Number(selectedPaperProfileValue) }
         : {}),
+      ...(selectedPrinterProfileId !== null ? { printer_profile: selectedPrinterProfileId } : {}),
       ...(selectedSlots.length > 0 ? { selected_slots: selectedSlots } : {}),
       include_bleed_guide: includeBleedGuide,
       include_safe_area_guide: includeSafeAreaGuide,
@@ -415,7 +445,7 @@ export default function ClubQuickPrintPage() {
           </section>
 
           <section className="rounded-2xl border border-zinc-200 bg-white p-4">
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-3">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-zinc-700">{t("quickPrintTemplateLabel")}</label>
                 <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
@@ -443,6 +473,27 @@ export default function ClubQuickPrintPage() {
                       {t("quickPrintPaperProfileTemplateDefault")}
                     </SelectItem>
                     {paperProfilesForSelectedTemplate.map((profile) => (
+                      <SelectItem key={profile.id} value={String(profile.id)}>
+                        {profile.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-zinc-700">
+                  {t("quickPrintPrinterProfileLabel")}
+                </label>
+                <Select value={selectedPrinterProfileValue} onValueChange={setSelectedPrinterProfileValue}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={t("quickPrintPrinterProfilePlaceholder")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_PRINTER_PROFILE_VALUE}>
+                      {t("quickPrintPrinterProfileNoneOption")}
+                    </SelectItem>
+                    {printerProfiles.map((profile) => (
                       <SelectItem key={profile.id} value={String(profile.id)}>
                         {profile.name}
                       </SelectItem>

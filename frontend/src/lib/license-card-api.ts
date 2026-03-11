@@ -112,6 +112,21 @@ export type PaperProfileInput = {
   is_active?: boolean;
 };
 
+export type PrinterProfile = {
+  id: number;
+  name: string;
+  x_offset_mm: number | string;
+  y_offset_mm: number | string;
+  description: string;
+};
+
+export type PrinterProfileInput = {
+  name: string;
+  x_offset_mm: number | string;
+  y_offset_mm: number | string;
+  description?: string;
+};
+
 export type CardTemplateVersionSummary = {
   id: number;
   version_number: number;
@@ -272,6 +287,8 @@ export type PrintJob = {
   club: number;
   template_version: number;
   paper_profile: number | null;
+  printer_profile: number | null;
+  printer_profile_data: PrinterProfile | null;
   side: PrintJobSide;
   status: PrintJobStatus;
   total_items: number;
@@ -303,6 +320,7 @@ export type PrintJobInput = {
   club: number;
   template_version: number;
   paper_profile?: number | null;
+  printer_profile?: number | null;
   side?: PrintJobSide;
   member_ids?: number[];
   license_ids?: number[];
@@ -329,6 +347,7 @@ export type CardPreviewRequestInput = {
 
 export type CardSheetPreviewRequestInput = CardPreviewRequestInput & {
   paper_profile_id?: number;
+  printer_profile_id?: number | null;
   selected_slots?: number[];
 };
 
@@ -571,6 +590,38 @@ export function updatePaperProfile(id: number, input: Partial<PaperProfileInput>
 
 export function deletePaperProfile(id: number) {
   return apiRequest<void>(`/api/paper-profiles/${id}/`, {
+    method: "DELETE",
+  });
+}
+
+export function getPrinterProfiles(options?: ApiCallOptions) {
+  return apiRequest<PrinterProfile[] | PaginatedResponse<PrinterProfile>>("/api/printer-profiles/", {
+    signal: options?.signal,
+  }).then((response) => unwrapListResponse(response));
+}
+
+export function getPrinterProfile(id: number, options?: ApiCallOptions) {
+  return apiRequest<PrinterProfile>(`/api/printer-profiles/${id}/`, {
+    signal: options?.signal,
+  });
+}
+
+export function createPrinterProfile(input: PrinterProfileInput) {
+  return apiRequest<PrinterProfile>("/api/printer-profiles/", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updatePrinterProfile(id: number, input: Partial<PrinterProfileInput>) {
+  return apiRequest<PrinterProfile>(`/api/printer-profiles/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deletePrinterProfile(id: number) {
+  return apiRequest<void>(`/api/printer-profiles/${id}/`, {
     method: "DELETE",
   });
 }
