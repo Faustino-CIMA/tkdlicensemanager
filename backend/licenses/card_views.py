@@ -576,6 +576,7 @@ class CardTemplateVersionViewSet(viewsets.ModelViewSet):
         version = self.get_object()
         serializer = CardSheetPreviewRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        resolved_printer_profile = serializer.validated_data.get("printer_profile")
         try:
             preview_payload = build_preview_data(
                 template_version=version,
@@ -598,6 +599,16 @@ class CardTemplateVersionViewSet(viewsets.ModelViewSet):
             pdf_bytes = render_sheet_pdf_bytes(
                 preview_payload,
                 base_url=request.build_absolute_uri("/"),
+                x_offset_mm=(
+                    resolved_printer_profile.x_offset_mm
+                    if resolved_printer_profile is not None
+                    else None
+                ),
+                y_offset_mm=(
+                    resolved_printer_profile.y_offset_mm
+                    if resolved_printer_profile is not None
+                    else None
+                ),
             )
         except CardRenderError as exc:
             return Response({"detail": exc.detail}, status=exc.status_code)

@@ -798,6 +798,12 @@ class CardPreviewRequestSerializer(serializers.Serializer):
 
 class CardSheetPreviewRequestSerializer(CardPreviewRequestSerializer):
     paper_profile_id = serializers.IntegerField(required=False, min_value=1)
+    printer_profile_id = serializers.PrimaryKeyRelatedField(
+        queryset=PrinterProfile.objects.all(),
+        required=False,
+        allow_null=True,
+        source="printer_profile",
+    )
     selected_slots = serializers.ListField(
         required=False,
         child=serializers.IntegerField(min_value=0),

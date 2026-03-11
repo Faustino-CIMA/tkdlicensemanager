@@ -74,6 +74,13 @@ def _resolve_render_asset_base_url() -> str:
     return "/"
 
 
+def _resolve_final_pdf_offsets_mm(print_job: PrintJob) -> tuple[str, str]:
+    printer_profile = print_job.printer_profile
+    if printer_profile is None:
+        return "0.00", "0.00"
+    return str(printer_profile.x_offset_mm), str(printer_profile.y_offset_mm)
+
+
 def _render_card_pages_html(preview_payloads: list[dict[str, Any]]) -> tuple[str, int]:
     if not preview_payloads:
         raise CardRenderError("Print job has no resolved preview payloads.")
@@ -385,9 +392,12 @@ def execute_print_job_now(*, print_job_id: int, actor_id: int | None = None) -> 
                 ordered_item_slots=ordered_item_slots,
             )
         _raise_if_cancelled(print_job_id)
+        x_offset_mm, y_offset_mm = _resolve_final_pdf_offsets_mm(print_job)
         pdf_bytes = render_pdf_bytes_from_html(
             html,
             base_url=render_asset_base_url,
+            x_offset_mm=x_offset_mm,
+            y_offset_mm=y_offset_mm,
         )
     except Exception as exc:
         detail = exc.detail if isinstance(exc, CardRenderError) else str(exc)

@@ -139,6 +139,19 @@ def _format_plain_decimal(value: Decimal, quant: str = "0.01") -> str:
     return f"{value.quantize(Decimal(quant))}"
 
 
+def _coerce_pdf_offset_mm(value: Any, *, field_name: str) -> Decimal:
+    if value is None:
+        return Decimal("0.00")
+    raw_value = str(value).strip()
+    if not raw_value:
+        return Decimal("0.00")
+    try:
+        decimal_value = Decimal(raw_value)
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise CardRenderError(f"{field_name} must be a decimal number in mm.") from exc
+    return decimal_value.quantize(Decimal("0.01"))
+
+
 def _coerce_percent(value: Any, *, field_name: str) -> Decimal:
     try:
         percent_value = Decimal(str(value))
@@ -2135,10 +2148,49 @@ def _render_sheet_document_html(preview_data: dict[str, Any]) -> str:
     )
 
 
-def _render_pdf(html: str, *, base_url: str | None = None) -> bytes:
+def _apply_final_pdf_translation(
+    html: str,
+    *,
+    x_offset_mm: Any = None,
+    y_offset_mm: Any = None,
+) -> str:
+    resolved_x_offset = _coerce_pdf_offset_mm(x_offset_mm, field_name="x_offset_mm")
+    resolved_y_offset = _coerce_pdf_offset_mm(y_offset_mm, field_name="y_offset_mm")
+    if resolved_x_offset == Decimal("0.00") and resolved_y_offset == Decimal("0.00"):
+        return html
+
+    body_tag_start = html.find("<body")
+    body_tag_end = html.find(">", body_tag_start) if body_tag_start != -1 else -1
+    body_close = html.rfind("</body>")
+    if body_tag_start == -1 or body_tag_end == -1 or body_close == -1 or body_close <= body_tag_end:
+        return html
+
+    body_inner_start = body_tag_end + 1
+    body_inner = html[body_inner_start:body_close]
+    offset_root = (
+        '<div class="pdf-final-offset-root" style="position:relative;'
+        f"transform:translate({resolved_x_offset}mm,{resolved_y_offset}mm);"
+        'transform-origin:top left;">'
+        f"{body_inner}</div>"
+    )
+    return f"{html[:body_inner_start]}{offset_root}{html[body_close:]}"
+
+
+def _render_pdf(
+    html: str,
+    *,
+    base_url: str | None = None,
+    x_offset_mm: Any = None,
+    y_offset_mm: Any = None,
+) -> bytes:
+    html_with_offset = _apply_final_pdf_translation(
+        html,
+        x_offset_mm=x_offset_mm,
+        y_offset_mm=y_offset_mm,
+    )
     if HTML is None:
         raise CardRenderError("PDF rendering backend is unavailable.", status_code=503)
-    return HTML(string=html, base_url=base_url).write_pdf()
+    return HTML(string=html_with_offset, base_url=base_url).write_pdf()
 
 
 def build_sheet_slots(
@@ -2161,15 +2213,48 @@ def build_card_simulation_payload(preview_data: dict[str, Any]) -> dict[str, str
     return {"html": card_fragment, "css": document_css}
 
 
-def render_pdf_bytes_from_html(html: str, *, base_url: str | None = None) -> bytes:
-    return _render_pdf(html, base_url=base_url)
+def render_pdf_bytes_from_html(
+    html: str,
+    *,
+    base_url: str | None = None,
+    x_offset_mm: Any = None,
+    y_offset_mm: Any = None,
+) -> bytes:
+    return _render_pdf(
+        html,
+        base_url=base_url,
+        x_offset_mm=x_offset_mm,
+        y_offset_mm=y_offset_mm,
+    )
 
 
-def render_card_pdf_bytes(preview_data: dict[str, Any], *, base_url: str | None = None) -> bytes:
+def render_card_pdf_bytes(
+    preview_data: dict[str, Any],
+    *,
+    base_url: str | None = None,
+    x_offset_mm: Any = None,
+    y_offset_mm: Any = None,
+) -> bytes:
     html = _render_card_document_html(preview_data)
-    return _render_pdf(html, base_url=base_url)
+    return _render_pdf(
+        html,
+        base_url=base_url,
+        x_offset_mm=x_offset_mm,
+        y_offset_mm=y_offset_mm,
+    )
 
 
-def render_sheet_pdf_bytes(preview_data: dict[str, Any], *, base_url: str | None = None) -> bytes:
+def render_sheet_pdf_bytes(
+    preview_data: dict[str, Any],
+    *,
+    base_url: str | None = None,
+    x_offset_mm: Any = None,
+    y_offset_mm: Any = None,
+) -> bytes:
     html = _render_sheet_document_html(preview_data)
-    return _render_pdf(html, base_url=base_url)
+    return _render_pdf(
+        html,
+        base_url=base_url,
+        x_offset_mm=x_offset_mm,
+        y_offset_mm=y_offset_mm,
+    )

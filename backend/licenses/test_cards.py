@@ -1626,6 +1626,12 @@ class LicenseCardPreviewApiTests(TestCase):
         )
         self.card_format = CardFormatPreset.objects.get(code="3c")
         self.paper_profile = PaperProfile.objects.get(code="sigel-lp798")
+        self.printer_profile = PrinterProfile.objects.create(
+            name="Preview Offset Printer",
+            x_offset_mm=Decimal("0.60"),
+            y_offset_mm=Decimal("-0.35"),
+            description="Preview PDF offset calibration",
+        )
         self.template = CardTemplate.objects.create(
             name="Preview Template",
             created_by=self.ltf_admin,
@@ -2892,6 +2898,30 @@ class LicenseCardPreviewApiTests(TestCase):
         self.assertIn("sheet-preview", response["Content-Disposition"])
         self.assertTrue(response.content.startswith(b"%PDF"))
 
+    def test_preview_sheet_pdf_applies_selected_printer_profile_offset(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        with patch("licenses.card_views.render_sheet_pdf_bytes", return_value=b"%PDF-1.4\n") as render_pdf_mock:
+            response = self.client.post(
+                self.preview_sheet_pdf_url,
+                {
+                    "member_id": self.member.id,
+                    "license_id": self.license.id,
+                    "paper_profile_id": self.paper_profile.id,
+                    "selected_slots": [0, 5],
+                    "printer_profile_id": self.printer_profile.id,
+                },
+                format="json",
+            )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            str(render_pdf_mock.call_args.kwargs.get("x_offset_mm")),
+            str(self.printer_profile.x_offset_mm),
+        )
+        self.assertEqual(
+            str(render_pdf_mock.call_args.kwargs.get("y_offset_mm")),
+            str(self.printer_profile.y_offset_mm),
+        )
+
     def test_lp798_geometry_contract_and_bounds(self):
         self.client.force_authenticate(user=self.ltf_admin)
         response = self.client.post(
@@ -3124,6 +3154,12 @@ class PrintJobExecutionPipelineTests(TestCase):
 
         self.card_format = CardFormatPreset.objects.get(code="3c")
         self.paper_profile = PaperProfile.objects.get(code="sigel-lp798")
+        self.printer_profile = PrinterProfile.objects.create(
+            name="Execution Offset Printer",
+            x_offset_mm=Decimal("0.85"),
+            y_offset_mm=Decimal("-0.45"),
+            description="Print execution offset calibration",
+        )
         self.template = CardTemplate.objects.create(
             name="Print Pipeline Template",
             created_by=self.ltf_admin,
@@ -3260,6 +3296,55 @@ class PrintJobExecutionPipelineTests(TestCase):
                     final_state.execution_metadata.get("render_sides"),
                     expected_render_sides,
                 )
+
+    def test_execute_applies_selected_printer_profile_offset_in_pdf_render(self):
+        created_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": self.template_version.id,
+                "paper_profile": self.paper_profile.id,
+                "license_ids": [self.license_one.id],
+                "printer_profile": self.printer_profile.id,
+            },
+        )
+        job_id = created_job["id"]
+        with patch(
+            "licenses.print_jobs.render_pdf_bytes_from_html",
+            return_value=b"%PDF-1.4\n",
+        ) as render_pdf_mock:
+            execute_print_job_now(print_job_id=job_id, actor_id=self.ltf_admin.id)
+        self.assertEqual(
+            str(render_pdf_mock.call_args.kwargs.get("x_offset_mm")),
+            str(self.printer_profile.x_offset_mm),
+        )
+        self.assertEqual(
+            str(render_pdf_mock.call_args.kwargs.get("y_offset_mm")),
+            str(self.printer_profile.y_offset_mm),
+        )
+        final_state = PrintJob.objects.get(id=job_id)
+        self.assertEqual(final_state.status, PrintJob.Status.SUCCEEDED)
+
+    def test_execute_defaults_to_zero_offset_without_printer_profile(self):
+        created_job = self._create_print_job(
+            user=self.ltf_admin,
+            payload={
+                "club": self.club.id,
+                "template_version": self.template_version.id,
+                "paper_profile": self.paper_profile.id,
+                "license_ids": [self.license_one.id],
+            },
+        )
+        job_id = created_job["id"]
+        with patch(
+            "licenses.print_jobs.render_pdf_bytes_from_html",
+            return_value=b"%PDF-1.4\n",
+        ) as render_pdf_mock:
+            execute_print_job_now(print_job_id=job_id, actor_id=self.ltf_admin.id)
+        self.assertEqual(render_pdf_mock.call_args.kwargs.get("x_offset_mm"), "0.00")
+        self.assertEqual(render_pdf_mock.call_args.kwargs.get("y_offset_mm"), "0.00")
+        final_state = PrintJob.objects.get(id=job_id)
+        self.assertEqual(final_state.status, PrintJob.Status.SUCCEEDED)
 
     def test_print_execution_uses_ltf_date_format_and_role_merge_fields(self):
         self.member_one.date_of_birth = date(2016, 11, 9)
