@@ -1,13 +1,14 @@
 # License Card v2.1.2 - Step 5 Final Recovery Gate + Release UAT
 
-Date: 2026-03-11  
-Scope: Printer Margin Profiles v2.1.2 final gate on `e3ba927` (after Steps 1-4), including geometry, image-asset reliability, simulation/PDF parity, printer-profile integration, and PDF offset application.
+Date: 2026-03-11 (rerun validated on latest `main`)  
+Scope: Printer Margin Profiles v2.1.2 final gate on `e3ba927` (after Steps 1-4), re-run on current `main`, including geometry, image-asset reliability, simulation/PDF parity, printer-profile integration, and PDF offset application.
 
 ## Executive Outcome
 
 - Gate result: **PASS (GO for v0.3.5 release readiness)**.
 - Blocking regressions (`P0`/`P1`): **none open**.
 - Printer-profile offsets, LP798 geometry, simulation/PDF parity, and print execution behavior passed in both automated and runtime validation.
+- Fresh rerun produced the same stable outcome (`25 PASS`, `0 FAIL`) with no new defects.
 
 ## Environment and Runtime Notes
 
