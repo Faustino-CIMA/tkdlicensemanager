@@ -5,7 +5,7 @@ Modern, secure Taekwondo license management for the Luxembourg Taekwondo Federat
 ## Release Notes
 
 - See `CHANGELOG.md` for user-facing and technical release notes.
-- Current stable release: `v0.3.4` (Card v2.1 recovery round finalization).
+- Current stable release: `v0.3.5` (Card v2.1.2 Printer Margin Profiles closure).
 
 ## CI (GitHub Actions)
 
@@ -374,7 +374,7 @@ Role split:
 - LTF Admin: manages templates/versions, dual-side designer payloads, simulation previews, and can execute/retry/cancel any print job.
 - Club Admin: can quick-print from own-club members or licenses, execute/retry/cancel own-club print jobs, and view own-club print history.
 
-### License Card v2.1 Quick Usage (v0.3.4)
+### License Card v2.1.2 Quick Usage (v0.3.5)
 
 LTF Admin flow:
 1. Open `/{locale}/dashboard/ltf/license-cards`.
@@ -387,12 +387,12 @@ Club Admin flow:
 2. Select members/licenses and run quick print using the latest published template.
 3. Confirm job reaches `succeeded` and artifact download works from history.
 
-v0.3.4 recovery notes:
-- Recovery Step 4 full gate is complete and recorded in `docs/license-card-v2-1-recovery-step4-uat.md` (`23 PASS`, `0 FAIL`).
+v0.3.5 Printer Margin Profiles notes:
+- Step 5 final gate is complete and recorded in `docs/license-card-v2-1-2-step5-uat.md` (`25 PASS`, `0 FAIL`).
+- LTF Admin can manage printer margin profiles in `/{locale}/dashboard/ltf/printer-profiles`.
+- Sheet preview and print execution both apply selected `printer_profile` offsets (`x_offset_mm`, `y_offset_mm`) in final PDF rendering.
 - LP798 geometry and sheet-slot placement remain locked (`85.00x55.00`, margins/gaps `15/10/15` and `10/0`) with guide neutrality preserved.
-- Multi-image asset reliability is confirmed for explicit PNG and SVG asset selection without fallback regression.
-- Ruler/snap controls remain wired in the v2 designer (`showRulers`, `snapToGrid`, `snapToElements`) and simulation/PDF parity checks passed.
-- Locked LTF date formatting and role merge fields (`primary_license_role`, `secondary_license_role`) remain consistent across preview, simulation, PDF, and print execution.
+- Multi-image asset reliability and simulation/PDF parity remain stable after printer-profile integration.
 
 Primary API workflow:
 - Template manager/designer:
@@ -405,8 +405,10 @@ Primary API workflow:
 - Preview endpoints:
   - `POST /api/card-template-versions/{id}/preview-data/`
   - `POST /api/card-template-versions/{id}/preview-card-pdf/`
-  - `POST /api/card-template-versions/{id}/preview-sheet-pdf/`
+  - `POST /api/card-template-versions/{id}/preview-sheet-pdf/` (supports `printer_profile_id`)
   - `POST /api/card-template-versions/{id}/preview-card-html/` (live simulation payload)
+- Printer profiles:
+  - `GET/POST /api/printer-profiles/`
 - Print jobs:
   - `POST /api/print-jobs/`
   - `POST /api/print-jobs/{id}/execute/`

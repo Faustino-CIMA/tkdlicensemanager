@@ -1,19 +1,20 @@
 # License Card Rollout and Rollback Checklists
 
-Use this checklist for production rollout of the License Card v2 feature set (dual-side template designer, simulation previews, print jobs, quick print, history).
+Use this checklist for production rollout of the License Card v2 feature set (dual-side template designer, simulation previews, print jobs, quick print/history, and printer margin profiles).
 
-Release target: `v0.3.4`.
+Release target: `v0.3.5`.
 
-## Final Release Preparation (v0.3.4)
+## Final Release Preparation (v0.3.5)
 
-- [ ] Confirm v2.1 Recovery Step 4 UAT report is PASS (`docs/license-card-v2-1-recovery-step4-uat.md`).
+- [ ] Confirm v2.1.2 Step 5 UAT report is PASS (`docs/license-card-v2-1-2-step5-uat.md`).
 - [ ] Confirm release commit SHA and branch (`git rev-parse --short HEAD`, `git branch --show-current`).
-- [ ] Confirm release tag locally (`git tag -l v0.3.4`).
-- [ ] Push branch and tag to origin (`git push`, `git push origin v0.3.4`).
+- [ ] Confirm release tag locally (`git tag -l v0.3.5`).
+- [ ] Push branch and tag to origin (`git push`, `git push origin v0.3.5`).
 - [ ] Announce release scope:
-  - Recovery Step 4 gate PASS (`23 PASS`, `0 FAIL`),
-  - LP798 geometry and simulation/PDF parity reconfirmed,
-  - image asset reliability and ruler/snap designer controls reconfirmed.
+  - Printer Margin Profiles Step 5 gate PASS (`25 PASS`, `0 FAIL`),
+  - LP798 geometry + simulation/PDF parity reconfirmed,
+  - image-asset reliability reconfirmed,
+  - printer-profile offset application validated for both sheet preview and final print execution.
 
 ## Rollout Checklist
 
@@ -28,6 +29,8 @@ Release target: `v0.3.4`.
 - [ ] Verify schema includes v2 dual-side/simulation contracts:
   - `/api/card-template-versions/{id}/preview-data/` with `side`
   - `/api/card-template-versions/{id}/preview-card-html/`
+  - `/api/card-template-versions/{id}/preview-sheet-pdf/` with `printer_profile_id`
+  - `/api/printer-profiles/`
   - `/api/print-jobs/{id}/history/`
 - [ ] Verify worker subscribes to print queue (`docker compose top worker` should include `-Q celery,print_jobs`).
 - [ ] Run backend verification:
@@ -37,9 +40,11 @@ Release target: `v0.3.4`.
   - `docker compose exec frontend npm run lint`
   - `docker compose exec frontend npm run build`
 - [ ] Execute smoke print flow:
+  - select printer profile
   - create draft print job
   - execute job
   - download PDF
+  - confirm expected x/y offset is visible in printed alignment
   - open print-job history
 - [ ] Execute designer v2 smoke:
   - create/update draft with `sides.front` and `sides.back`
@@ -68,7 +73,7 @@ Release target: `v0.3.4`.
   - `docker compose exec backend python manage.py test --keepdb --noinput licenses.test_cards.LicenseCardPreviewApiTests`
 - [ ] Validate print-job create/execute/download on a small sample.
 - [ ] Announce rollback completion with reason, timestamp, and restored revision.
-- [ ] If rollback is needed after `v0.3.4`, prefer previous stable tag/sha and re-run v2.1 smoke subset.
+- [ ] If rollback is needed after `v0.3.5`, prefer previous stable tag/sha and re-run v2.1.2 smoke subset.
 
 ## Data Safety Notes
 

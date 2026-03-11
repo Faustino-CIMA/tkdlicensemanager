@@ -1,5 +1,5 @@
 # LTF License Manager - Permanent Project Memory
-Last updated: 2026-03-10
+Last updated: 2026-03-11
 
 ## Current Stack (locked)
 - Backend: Django 6+ + DRF + PostgreSQL 18+
@@ -34,6 +34,7 @@ Last updated: 2026-03-10
 - Card v2.1 Consolidated Final Fix (post-recovery): strict `style.image_asset_id` guardrail, active-only image asset selection UX, simulation PDF-point scaling alignment, iframe refresh stability improvements, and fresh before/after evidence + backend/frontend test reruns — completed
 - Card v2.1 Final Targeted SVG Fix: canonical SVG data-URI sanitization/normalization in render pipeline, strict SVG asset embedding for preview/PDF, simulation iframe refresh keying, and inspector image-source debug telemetry — completed
 - Card v2.1 Final Targeted SVG Fix (real uploaded logos): widened SVG sanitizer baseline allowlist (clip/mask/filter/logo attributes), deterministic SVG data-URI embedding for preview/PDF HTML, simulation iframe keying from full srcDoc payload, explicit real-world SVG regression coverage, and refreshed before/after + PDF evidence artifacts — completed
+- Printer Margin Profiles v2.1.2 closure (v0.3.5): printer-profile domain/model/API integration, quick-print/profile selection flow, final PDF x/y offset application for preview/print execution, and Step 5 full regression/stability gate PASS (`25/25`) — completed
 
 ## Key Decisions
 - Material Design 3 is the only UI framework
@@ -46,7 +47,7 @@ Last updated: 2026-03-10
 ## Current Open / Next Priorities (update after every milestone)
 - Gather real Payconiq sandbox credentials and run first live sandbox verification
 - Any remaining Dokploy stability tweaks
-- Post-rollout production observation window for print queue throughput, simulation refresh latency, asset resolution telemetry, and artifact retention tuning (v0.3.4)
+- Post-rollout production observation window for print queue throughput, simulation refresh latency, asset resolution telemetry, printer-profile offset correctness in live print batches, and artifact retention tuning (v0.3.5)
 
 ## Coding & Memory Rules (always follow)
 - Explain ALL JS/TS in extreme beginner detail
