@@ -1681,18 +1681,16 @@ export default function LtfAdminLicenseCardDesignerPage() {
     [liveSimulationData?.html]
   );
   const liveSimulationIframeKey = useMemo(() => {
-    if (!liveSimulationData) {
+    if (!liveSimulationData || !liveSimulationSrcDoc) {
       return "live-simulation-empty";
     }
-    const contentFingerprint = createSimulationContentFingerprint(
-      `${liveSimulationData.html}::${liveSimulationData.css}`
-    );
+    const contentFingerprint = createSimulationContentFingerprint(liveSimulationSrcDoc);
     return [
       String(liveSimulationData.template_version_id),
       liveSimulationData.active_side,
       contentFingerprint,
     ].join(":");
-  }, [liveSimulationData]);
+  }, [liveSimulationData, liveSimulationSrcDoc]);
 
   const resetHistory = useCallback(() => {
     historyPastRef.current = [];

@@ -68,4 +68,17 @@ describe("card simulation utilities", () => {
     expect(layout.renderedHeightPx).toBeCloseTo(expectedRenderedHeightPx, 6);
     expect(buildCardSimulationSrcDoc(null)).toBe("");
   });
+
+  it("keeps full SVG data URI intact in iframe srcDoc", () => {
+    const longSvgDataUri =
+      "data:image/svg+xml;base64," + "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIgZmlsbD0iI2ZmMDAwMCIvPjwvc3ZnPg==".repeat(8);
+    const payload = buildSimulationPayload({
+      html: `<div class="card-canvas"><img src="${longSvgDataUri}" alt="" /></div>`,
+    });
+
+    const srcDoc = buildCardSimulationSrcDoc(payload);
+
+    expect(srcDoc).toContain(longSvgDataUri);
+    expect(srcDoc.indexOf(longSvgDataUri)).toBe(srcDoc.lastIndexOf(longSvgDataUri));
+  });
 });

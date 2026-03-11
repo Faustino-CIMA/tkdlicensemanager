@@ -82,6 +82,7 @@ _LTF_MONTH_ABBREVIATIONS = (
     "Dec",
 )
 _SORTED_ALLOWED_MERGE_FIELDS = tuple(sorted(ALLOWED_MERGE_FIELDS))
+_SVG_DATA_URI_PREFIX = "data:image/svg+xml;base64,"
 
 
 def _error_from_validation(exc: ValidationError) -> CardRenderError:
@@ -223,6 +224,13 @@ def _decode_base64_payload(payload: str) -> bytes | None:
             return None
 
 
+def _encode_base64_data_uri(mime_type: str, payload: bytes) -> str:
+    if not payload:
+        return ""
+    encoded_payload = base64.b64encode(payload).decode("ascii")
+    return f"data:{mime_type};base64,{encoded_payload}"
+
+
 def _build_svg_data_uri(file_bytes: bytes) -> str:
     if not file_bytes:
         return ""
@@ -232,8 +240,7 @@ def _build_svg_data_uri(file_bytes: bytes) -> str:
         return ""
     if not sanitized_bytes:
         return ""
-    encoded_payload = base64.b64encode(sanitized_bytes).decode("ascii")
-    return f"data:image/svg+xml;base64,{encoded_payload}"
+    return _encode_base64_data_uri("image/svg+xml", sanitized_bytes)
 
 
 def _decode_svg_data_uri_payload(source: str) -> bytes | None:
@@ -275,8 +282,7 @@ def _canonicalize_svg_data_uri_without_sanitization(source: str) -> str:
         return ""
     if not _looks_like_svg_bytes(decoded_payload):
         return ""
-    encoded_payload = base64.b64encode(decoded_payload).decode("ascii")
-    return f"data:image/svg+xml;base64,{encoded_payload}"
+    return _encode_base64_data_uri("image/svg+xml", decoded_payload)
 
 
 def _file_to_data_uri(file_field, *, fallback_mime: str) -> str:
@@ -297,7 +303,19 @@ def _file_to_data_uri(file_field, *, fallback_mime: str) -> str:
         or _looks_like_svg_bytes(file_bytes)
     ):
         return _build_svg_data_uri(file_bytes)
-    return f"data:{mime_type};base64,{base64.b64encode(file_bytes).decode('ascii')}"
+    return _encode_base64_data_uri(mime_type, file_bytes)
+
+
+def _normalize_image_source_for_html(source: str) -> str:
+    normalized_source = str(source or "").strip()
+    if not normalized_source:
+        return ""
+    lowered_source = normalized_source.lower()
+    if lowered_source.startswith(_SVG_DATA_URI_PREFIX) or lowered_source.startswith("data:image/svg;"):
+        canonical_svg = _canonicalize_svg_data_uri_without_sanitization(normalized_source)
+        if canonical_svg:
+            return canonical_svg
+    return normalized_source
 
 
 def _extract_asset_ids_from_design_payload(
@@ -1890,7 +1908,9 @@ def _render_element_html(element: dict[str, Any]) -> str:
             f"{text_value}</div>"
         )
     if element_type == "image":
-        source = str(element.get("resolved_source", "")).strip()
+        source = _normalize_image_source_for_html(
+            str(element.get("resolved_source", "")).strip()
+        )
         object_fit = str(style.get("object_fit") or "contain").strip().lower()
         if object_fit not in {"contain", "cover", "fill", "scale-down", "none"}:
             object_fit = "contain"

@@ -33,6 +33,7 @@ Last updated: 2026-03-10
 - Card v2.1 Recovery Step 4 (v0.3.4): final recovery gate rerun PASS (`23/23`), release-readiness docs refresh (README/context/rollout checklist), and release tag `v0.3.4` prepared — completed
 - Card v2.1 Consolidated Final Fix (post-recovery): strict `style.image_asset_id` guardrail, active-only image asset selection UX, simulation PDF-point scaling alignment, iframe refresh stability improvements, and fresh before/after evidence + backend/frontend test reruns — completed
 - Card v2.1 Final Targeted SVG Fix: canonical SVG data-URI sanitization/normalization in render pipeline, strict SVG asset embedding for preview/PDF, simulation iframe refresh keying, and inspector image-source debug telemetry — completed
+- Card v2.1 Final Targeted SVG Fix (real uploaded logos): widened SVG sanitizer baseline allowlist (clip/mask/filter/logo attributes), deterministic SVG data-URI embedding for preview/PDF HTML, simulation iframe keying from full srcDoc payload, explicit real-world SVG regression coverage, and refreshed before/after + PDF evidence artifacts — completed
 
 ## Key Decisions
 - Material Design 3 is the only UI framework

@@ -15,6 +15,234 @@ except Exception:  # pragma: no cover - Bleach<5 compatibility path
 
 
 SVG_CONTENT_TYPES = {"image/svg+xml", "image/svg"}
+_DEFAULT_SVG_ALLOWED_TAGS = (
+    "svg",
+    "title",
+    "desc",
+    "metadata",
+    "style",
+    "g",
+    "defs",
+    "symbol",
+    "use",
+    "image",
+    "path",
+    "rect",
+    "circle",
+    "ellipse",
+    "line",
+    "polyline",
+    "polygon",
+    "text",
+    "tspan",
+    "textPath",
+    "clipPath",
+    "mask",
+    "pattern",
+    "marker",
+    "switch",
+    "linearGradient",
+    "radialGradient",
+    "stop",
+    "filter",
+    "feBlend",
+    "feColorMatrix",
+    "feComponentTransfer",
+    "feComposite",
+    "feConvolveMatrix",
+    "feDiffuseLighting",
+    "feDisplacementMap",
+    "feDistantLight",
+    "feDropShadow",
+    "feFlood",
+    "feFuncA",
+    "feFuncB",
+    "feFuncG",
+    "feFuncR",
+    "feGaussianBlur",
+    "feImage",
+    "feMerge",
+    "feMergeNode",
+    "feMorphology",
+    "feOffset",
+    "fePointLight",
+    "feSpecularLighting",
+    "feSpotLight",
+    "feTile",
+    "feTurbulence",
+)
+_DEFAULT_SVG_ALLOWED_ATTRIBUTES = (
+    "xmlns",
+    "xmlns:xlink",
+    "xml:space",
+    "version",
+    "baseProfile",
+    "viewBox",
+    "preserveAspectRatio",
+    "width",
+    "height",
+    "x",
+    "y",
+    "dx",
+    "dy",
+    "x1",
+    "y1",
+    "x2",
+    "y2",
+    "r",
+    "rx",
+    "ry",
+    "cx",
+    "cy",
+    "d",
+    "points",
+    "pathLength",
+    "fill",
+    "fill-opacity",
+    "fill-rule",
+    "stroke",
+    "stroke-width",
+    "stroke-linecap",
+    "stroke-linejoin",
+    "stroke-miterlimit",
+    "stroke-dasharray",
+    "stroke-dashoffset",
+    "stroke-opacity",
+    "opacity",
+    "color",
+    "paint-order",
+    "vector-effect",
+    "shape-rendering",
+    "text-rendering",
+    "image-rendering",
+    "clip-path",
+    "clip-rule",
+    "clipPathUnits",
+    "mask",
+    "mask-type",
+    "maskUnits",
+    "maskContentUnits",
+    "patternUnits",
+    "patternContentUnits",
+    "patternTransform",
+    "gradientUnits",
+    "gradientTransform",
+    "spreadMethod",
+    "filter",
+    "filterUnits",
+    "primitiveUnits",
+    "href",
+    "xlink:href",
+    "transform",
+    "transform-origin",
+    "id",
+    "class",
+    "style",
+    "font-family",
+    "font-size",
+    "font-weight",
+    "font-style",
+    "font-stretch",
+    "text-anchor",
+    "dominant-baseline",
+    "letter-spacing",
+    "word-spacing",
+    "textLength",
+    "lengthAdjust",
+    "marker-start",
+    "marker-mid",
+    "marker-end",
+    "markerWidth",
+    "markerHeight",
+    "markerUnits",
+    "refX",
+    "refY",
+    "orient",
+    "offset",
+    "in",
+    "in2",
+    "result",
+    "type",
+    "values",
+    "mode",
+    "operator",
+    "k1",
+    "k2",
+    "k3",
+    "k4",
+    "radius",
+    "stdDeviation",
+    "baseFrequency",
+    "numOctaves",
+    "seed",
+    "stitchTiles",
+    "surfaceScale",
+    "specularConstant",
+    "specularExponent",
+    "lighting-color",
+    "flood-color",
+    "flood-opacity",
+    "amplitude",
+    "exponent",
+    "intercept",
+    "slope",
+    "tableValues",
+    "edgeMode",
+    "preserveAlpha",
+    "kernelMatrix",
+    "kernelUnitLength",
+    "targetX",
+    "targetY",
+    "azimuth",
+    "elevation",
+    "pointsAtX",
+    "pointsAtY",
+    "pointsAtZ",
+)
+_DEFAULT_SVG_ALLOWED_CSS_PROPERTIES = (
+    "display",
+    "visibility",
+    "overflow",
+    "fill",
+    "stroke",
+    "stroke-width",
+    "stroke-linecap",
+    "stroke-linejoin",
+    "stroke-miterlimit",
+    "stroke-dasharray",
+    "stroke-dashoffset",
+    "opacity",
+    "fill-opacity",
+    "stroke-opacity",
+    "fill-rule",
+    "clip-rule",
+    "clip-path",
+    "mask",
+    "filter",
+    "stop-color",
+    "stop-opacity",
+    "color",
+    "font-family",
+    "font-size",
+    "font-weight",
+    "font-style",
+    "font-stretch",
+    "text-anchor",
+    "dominant-baseline",
+    "letter-spacing",
+    "word-spacing",
+    "shape-rendering",
+    "text-rendering",
+    "image-rendering",
+    "vector-effect",
+    "paint-order",
+    "enable-background",
+    "transform",
+    "transform-origin",
+    "mix-blend-mode",
+    "isolation",
+)
+_DEFAULT_SVG_ALLOWED_PROTOCOLS = ("http", "https", "data")
 _DANGEROUS_TOKEN_PATTERN = re.compile(r"\b(?:javascript|vbscript|file)\s*:", re.IGNORECASE)
 _EVENT_HANDLER_PATTERN = re.compile(r"\bon[a-z0-9_-]+\s*=", re.IGNORECASE)
 _BLOCKED_TAG_PATTERN = re.compile(r"<\s*(?:script|foreignobject)\b", re.IGNORECASE)
@@ -26,12 +254,17 @@ _URL_FUNCTION_PATTERN = re.compile(
     r"url\(\s*([^)]+?)\s*\)",
     re.IGNORECASE | re.DOTALL,
 )
-_ALLOWED_DATA_IMAGE_URI_PREFIXES = (
-    "data:image/png;base64,",
-    "data:image/jpeg;base64,",
-    "data:image/jpg;base64,",
-    "data:image/webp;base64,",
-    "data:image/gif;base64,",
+_ALLOWED_DATA_IMAGE_MIME_TYPES = (
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/webp",
+    "image/gif",
+    "image/bmp",
+    "image/apng",
+    "image/avif",
+    "image/svg+xml",
+    "image/svg",
 )
 
 
@@ -39,12 +272,33 @@ class SvgSanitizationError(ValueError):
     """Raised when uploaded SVG payload cannot be sanitized safely."""
 
 
+def _merge_allowlist(default_values: tuple[str, ...], configured_values: tuple[Any, ...]) -> tuple[str, ...]:
+    merged = {
+        normalized
+        for source in (default_values, configured_values)
+        for value in source
+        for normalized in {str(value).strip()}
+        if normalized
+    }
+    return tuple(sorted(merged))
+
+
 def _build_svg_cleaner() -> Cleaner:
-    allowed_tags = tuple(getattr(settings, "CARD_SVG_ALLOWED_TAGS", ()))
-    allowed_attributes = tuple(getattr(settings, "CARD_SVG_ALLOWED_ATTRIBUTES", ()))
-    allowed_css = tuple(getattr(settings, "CARD_SVG_ALLOWED_CSS_PROPERTIES", ()))
-    allowed_protocols = tuple(
-        getattr(settings, "CARD_SVG_ALLOWED_PROTOCOLS", ("http", "https", "data"))
+    allowed_tags = _merge_allowlist(
+        _DEFAULT_SVG_ALLOWED_TAGS,
+        tuple(getattr(settings, "CARD_SVG_ALLOWED_TAGS", ())),
+    )
+    allowed_attributes = _merge_allowlist(
+        _DEFAULT_SVG_ALLOWED_ATTRIBUTES,
+        tuple(getattr(settings, "CARD_SVG_ALLOWED_ATTRIBUTES", ())),
+    )
+    allowed_css = _merge_allowlist(
+        _DEFAULT_SVG_ALLOWED_CSS_PROPERTIES,
+        tuple(getattr(settings, "CARD_SVG_ALLOWED_CSS_PROPERTIES", ())),
+    )
+    allowed_protocols = _merge_allowlist(
+        _DEFAULT_SVG_ALLOWED_PROTOCOLS,
+        tuple(getattr(settings, "CARD_SVG_ALLOWED_PROTOCOLS", ())),
     )
     normalized_tags = sorted(
         {
@@ -118,12 +372,41 @@ def _normalize_reference_target(raw_target: str) -> str:
     return target
 
 
+def _extract_data_uri_meta(target: str) -> tuple[str, tuple[str, ...]] | None:
+    normalized_target = str(target or "").strip()
+    if not normalized_target:
+        return None
+    lowered_target = normalized_target.lower()
+    if not lowered_target.startswith("data:"):
+        return None
+    comma_index = normalized_target.find(",")
+    if comma_index <= 5:
+        return None
+    raw_meta = normalized_target[5:comma_index]
+    compact_meta = "".join(raw_meta.lower().split())
+    if not compact_meta:
+        return None
+    segments = tuple(segment for segment in compact_meta.split(";") if segment)
+    if not segments:
+        return None
+    return segments[0], segments[1:]
+
+
 def _is_allowed_data_image_uri(target: str) -> bool:
-    normalized_target = str(target or "").strip().lower()
-    return any(
-        normalized_target.startswith(prefix)
-        for prefix in _ALLOWED_DATA_IMAGE_URI_PREFIXES
-    )
+    parsed_meta = _extract_data_uri_meta(target)
+    if parsed_meta is None:
+        return False
+    mime_type, _ = parsed_meta
+    allowed_mime_types = {
+        normalized
+        for value in (
+            _ALLOWED_DATA_IMAGE_MIME_TYPES
+            + tuple(getattr(settings, "CARD_SVG_ALLOWED_DATA_IMAGE_MIME_TYPES", ()))
+        )
+        for normalized in {str(value).strip().lower()}
+        if normalized
+    }
+    return mime_type in allowed_mime_types
 
 
 def _is_allowed_href_target(target: str) -> bool:

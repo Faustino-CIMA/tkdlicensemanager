@@ -274,6 +274,30 @@ def _build_uploaded_svg(
     )
 
 
+def _build_real_world_logo_svg_payload() -> str:
+    embedded_png_data_uri = (
+        "data:image/png;base64,"
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO6Nn90AAAAASUVORK5CYII="
+    )
+    return (
+        "<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' "
+        "viewBox='0 0 1101 340' width='1101' height='340' preserveAspectRatio='xMidYMid meet'>"
+        "<defs>"
+        "<clipPath id='logoClip' clipPathUnits='objectBoundingBox'>"
+        "<rect x='0' y='0' width='1' height='1'/>"
+        "</clipPath>"
+        "<mask id='logoMask' maskUnits='userSpaceOnUse' maskContentUnits='userSpaceOnUse' mask-type='alpha'>"
+        "<rect x='0' y='0' width='1101' height='340' fill='#ffffff'/>"
+        "</mask>"
+        "</defs>"
+        "<g clip-path='url(#logoClip)' mask='url(#logoMask)'>"
+        "<image x='0' y='0' width='1101' height='340' preserveAspectRatio='xMidYMid meet' "
+        f"xlink:href='{embedded_png_data_uri}'/>"
+        "</g>"
+        "</svg>"
+    )
+
+
 class LicenseCardRoleAccessTests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -2282,6 +2306,71 @@ class LicenseCardPreviewApiTests(TestCase):
                 self.assertEqual(preview_pdf_response.status_code, status.HTTP_200_OK)
                 rendered_pdf_html = str(render_pdf_mock.call_args.args[0])
                 self.assertIn("data:image/svg+xml;base64,", rendered_pdf_html)
+
+    def test_preview_and_pdf_render_real_uploaded_svg_with_clip_mask_attributes(self):
+        real_world_svg_payload = _build_real_world_logo_svg_payload()
+        with tempfile.TemporaryDirectory() as temp_media_root:
+            with self.settings(MEDIA_ROOT=temp_media_root):
+                svg_asset = CardImageAsset.objects.create(
+                    name="Real Uploaded Logo SVG",
+                    image=_build_uploaded_svg(
+                        "real-uploaded-logo.svg",
+                        payload=real_world_svg_payload,
+                    ),
+                    created_by=self.ltf_admin,
+                )
+                self.template_version.design_payload = {
+                    "elements": [
+                        {
+                            "id": "asset-image-svg-real-upload",
+                            "type": "image",
+                            "x_mm": "10.00",
+                            "y_mm": "8.00",
+                            "width_mm": "24.00",
+                            "height_mm": "20.00",
+                            "style": {"image_asset_id": svg_asset.id},
+                        }
+                    ]
+                }
+                self.template_version.save(update_fields=["design_payload", "updated_at"])
+                self.client.force_authenticate(user=self.ltf_admin)
+
+                preview_data_response = self.client.post(
+                    self.preview_data_url,
+                    {"member_id": self.member.id},
+                    format="json",
+                )
+                self.assertEqual(preview_data_response.status_code, status.HTTP_200_OK)
+                svg_element = preview_data_response.data["elements"][0]
+                resolved_source = str(svg_element.get("resolved_source") or "")
+                self.assertTrue(resolved_source.startswith("data:image/svg+xml;base64,"))
+                encoded_payload = resolved_source.split(",", 1)[1]
+                decoded_payload = base64.b64decode(encoded_payload).decode("utf-8", errors="ignore")
+                lowered_payload = decoded_payload.lower()
+                self.assertIn('clippathunits="objectboundingbox"', lowered_payload)
+                self.assertIn('maskunits="userspaceonuse"', lowered_payload)
+                self.assertIn('maskcontentunits="userspaceonuse"', lowered_payload)
+                self.assertIn('mask-type="alpha"', lowered_payload)
+                self.assertIn('preserveaspectratio="xmidymid meet"', lowered_payload)
+                self.assertIn('href="data:image/png;base64,', lowered_payload)
+
+                preview_html_response = self.client.post(
+                    self.preview_card_html_url,
+                    {"member_id": self.member.id},
+                    format="json",
+                )
+                self.assertEqual(preview_html_response.status_code, status.HTTP_200_OK)
+                self.assertIn(resolved_source, preview_html_response.data["html"])
+
+                with patch("licenses.card_rendering._render_pdf", return_value=b"%PDF-1.4\n") as render_pdf_mock:
+                    preview_pdf_response = self.client.post(
+                        self.preview_card_pdf_url,
+                        {"member_id": self.member.id},
+                        format="json",
+                    )
+                self.assertEqual(preview_pdf_response.status_code, status.HTTP_200_OK)
+                rendered_pdf_html = str(render_pdf_mock.call_args.args[0])
+                self.assertIn(resolved_source, rendered_pdf_html)
 
     def test_preview_data_sanitizes_inline_svg_data_uri_source_to_base64(self):
         unsafe_inline_svg_source = (
