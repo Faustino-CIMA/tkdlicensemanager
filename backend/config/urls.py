@@ -60,6 +60,7 @@ from licenses.card_views import (
     CardTemplateVersionViewSet,
     MergeFieldRegistryView,
     PaperProfileViewSet,
+    PrinterProfileViewSet,
     PrintJobViewSet,
 )
 from members.views import MemberViewSet
@@ -81,6 +82,7 @@ router.register(r"card-formats", CardFormatPresetViewSet, basename="card-format"
 router.register(r"card-font-assets", CardFontAssetViewSet, basename="card-font-asset")
 router.register(r"card-image-assets", CardImageAssetViewSet, basename="card-image-asset")
 router.register(r"paper-profiles", PaperProfileViewSet, basename="paper-profile")
+router.register(r"printer-profiles", PrinterProfileViewSet, basename="printer-profile")
 router.register(r"card-templates", CardTemplateViewSet, basename="card-template")
 router.register(
     r"card-template-versions",

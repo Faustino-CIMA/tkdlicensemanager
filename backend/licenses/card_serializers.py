@@ -28,6 +28,7 @@ from .models import (
     FinanceAuditLog,
     License,
     PaperProfile,
+    PrinterProfile,
     PrintJob,
     PrintJobItem,
 )
@@ -155,6 +156,18 @@ class PaperProfileSerializer(serializers.ModelSerializer):
                 {"slot_count": "Slot count must equal rows * columns."}
             )
         return attrs
+
+
+class PrinterProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PrinterProfile
+        fields = [
+            "id",
+            "name",
+            "x_offset_mm",
+            "y_offset_mm",
+            "description",
+        ]
 
 
 class CardTemplateVersionSummarySerializer(serializers.ModelSerializer):
@@ -457,6 +470,7 @@ class PrintJobHistoryEventSerializer(serializers.ModelSerializer):
 
 class PrintJobSerializer(serializers.ModelSerializer):
     items = PrintJobItemSerializer(many=True, read_only=True)
+    printer_profile_data = PrinterProfileSerializer(source="printer_profile", read_only=True)
 
     class Meta:
         model = PrintJob
@@ -466,6 +480,8 @@ class PrintJobSerializer(serializers.ModelSerializer):
             "club",
             "template_version",
             "paper_profile",
+            "printer_profile",
+            "printer_profile_data",
             "side",
             "status",
             "total_items",
@@ -497,6 +513,7 @@ class PrintJobSerializer(serializers.ModelSerializer):
             "side",
             "status",
             "total_items",
+            "printer_profile_data",
             "requested_by",
             "executed_by",
             "queued_at",
@@ -536,6 +553,11 @@ class PrintJobCreateSerializer(serializers.Serializer):
     )
     paper_profile = serializers.PrimaryKeyRelatedField(
         queryset=PaperProfile.objects.select_related("card_format").all(),
+        required=False,
+        allow_null=True,
+    )
+    printer_profile = serializers.PrimaryKeyRelatedField(
+        queryset=PrinterProfile.objects.all(),
         required=False,
         allow_null=True,
     )

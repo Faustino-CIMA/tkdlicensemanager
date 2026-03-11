@@ -318,7 +318,13 @@ def execute_print_job_now(*, print_job_id: int, actor_id: int | None = None) -> 
 
     try:
         print_job = (
-            PrintJob.objects.select_related("club", "template_version", "template_version__card_format", "paper_profile")
+            PrintJob.objects.select_related(
+                "club",
+                "template_version",
+                "template_version__card_format",
+                "paper_profile",
+                "printer_profile",
+            )
             .prefetch_related("items__member", "items__license")
             .get(id=print_job_id)
         )

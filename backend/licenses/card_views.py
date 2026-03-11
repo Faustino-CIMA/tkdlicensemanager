@@ -44,6 +44,7 @@ from .card_serializers import (
     CardTemplateVersionSerializer,
     MergeFieldSerializer,
     PaperProfileSerializer,
+    PrinterProfileSerializer,
     PrintJobCreateSerializer,
     PrintJobHistoryEventSerializer,
     PrintJobSerializer,
@@ -58,6 +59,7 @@ from .models import (
     FinanceAuditLog,
     License,
     PaperProfile,
+    PrinterProfile,
     PrintJob,
     PrintJobItem,
 )
@@ -123,6 +125,22 @@ class PaperProfileViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
+
+
+class PrinterProfileViewSet(viewsets.ModelViewSet):
+    serializer_class = PrinterProfileSerializer
+    permission_classes = [IsLtfAdminOrClubAdminReadOnly]
+    queryset = PrinterProfile.objects.all()
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return PrinterProfile.objects.none()
+        user = self.request.user
+        if _is_ltf_admin(user):
+            return PrinterProfile.objects.all()
+        if _is_club_admin(user):
+            return PrinterProfile.objects.all()
+        return PrinterProfile.objects.none()
 
 
 class CardTemplateViewSet(viewsets.ModelViewSet):
@@ -671,6 +689,7 @@ class PrintJobViewSet(
         "template_version",
         "template_version__card_format",
         "paper_profile",
+        "printer_profile",
         "requested_by",
         "executed_by",
     ).prefetch_related("items").all()
@@ -731,6 +750,7 @@ class PrintJobViewSet(
             "template_version",
             "template_version__card_format",
             "paper_profile",
+            "printer_profile",
             "requested_by",
             "executed_by",
         ).prefetch_related("items")
@@ -829,6 +849,7 @@ class PrintJobViewSet(
 
         template_version = serializer.validated_data["template_version"]
         resolved_paper_profile = serializer.validated_data["resolved_paper_profile"]
+        resolved_printer_profile = serializer.validated_data.get("printer_profile")
         resolved_items = serializer.validated_data["resolved_items"]
         selected_slots = serializer.validated_data.get("selected_slots") or []
         metadata = serializer.validated_data.get("metadata") or {}
@@ -838,6 +859,7 @@ class PrintJobViewSet(
                 club=club,
                 template_version=template_version,
                 paper_profile=resolved_paper_profile,
+                printer_profile=resolved_printer_profile,
                 side=serializer.validated_data.get("side", PrintJob.Side.FRONT),
                 status=PrintJob.Status.DRAFT,
                 total_items=len(resolved_items),

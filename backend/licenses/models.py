@@ -583,6 +583,27 @@ class PaperProfile(models.Model):
         return str(self.name)
 
 
+class PrinterProfile(models.Model):
+    name = models.CharField(max_length=120)
+    x_offset_mm = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        default=Decimal("0.00"),
+    )
+    y_offset_mm = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        default=Decimal("0.00"),
+    )
+    description = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["name", "id"]
+
+    def __str__(self) -> str:
+        return str(self.name)
+
+
 class CardTemplate(models.Model):
     name = models.CharField(max_length=120)
     description = models.TextField(blank=True)
@@ -804,6 +825,13 @@ class PrintJob(models.Model):
     )
     paper_profile = models.ForeignKey(
         PaperProfile,
+        on_delete=models.PROTECT,
+        related_name="print_jobs",
+        null=True,
+        blank=True,
+    )
+    printer_profile = models.ForeignKey(
+        PrinterProfile,
         on_delete=models.PROTECT,
         related_name="print_jobs",
         null=True,
