@@ -15,6 +15,20 @@ All notable changes to this project are documented in this file.
 - Added authenticated API endpoints for processed and thumbnail profile images to avoid reliance on direct `/media` routing.
 - Improved container startup permission handling for media, static, and Celery beat storage paths in Docker Compose deployments.
 
+## [0.3.5] - 2026-03-11
+
+### User-facing
+- Finalized SVG logo rendering reliability so uploaded SVG assets now appear consistently in the designer simulation and generated PDFs.
+- Preserved simulation/PDF visual parity for typography and element placement to match print output more closely.
+- Added support for the `current_grade` merge field in card templates and preview/print rendering.
+- Reconfirmed LP798 geometry precision (85.00 x 55.00 mm card canvas and exact sheet placement contract) after the recovery/fix cycle.
+
+### Technical
+- Hardened SVG data-URI normalization and render-path embedding across preview, simulation, and PDF generation.
+- Stabilized simulation refresh behavior to avoid stale iframe payloads after image/source updates.
+- Extended regression coverage for real uploaded SVG assets and merge-field rendering consistency.
+- Completed patch-release readiness for Card v2.1 + recovery closure on `v0.3.5`.
+
 ## [0.3.4] - 2026-03-07
 
 ### User-facing
