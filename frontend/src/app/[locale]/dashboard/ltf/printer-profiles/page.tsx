@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Pencil, Trash2 } from "lucide-react";
 
 import { EmptyState } from "@/components/club-admin/empty-state";
@@ -12,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { DeleteConfirmModal } from "@/components/ui/delete-confirm-modal";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
+import { apiRequest } from "@/lib/api";
+import { getDashboardRouteForRole } from "@/lib/dashboard-routing";
 import {
   PrinterProfile,
   createPrinterProfile,
@@ -19,6 +22,10 @@ import {
   getPrinterProfiles,
   updatePrinterProfile,
 } from "@/lib/license-card-api";
+
+type AuthMeResponse = {
+  role: string;
+};
 
 type PrinterProfileFormValues = {
   name: string;
@@ -45,6 +52,9 @@ function formatOffsetMm(value: number | string): string {
 export default function LtfAdminPrinterProfilesPage() {
   const t = useTranslations("LtfAdmin");
   const common = useTranslations("Common");
+  const locale = useLocale();
+  const [currentRole, setCurrentRole] = useState<string | null>(null);
+  const [isRoleLoading, setIsRoleLoading] = useState(true);
   const [printerProfiles, setPrinterProfiles] = useState<PrinterProfile[]>([]);
   const [editingProfile, setEditingProfile] = useState<PrinterProfile | null>(null);
   const [profileToDelete, setProfileToDelete] = useState<PrinterProfile | null>(null);
@@ -52,7 +62,10 @@ export default function LtfAdminPrinterProfilesPage() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const canManagePrinterProfiles = currentRole === "ltf_admin";
+  const fallbackRoute = getDashboardRouteForRole(currentRole ?? "", locale) ?? `/${locale}/dashboard`;
 
   const {
     register,
@@ -77,8 +90,36 @@ export default function LtfAdminPrinterProfilesPage() {
   }, [t]);
 
   useEffect(() => {
+    let isMounted = true;
+    const loadRole = async () => {
+      setIsRoleLoading(true);
+      try {
+        const me = await apiRequest<AuthMeResponse>("/api/auth/me/");
+        if (isMounted) {
+          setCurrentRole(me.role);
+        }
+      } catch {
+        if (isMounted) {
+          setCurrentRole(null);
+        }
+      } finally {
+        if (isMounted) {
+          setIsRoleLoading(false);
+        }
+      }
+    };
+    void loadRole();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!canManagePrinterProfiles) {
+      return;
+    }
     void loadPrinterProfiles();
-  }, [loadPrinterProfiles]);
+  }, [canManagePrinterProfiles, loadPrinterProfiles]);
 
   const filteredProfiles = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -108,12 +149,16 @@ export default function LtfAdminPrinterProfilesPage() {
   };
 
   const startCreate = () => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
     setEditingProfile(null);
     setIsFormOpen(true);
     reset(DEFAULT_FORM_VALUES);
   };
 
   const startEdit = (profile: PrinterProfile) => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
     const xOffset = Number(profile.x_offset_mm);
     const yOffset = Number(profile.y_offset_mm);
     setEditingProfile(profile);
@@ -127,12 +172,15 @@ export default function LtfAdminPrinterProfilesPage() {
   };
 
   const startDelete = (profile: PrinterProfile) => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
     setProfileToDelete(profile);
     setIsDeleteOpen(true);
   };
 
   const onSubmit = async (values: PrinterProfileFormValues) => {
     setErrorMessage(null);
+    setSuccessMessage(null);
     const normalizedDescription = values.description.trim();
     const payload = {
       name: values.name.trim(),
@@ -144,8 +192,10 @@ export default function LtfAdminPrinterProfilesPage() {
     try {
       if (editingProfile) {
         await updatePrinterProfile(editingProfile.id, payload);
+        setSuccessMessage(t("printerProfilesUpdatedSuccess"));
       } else {
         await createPrinterProfile(payload);
+        setSuccessMessage(t("printerProfilesCreatedSuccess"));
       }
       closeFormModal();
       await loadPrinterProfiles();
@@ -162,15 +212,41 @@ export default function LtfAdminPrinterProfilesPage() {
     try {
       await deletePrinterProfile(profileToDelete.id);
       closeDeleteModal();
+      setSuccessMessage(t("printerProfilesDeletedSuccess"));
       await loadPrinterProfiles();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : t("printerProfilesDeleteError"));
     }
   };
 
+  if (isRoleLoading) {
+    return (
+      <LtfAdminLayout title={t("printerProfilesTitle")} subtitle={t("printerProfilesSubtitle")}>
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+      </LtfAdminLayout>
+    );
+  }
+
+  if (!canManagePrinterProfiles) {
+    return (
+      <LtfAdminLayout title={t("printerProfilesTitle")} subtitle={t("printerProfilesSubtitle")}>
+        <EmptyState
+          title={t("printerProfilesAccessDeniedTitle")}
+          description={t("printerProfilesAccessDeniedSubtitle")}
+        />
+        <div className="mt-4">
+          <Button asChild variant="outline">
+            <Link href={fallbackRoute}>{t("printerProfilesAccessDeniedBackAction")}</Link>
+          </Button>
+        </div>
+      </LtfAdminLayout>
+    );
+  }
+
   return (
     <LtfAdminLayout title={t("printerProfilesTitle")} subtitle={t("printerProfilesSubtitle")}>
       {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+      {successMessage ? <p className="text-sm text-emerald-700">{successMessage}</p> : null}
 
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
