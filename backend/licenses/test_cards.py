@@ -2991,6 +2991,23 @@ class LicenseCardPreviewApiTests(TestCase):
             str(self.printer_profile.y_offset_mm),
         )
 
+    def test_preview_sheet_pdf_defaults_to_zero_offset_without_printer_profile(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        with patch("licenses.card_views.render_sheet_pdf_bytes", return_value=b"%PDF-1.4\n") as render_pdf_mock:
+            response = self.client.post(
+                self.preview_sheet_pdf_url,
+                {
+                    "member_id": self.member.id,
+                    "license_id": self.license.id,
+                    "paper_profile_id": self.paper_profile.id,
+                    "selected_slots": [0, 5],
+                },
+                format="json",
+            )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(render_pdf_mock.call_args.kwargs.get("x_offset_mm"), "0.00")
+        self.assertEqual(render_pdf_mock.call_args.kwargs.get("y_offset_mm"), "0.00")
+
     def test_lp798_geometry_contract_and_bounds(self):
         self.client.force_authenticate(user=self.ltf_admin)
         response = self.client.post(

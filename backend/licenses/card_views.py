@@ -575,7 +575,10 @@ class CardTemplateVersionViewSet(viewsets.ModelViewSet):
     def preview_sheet_pdf(self, request, pk=None):
         self._ensure_ltf_admin_preview_access(request)
         version = self.get_object()
-        serializer = CardSheetPreviewRequestSerializer(data=request.data)
+        serializer = CardSheetPreviewRequestSerializer(
+            data=request.data,
+            context={"request": request},
+        )
         serializer.is_valid(raise_exception=True)
         resolved_printer_profile = serializer.validated_data.get("printer_profile")
         try:
@@ -603,12 +606,12 @@ class CardTemplateVersionViewSet(viewsets.ModelViewSet):
                 x_offset_mm=(
                     resolved_printer_profile.x_offset_mm
                     if resolved_printer_profile is not None
-                    else None
+                    else "0.00"
                 ),
                 y_offset_mm=(
                     resolved_printer_profile.y_offset_mm
                     if resolved_printer_profile is not None
-                    else None
+                    else "0.00"
                 ),
             )
         except CardRenderError as exc:
