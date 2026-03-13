@@ -55,6 +55,17 @@ const labels = {
   removeBackgroundUnsupported: "Unsupported",
 };
 
+function buildFetchResponse(
+  ok: boolean,
+  options?: { status?: number; blob?: Blob }
+): Response {
+  return {
+    ok,
+    status: options?.status ?? (ok ? 200 : 401),
+    blob: async () => options?.blob ?? new Blob(["image"], { type: "image/jpeg" }),
+  } as Response;
+}
+
 describe("ProfilePhotoManager", () => {
   beforeAll(() => {
     Object.defineProperty(global, "Image", {
@@ -83,6 +94,90 @@ describe("ProfilePhotoManager", () => {
         callback(new Blob(["image"], { type: "image/jpeg" }));
       },
     });
+    Object.defineProperty(globalThis, "fetch", {
+      writable: true,
+      value: jest.fn(),
+    });
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    (globalThis.fetch as jest.Mock).mockReset();
+    window.localStorage.clear();
+  });
+
+  it("loads stored thumbnail using authenticated request", async () => {
+    window.localStorage.setItem("ltf_token", "test-token");
+    const fetchMock = globalThis.fetch as jest.Mock;
+    fetchMock.mockResolvedValue(buildFetchResponse(true, { blob: new Blob(["thumb"]) }));
+
+    render(
+      <ProfilePhotoManager
+        labels={labels}
+        readOnly
+        thumbnailUrl="/api/members/1/profile-picture/thumbnail/"
+        imageUrl="/api/members/1/profile-picture/processed/"
+      />
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    const [requestUrl, requestInit] = fetchMock.mock.calls[0];
+    expect(String(requestUrl)).toContain("/api/members/1/profile-picture/thumbnail/");
+    expect((requestInit as RequestInit)?.headers).toEqual({ Authorization: "Token test-token" });
+    await waitFor(() => {
+      expect(screen.getByRole("img", { name: "Preview" })).toBeInTheDocument();
+    });
+    expect(screen.queryByText("No photo")).not.toBeInTheDocument();
+  });
+
+  it("falls back to processed image when thumbnail fetch fails", async () => {
+    const fetchMock = globalThis.fetch as jest.Mock;
+    fetchMock
+      .mockResolvedValueOnce(buildFetchResponse(false, { status: 401 }))
+      .mockResolvedValueOnce(buildFetchResponse(true, { blob: new Blob(["processed"]) }));
+
+    render(
+      <ProfilePhotoManager
+        labels={labels}
+        readOnly
+        thumbnailUrl="/api/members/2/profile-picture/thumbnail/"
+        imageUrl="/api/members/2/profile-picture/processed/"
+      />
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/api/members/2/profile-picture/thumbnail/");
+    expect(String(fetchMock.mock.calls[1][0])).toContain("/api/members/2/profile-picture/processed/");
+    expect(screen.getByRole("img", { name: "Preview" })).toBeInTheDocument();
+  });
+
+  it("shows placeholder when thumbnail and processed image both fail", async () => {
+    const fetchMock = globalThis.fetch as jest.Mock;
+    fetchMock
+      .mockResolvedValueOnce(buildFetchResponse(false, { status: 401 }))
+      .mockResolvedValueOnce(buildFetchResponse(false, { status: 404 }));
+
+    render(
+      <ProfilePhotoManager
+        labels={labels}
+        readOnly
+        thumbnailUrl="/api/members/3/profile-picture/thumbnail/"
+        imageUrl="/api/members/3/profile-picture/processed/"
+      />
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    expect(screen.queryByRole("img", { name: "Preview" })).not.toBeInTheDocument();
+    expect(screen.getByText("No photo")).toBeInTheDocument();
   });
 
   it("opens modal and submits processed payload", async () => {

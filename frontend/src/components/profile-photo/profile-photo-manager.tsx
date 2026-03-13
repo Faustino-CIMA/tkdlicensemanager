@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
+import { API_URL } from "@/lib/api";
+import { getToken } from "@/lib/auth";
 import "react-easy-crop/react-easy-crop.css";
 
 const OUTPUT_WIDTH = 945;
@@ -56,6 +58,27 @@ type ProfilePhotoManagerProps = {
   isPageEditor?: boolean;
   onCancelEditor?: () => void;
 };
+
+function resolveImageRequestUrl(rawUrl: string): string {
+  try {
+    return new URL(rawUrl, API_URL).toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
+async function fetchAuthenticatedImageBlob(url: string, signal?: AbortSignal): Promise<Blob | null> {
+  const token = getToken();
+  const response = await fetch(resolveImageRequestUrl(url), {
+    method: "GET",
+    signal,
+    headers: token ? { Authorization: `Token ${token}` } : undefined,
+  });
+  if (!response.ok) {
+    return null;
+  }
+  return response.blob();
+}
 
 function loadImage(source: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -138,6 +161,7 @@ export function ProfilePhotoManager({
   const [workingImageUrl, setWorkingImageUrl] = useState<string | null>(null);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [storedPhotoPreviewUrl, setStoredPhotoPreviewUrl] = useState<string | null>(null);
   const [backgroundColor, setBackgroundColor] = useState("#ffffff");
   const [backgroundRemoved, setBackgroundRemoved] = useState(false);
 
@@ -149,6 +173,7 @@ export function ProfilePhotoManager({
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const workingObjectUrlRef = useRef<string | null>(null);
   const previewObjectUrlRef = useRef<string | null>(null);
+  const storedPhotoObjectUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
@@ -158,8 +183,77 @@ export function ProfilePhotoManager({
       if (previewObjectUrlRef.current) {
         URL.revokeObjectURL(previewObjectUrlRef.current);
       }
+      if (storedPhotoObjectUrlRef.current) {
+        URL.revokeObjectURL(storedPhotoObjectUrlRef.current);
+      }
     };
   }, []);
+
+  useEffect(() => {
+    const sources = [thumbnailUrl, imageUrl]
+      .map((value) => (value ?? "").trim())
+      .filter((value) => value.length > 0);
+
+    if (sources.length === 0) {
+      if (storedPhotoObjectUrlRef.current) {
+        URL.revokeObjectURL(storedPhotoObjectUrlRef.current);
+        storedPhotoObjectUrlRef.current = null;
+      }
+      setStoredPhotoPreviewUrl(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    let isCancelled = false;
+
+    if (storedPhotoObjectUrlRef.current) {
+      URL.revokeObjectURL(storedPhotoObjectUrlRef.current);
+      storedPhotoObjectUrlRef.current = null;
+    }
+    setStoredPhotoPreviewUrl(null);
+
+    const loadStoredPhoto = async () => {
+      for (const source of sources) {
+        try {
+          const blob = await fetchAuthenticatedImageBlob(source, controller.signal);
+          if (!blob) {
+            continue;
+          }
+          const objectUrl = URL.createObjectURL(blob);
+          if (isCancelled) {
+            URL.revokeObjectURL(objectUrl);
+            return;
+          }
+          if (storedPhotoObjectUrlRef.current) {
+            URL.revokeObjectURL(storedPhotoObjectUrlRef.current);
+          }
+          storedPhotoObjectUrlRef.current = objectUrl;
+          setStoredPhotoPreviewUrl(objectUrl);
+          return;
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") {
+            return;
+          }
+        }
+      }
+
+      if (isCancelled) {
+        return;
+      }
+      if (storedPhotoObjectUrlRef.current) {
+        URL.revokeObjectURL(storedPhotoObjectUrlRef.current);
+        storedPhotoObjectUrlRef.current = null;
+      }
+      setStoredPhotoPreviewUrl(null);
+    };
+
+    void loadStoredPhoto();
+
+    return () => {
+      isCancelled = true;
+      controller.abort();
+    };
+  }, [imageUrl, thumbnailUrl]);
 
   const hasStoredPhoto = useMemo(() => Boolean(imageUrl || thumbnailUrl), [imageUrl, thumbnailUrl]);
 
@@ -531,9 +625,9 @@ export function ProfilePhotoManager({
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex items-start gap-4">
                 <div className="h-28 w-28 overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-100">
-                  {thumbnailUrl || imageUrl ? (
+                  {storedPhotoPreviewUrl ? (
                     <img
-                      src={thumbnailUrl || imageUrl || ""}
+                      src={storedPhotoPreviewUrl}
                       alt={labels.currentPhotoAlt}
                       className="h-full w-full object-cover object-[50%_20%]"
                     />
