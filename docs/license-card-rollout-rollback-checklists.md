@@ -21,6 +21,7 @@ Release target: `v0.3.5`.
 - [ ] Confirm branch and revision are correct (`git rev-parse --short HEAD`).
 - [ ] Confirm containers are healthy (`docker compose ps`).
 - [ ] Apply migrations (`docker compose exec backend python manage.py migrate`).
+- [ ] Confirm printer-profile ownership migration is present (`licenses.0029_printerprofile_created_by`).
 - [ ] Recreate backend and worker so runtime processes load latest code and queue args:
   - `docker compose up -d --force-recreate backend worker`
 - [ ] Verify backend health (`curl -fsS http://localhost:8000/api/health/`).
@@ -46,6 +47,7 @@ Release target: `v0.3.5`.
   - download PDF
   - confirm expected x/y offset is visible in printed alignment
   - open print-job history
+- [ ] Validate owner scoping for printer profiles (LTF Admin only sees/manages own profiles).
 - [ ] Execute designer v2 smoke:
   - create/update draft with `sides.front` and `sides.back`
   - publish and re-open to verify both sides are preserved

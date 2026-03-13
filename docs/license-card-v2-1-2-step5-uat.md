@@ -1,21 +1,21 @@
 # License Card v2.1.2 - Step 5 Final Recovery Gate + Release UAT
 
-Date: 2026-03-11 (rerun validated on latest `main`)  
-Scope: Printer Margin Profiles v2.1.2 final gate on `e3ba927` (after Steps 1-4), re-run on current `main`, including geometry, image-asset reliability, simulation/PDF parity, printer-profile integration, and PDF offset application.
+Date: 2026-03-13 (rerun validated on latest `main`)  
+Scope: Printer Margin Profiles v2.1.2 final gate on `9c03414` (after Steps 1-4), re-run on current `main`, including geometry, image-asset reliability, simulation/PDF parity, printer-profile integration, and PDF offset application.
 
 ## Executive Outcome
 
 - Gate result: **PASS (GO for v0.3.5 release readiness)**.
 - Blocking regressions (`P0`/`P1`): **none open**.
 - Printer-profile offsets, LP798 geometry, simulation/PDF parity, and print execution behavior passed in both automated and runtime validation.
-- Fresh rerun produced the same stable outcome (`25 PASS`, `0 FAIL`) with no new defects.
+- Fresh rerun on `9c03414` produced the same stable outcome (`25 PASS`, `0 FAIL`) with no new defects.
 
 ## Environment and Runtime Notes
 
 - Docker stack healthy (`backend`, `frontend`, `worker`, `beat`, `db`, `redis`).
 - Migration state:
   - `docker compose exec backend python manage.py migrate`
-  - applied during gate: `licenses.0028_printerprofile_printjob_printer_profile`
+  - applied during gate: `licenses.0029_printerprofile_created_by`
 - Runtime health checks:
   - backend health endpoint: `200`
   - frontend route probe: `200`
@@ -63,8 +63,8 @@ Scope: Printer Margin Profiles v2.1.2 final gate on `e3ba927` (after Steps 1-4),
 ## Command Output Summary
 
 - Backend:
-  - `docker compose exec backend python manage.py migrate` -> applied `licenses.0028_printerprofile_printjob_printer_profile`
-  - `docker compose exec backend python manage.py test licenses.test_cards --keepdb --noinput` -> **95 passed**
+  - `docker compose exec backend python manage.py migrate` -> applied `licenses.0029_printerprofile_created_by`
+  - `docker compose exec backend python manage.py test licenses.test_cards --keepdb --noinput` -> **97 passed**
   - `docker compose exec backend python manage.py check` -> **no issues**
 - Frontend:
   - `npx eslint src` -> **0 errors**, 9 warnings

@@ -390,6 +390,7 @@ Club Admin flow:
 v0.3.5 Printer Margin Profiles notes:
 - Step 5 final gate is complete and recorded in `docs/license-card-v2-1-2-step5-uat.md` (`25 PASS`, `0 FAIL`).
 - LTF Admin can manage printer margin profiles in `/{locale}/dashboard/ltf/printer-profiles`.
+- Printer profiles are owner-scoped and only expose records belonging to the authenticated LTF Admin.
 - Sheet preview and print execution both apply selected `printer_profile` offsets (`x_offset_mm`, `y_offset_mm`) in final PDF rendering.
 - LP798 geometry and sheet-slot placement remain locked (`85.00x55.00`, margins/gaps `15/10/15` and `10/0`) with guide neutrality preserved.
 - Multi-image asset reliability and simulation/PDF parity remain stable after printer-profile integration.
