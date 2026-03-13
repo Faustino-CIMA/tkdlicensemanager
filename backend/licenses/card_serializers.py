@@ -73,6 +73,13 @@ def _resolve_default_print_side(template_version: CardTemplateVersion) -> str:
     return CARD_SIDE_FRONT
 
 
+def _get_owned_printer_profile_queryset(request):
+    user = getattr(request, "user", None)
+    if user is not None and getattr(user, "is_authenticated", False):
+        return PrinterProfile.objects.filter(created_by=user)
+    return PrinterProfile.objects.none()
+
+
 class CardFormatPresetSerializer(serializers.ModelSerializer):
     class Meta:
         model = CardFormatPreset
@@ -167,7 +174,9 @@ class PrinterProfileSerializer(serializers.ModelSerializer):
             "x_offset_mm",
             "y_offset_mm",
             "description",
+            "created_by",
         ]
+        read_only_fields = ["created_by"]
 
 
 class CardTemplateVersionSummarySerializer(serializers.ModelSerializer):
@@ -595,6 +604,12 @@ class PrintJobCreateSerializer(serializers.Serializer):
     )
     metadata = serializers.JSONField(required=False, default=dict)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["printer_profile"].queryset = _get_owned_printer_profile_queryset(
+            self.context.get("request")
+        )
+
     def validate(self, attrs):
         club = attrs["club"]
         template_version = attrs["template_version"]
@@ -809,6 +824,12 @@ class CardSheetPreviewRequestSerializer(CardPreviewRequestSerializer):
         child=serializers.IntegerField(min_value=0),
         allow_empty=False,
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["printer_profile_id"].queryset = _get_owned_printer_profile_queryset(
+            self.context.get("request")
+        )
 
     def validate_selected_slots(self, value):
         if value is None:

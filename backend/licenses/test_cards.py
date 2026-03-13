@@ -333,10 +333,18 @@ class LicenseCardRoleAccessTests(TestCase):
         self.card_format = CardFormatPreset.objects.get(code="3c")
         self.paper_profile = PaperProfile.objects.get(code="sigel-lp798")
         self.printer_profile = PrinterProfile.objects.create(
-            name="Default Office Printer",
+            name="Club Admin Printer",
             x_offset_mm=Decimal("0.40"),
             y_offset_mm=Decimal("-0.25"),
             description="Baseline calibration",
+            created_by=self.club_admin,
+        )
+        self.ltf_printer_profile = PrinterProfile.objects.create(
+            name="LTF Admin Printer",
+            x_offset_mm=Decimal("0.10"),
+            y_offset_mm=Decimal("-0.10"),
+            description="LTF admin profile",
+            created_by=self.ltf_admin,
         )
         self.template = CardTemplate.objects.create(
             name="Foundation Template",
@@ -494,8 +502,22 @@ class LicenseCardRoleAccessTests(TestCase):
                 denied_response = self.client.get("/api/merge-fields/")
                 self.assertEqual(denied_response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_ltf_admin_can_create_printer_profile(self):
+    def test_ltf_admin_printer_profile_crud_is_owner_scoped(self):
         self.client.force_authenticate(user=self.ltf_admin)
+        list_response = self.client.get("/api/printer-profiles/")
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        returned_ids = {row["id"] for row in list_response.data}
+        self.assertIn(self.ltf_printer_profile.id, returned_ids)
+        self.assertNotIn(self.printer_profile.id, returned_ids)
+
+        retrieve_own_response = self.client.get(
+            f"/api/printer-profiles/{self.ltf_printer_profile.id}/"
+        )
+        self.assertEqual(retrieve_own_response.status_code, status.HTTP_200_OK)
+
+        retrieve_other_response = self.client.get(f"/api/printer-profiles/{self.printer_profile.id}/")
+        self.assertEqual(retrieve_other_response.status_code, status.HTTP_404_NOT_FOUND)
+
         response = self.client.post(
             "/api/printer-profiles/",
             {
@@ -511,12 +533,15 @@ class LicenseCardRoleAccessTests(TestCase):
         self.assertEqual(created.name, "Hall Printer A")
         self.assertEqual(str(created.x_offset_mm), "1.25")
         self.assertEqual(str(created.y_offset_mm), "-0.60")
+        self.assertEqual(created.created_by_id, self.ltf_admin.id)
 
-    def test_club_admin_is_read_only_for_printer_profiles(self):
+    def test_club_admin_printer_profile_crud_is_owner_scoped(self):
         self.client.force_authenticate(user=self.club_admin)
         list_response = self.client.get("/api/printer-profiles/")
         self.assertEqual(list_response.status_code, status.HTTP_200_OK)
-        self.assertTrue(any(row["id"] == self.printer_profile.id for row in list_response.data))
+        returned_ids = {row["id"] for row in list_response.data}
+        self.assertIn(self.printer_profile.id, returned_ids)
+        self.assertNotIn(self.ltf_printer_profile.id, returned_ids)
 
         retrieve_response = self.client.get(
             f"/api/printer-profiles/{self.printer_profile.id}/"
@@ -524,48 +549,91 @@ class LicenseCardRoleAccessTests(TestCase):
         self.assertEqual(retrieve_response.status_code, status.HTTP_200_OK)
         self.assertEqual(retrieve_response.data["id"], self.printer_profile.id)
 
+        denied_retrieve_response = self.client.get(
+            f"/api/printer-profiles/{self.ltf_printer_profile.id}/"
+        )
+        self.assertEqual(denied_retrieve_response.status_code, status.HTTP_404_NOT_FOUND)
+
         create_response = self.client.post(
             "/api/printer-profiles/",
             {"name": "Club Printer", "x_offset_mm": "0.00", "y_offset_mm": "0.00"},
             format="json",
         )
-        self.assertEqual(create_response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        created = PrinterProfile.objects.get(id=create_response.data["id"])
+        self.assertEqual(created.created_by_id, self.club_admin.id)
 
         update_response = self.client.patch(
             f"/api/printer-profiles/{self.printer_profile.id}/",
             {"description": "Updated by club admin"},
             format="json",
         )
-        self.assertEqual(update_response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(update_response.status_code, status.HTTP_200_OK)
+        self.printer_profile.refresh_from_db()
+        self.assertEqual(self.printer_profile.description, "Updated by club admin")
+
+        denied_update_response = self.client.patch(
+            f"/api/printer-profiles/{self.ltf_printer_profile.id}/",
+            {"description": "Should be denied"},
+            format="json",
+        )
+        self.assertEqual(denied_update_response.status_code, status.HTTP_404_NOT_FOUND)
 
         delete_response = self.client.delete(
             f"/api/printer-profiles/{self.printer_profile.id}/"
         )
-        self.assertEqual(delete_response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(PrinterProfile.objects.filter(id=self.printer_profile.id).exists())
 
-    def test_print_job_create_accepts_printer_profile_and_response_includes_it(self):
-        self.client.force_authenticate(user=self.club_admin)
-        response = self.client.post(
-            "/api/print-jobs/",
-            {
-                "club": self.club.id,
-                "template_version": self.published_version.id,
-                "paper_profile": self.paper_profile.id,
-                "printer_profile": self.printer_profile.id,
-                "license_ids": [self.own_license.id],
-                "selected_slots": [0],
-            },
-            format="json",
-        )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data["printer_profile"], self.printer_profile.id)
-        self.assertEqual(response.data["printer_profile_data"]["id"], self.printer_profile.id)
-        self.assertEqual(
-            response.data["printer_profile_data"]["name"],
-            self.printer_profile.name,
-        )
-        created_job = PrintJob.objects.get(id=response.data["id"])
-        self.assertEqual(created_job.printer_profile_id, self.printer_profile.id)
+    def test_print_job_create_accepts_owned_printer_profile_for_both_roles(self):
+        role_cases = [
+            (self.club_admin, self.printer_profile),
+            (self.ltf_admin, self.ltf_printer_profile),
+        ]
+        for actor, owned_profile in role_cases:
+            with self.subTest(role=actor.role):
+                self.client.force_authenticate(user=actor)
+                response = self.client.post(
+                    "/api/print-jobs/",
+                    {
+                        "club": self.club.id,
+                        "template_version": self.published_version.id,
+                        "paper_profile": self.paper_profile.id,
+                        "printer_profile": owned_profile.id,
+                        "license_ids": [self.own_license.id],
+                        "selected_slots": [0],
+                    },
+                    format="json",
+                )
+                self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+                self.assertEqual(response.data["printer_profile"], owned_profile.id)
+                self.assertEqual(response.data["printer_profile_data"]["id"], owned_profile.id)
+                self.assertEqual(response.data["printer_profile_data"]["name"], owned_profile.name)
+                created_job = PrintJob.objects.get(id=response.data["id"])
+                self.assertEqual(created_job.printer_profile_id, owned_profile.id)
+
+    def test_print_job_create_rejects_non_owned_printer_profile_for_both_roles(self):
+        role_cases = [
+            (self.club_admin, self.ltf_printer_profile.id),
+            (self.ltf_admin, self.printer_profile.id),
+        ]
+        for actor, rejected_profile_id in role_cases:
+            with self.subTest(role=actor.role):
+                self.client.force_authenticate(user=actor)
+                response = self.client.post(
+                    "/api/print-jobs/",
+                    {
+                        "club": self.club.id,
+                        "template_version": self.published_version.id,
+                        "paper_profile": self.paper_profile.id,
+                        "printer_profile": rejected_profile_id,
+                        "license_ids": [self.own_license.id],
+                        "selected_slots": [0],
+                    },
+                    format="json",
+                )
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                self.assertIn("printer_profile", response.data)
 
     def test_print_job_permissions(self):
         self.client.force_authenticate(user=self.club_admin)
@@ -1631,6 +1699,7 @@ class LicenseCardPreviewApiTests(TestCase):
             x_offset_mm=Decimal("0.60"),
             y_offset_mm=Decimal("-0.35"),
             description="Preview PDF offset calibration",
+            created_by=self.ltf_admin,
         )
         self.template = CardTemplate.objects.create(
             name="Preview Template",
@@ -3159,6 +3228,7 @@ class PrintJobExecutionPipelineTests(TestCase):
             x_offset_mm=Decimal("0.85"),
             y_offset_mm=Decimal("-0.45"),
             description="Print execution offset calibration",
+            created_by=self.ltf_admin,
         )
         self.template = CardTemplate.objects.create(
             name="Print Pipeline Template",

@@ -129,18 +129,19 @@ class PaperProfileViewSet(viewsets.ModelViewSet):
 
 class PrinterProfileViewSet(viewsets.ModelViewSet):
     serializer_class = PrinterProfileSerializer
-    permission_classes = [IsLtfAdminOrClubAdminReadOnly]
-    queryset = PrinterProfile.objects.all()
+    permission_classes = [IsLtfAdminOrClubAdmin]
+    queryset = PrinterProfile.objects.select_related("created_by").all()
 
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
             return PrinterProfile.objects.none()
         user = self.request.user
-        if _is_ltf_admin(user):
-            return PrinterProfile.objects.all()
-        if _is_club_admin(user):
-            return PrinterProfile.objects.all()
+        if _is_ltf_admin(user) or _is_club_admin(user):
+            return PrinterProfile.objects.select_related("created_by").filter(created_by=user)
         return PrinterProfile.objects.none()
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
 
 
 class CardTemplateViewSet(viewsets.ModelViewSet):
