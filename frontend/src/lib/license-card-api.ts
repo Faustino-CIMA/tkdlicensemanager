@@ -118,6 +118,7 @@ export type PrinterProfile = {
   x_offset_mm: number | string;
   y_offset_mm: number | string;
   description: string;
+  created_by: number | null;
 };
 
 export type PrinterProfileInput = {
@@ -321,6 +322,7 @@ export type PrintJobInput = {
   template_version: number;
   paper_profile?: number | null;
   printer_profile?: number | null;
+  printer_profile_id?: number | null;
   side?: PrintJobSide;
   member_ids?: number[];
   license_ids?: number[];
@@ -842,9 +844,26 @@ export function getPrintJob(id: number, options?: ApiCallOptions) {
 }
 
 export function createPrintJob(input: PrintJobInput) {
+  const { printer_profile_id, ...restInput } = input;
+  const payload: Omit<PrintJobInput, "printer_profile_id"> = {
+    ...restInput,
+  };
+
+  // Keep frontend create payload on *_id while honoring current backend field naming.
+  if (
+    typeof printer_profile_id === "number" &&
+    Number.isInteger(printer_profile_id) &&
+    printer_profile_id > 0
+  ) {
+    payload.printer_profile = printer_profile_id;
+  }
+  if (payload.printer_profile === null) {
+    delete payload.printer_profile;
+  }
+
   return apiRequest<PrintJob>("/api/print-jobs/", {
     method: "POST",
-    body: JSON.stringify(input),
+    body: JSON.stringify(payload),
   });
 }
 

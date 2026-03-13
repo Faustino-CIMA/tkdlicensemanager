@@ -380,6 +380,8 @@
     "quickPrintPaperProfileLabel": "Paper profile",
     "quickPrintPaperProfilePlaceholder": "Choose a paper profile",
     "quickPrintPaperProfileTemplateDefault": "Use template default",
+    "quickPrintEntryPrinterProfileLabel": "Quick print profile",
+    "quickPrintEntryPrinterProfilePlaceholder": "Choose profile (optional)",
     "quickPrintPrinterProfileLabel": "Printer profile",
     "quickPrintPrinterProfilePlaceholder": "Choose a printer profile",
     "quickPrintPrinterProfileNoneOption": "No printer offset",

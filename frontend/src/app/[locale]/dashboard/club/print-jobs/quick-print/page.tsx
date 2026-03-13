@@ -46,6 +46,7 @@ type QuickPrintPayload = {
   selectedClubId: number | null;
   memberIds: number[];
   licenseIds: number[];
+  printerProfileId: number | null;
 };
 
 function parsePositiveIds(input: unknown): number[] {
@@ -65,6 +66,7 @@ function parseQuickPrintPayload(): QuickPrintPayload {
       selectedClubId: null,
       memberIds: [],
       licenseIds: [],
+      printerProfileId: null,
     };
   }
   try {
@@ -75,6 +77,7 @@ function parseQuickPrintPayload(): QuickPrintPayload {
         selectedClubId: null,
         memberIds: [],
         licenseIds: [],
+        printerProfileId: null,
       };
     }
     const parsed = JSON.parse(rawValue) as {
@@ -82,14 +85,25 @@ function parseQuickPrintPayload(): QuickPrintPayload {
       selectedClubId?: unknown;
       memberIds?: unknown;
       licenseIds?: unknown;
+      printerProfileId?: unknown;
+      printer_profile_id?: unknown;
     };
     const selectedClubId = Number(parsed.selectedClubId);
+    const parsedPrinterProfileId = Number(
+      typeof parsed.printerProfileId !== "undefined"
+        ? parsed.printerProfileId
+        : parsed.printer_profile_id
+    );
     return {
       source: parsed.source === "licenses" ? "licenses" : "members",
       selectedClubId:
         Number.isInteger(selectedClubId) && selectedClubId > 0 ? selectedClubId : null,
       memberIds: parsePositiveIds(parsed.memberIds),
       licenseIds: parsePositiveIds(parsed.licenseIds),
+      printerProfileId:
+        Number.isInteger(parsedPrinterProfileId) && parsedPrinterProfileId > 0
+          ? parsedPrinterProfileId
+          : null,
     };
   } catch {
     return {
@@ -97,6 +111,7 @@ function parseQuickPrintPayload(): QuickPrintPayload {
       selectedClubId: null,
       memberIds: [],
       licenseIds: [],
+      printerProfileId: null,
     };
   }
 }
@@ -132,8 +147,8 @@ export default function ClubQuickPrintPage() {
   const [selectedPaperProfileValue, setSelectedPaperProfileValue] = useState(
     TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE
   );
-  const [selectedPrinterProfileValue, setSelectedPrinterProfileValue] = useState(
-    NO_PRINTER_PROFILE_VALUE
+  const [selectedPrinterProfileValue, setSelectedPrinterProfileValue] = useState(() =>
+    payload.printerProfileId ? String(payload.printerProfileId) : NO_PRINTER_PROFILE_VALUE
   );
   const [selectedSlots, setSelectedSlots] = useState<number[]>([]);
   const [includeBleedGuide, setIncludeBleedGuide] = useState(false);
@@ -350,7 +365,9 @@ export default function ClubQuickPrintPage() {
       ...(selectedPaperProfileValue !== TEMPLATE_DEFAULT_PAPER_PROFILE_VALUE
         ? { paper_profile: Number(selectedPaperProfileValue) }
         : {}),
-      ...(selectedPrinterProfileId !== null ? { printer_profile: selectedPrinterProfileId } : {}),
+      ...(selectedPrinterProfileId !== null
+        ? { printer_profile_id: selectedPrinterProfileId }
+        : {}),
       ...(selectedSlots.length > 0 ? { selected_slots: selectedSlots } : {}),
       include_bleed_guide: includeBleedGuide,
       include_safe_area_guide: includeSafeAreaGuide,

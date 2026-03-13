@@ -17,6 +17,7 @@ import {
 } from "@/lib/club-admin-api";
 import { apiRequest } from "@/lib/api";
 import { formatDisplayDate } from "@/lib/date-display";
+import { PrinterProfile, getPrinterProfiles } from "@/lib/license-card-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -31,6 +32,7 @@ type AuthMeResponse = { role: string };
 const BATCH_DELETE_STORAGE_KEY = "club_members_batch_delete_payload";
 const ORDER_LICENSE_STORAGE_KEY = "club_members_order_license_payload";
 const QUICK_PRINT_STORAGE_KEY = "club_quick_print_payload";
+const NO_PRINTER_PROFILE_VALUE = "__no_printer_profile__";
 
 export default function ClubAdminMembersPage() {
   const t = useTranslations("ClubAdmin");
@@ -55,6 +57,9 @@ export default function ClubAdminMembersPage() {
   const [statusFilterHydrated, setStatusFilterHydrated] = useState(false);
   const [statusUpdatingIds, setStatusUpdatingIds] = useState<number[]>([]);
   const [currentRole, setCurrentRole] = useState<string | null>(null);
+  const [printerProfiles, setPrinterProfiles] = useState<PrinterProfile[]>([]);
+  const [selectedQuickPrintPrinterProfileValue, setSelectedQuickPrintPrinterProfileValue] =
+    useState(NO_PRINTER_PROFILE_VALUE);
 
   const pageSizeOptions = ["10", "25", "50", "100", "150", "200"];
 
@@ -120,6 +125,43 @@ export default function ClubAdminMembersPage() {
   }, []);
 
   const canManageMembers = currentRole === "club_admin";
+
+  useEffect(() => {
+    if (!canManageMembers) {
+      setPrinterProfiles([]);
+      setSelectedQuickPrintPrinterProfileValue(NO_PRINTER_PROFILE_VALUE);
+      return;
+    }
+    let isMounted = true;
+    const loadPrinterProfiles = async () => {
+      try {
+        const profiles = await getPrinterProfiles();
+        if (isMounted) {
+          setPrinterProfiles(profiles);
+        }
+      } catch {
+        if (isMounted) {
+          setPrinterProfiles([]);
+        }
+      }
+    };
+    void loadPrinterProfiles();
+    return () => {
+      isMounted = false;
+    };
+  }, [canManageMembers]);
+
+  useEffect(() => {
+    if (selectedQuickPrintPrinterProfileValue === NO_PRINTER_PROFILE_VALUE) {
+      return;
+    }
+    const hasSelection = printerProfiles.some(
+      (profile) => String(profile.id) === selectedQuickPrintPrinterProfileValue
+    );
+    if (!hasSelection) {
+      setSelectedQuickPrintPrinterProfileValue(NO_PRINTER_PROFILE_VALUE);
+    }
+  }, [printerProfiles, selectedQuickPrintPrinterProfileValue]);
 
   const selectedIdsStorageKey = useMemo(
     () => `club_members_selected_ids:${selectedClubId ?? "all"}`,
@@ -240,6 +282,13 @@ export default function ClubAdminMembersPage() {
     [allFilteredIds, selectedIds]
   );
   const hiddenSelectedCount = Math.max(selectedIds.length - selectedVisibleCount, 0);
+  const selectedQuickPrintPrinterProfileId = useMemo(() => {
+    if (selectedQuickPrintPrinterProfileValue === NO_PRINTER_PROFILE_VALUE) {
+      return null;
+    }
+    const parsedValue = Number(selectedQuickPrintPrinterProfileValue);
+    return Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : null;
+  }, [selectedQuickPrintPrinterProfileValue]);
   const allSelected =
     allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedIds.includes(id));
 
@@ -363,6 +412,7 @@ export default function ClubAdminMembersPage() {
           selectedClubId,
           memberIds: selectedIds,
           licenseIds: [],
+          printerProfileId: selectedQuickPrintPrinterProfileId,
         })
       );
     }
@@ -466,6 +516,27 @@ export default function ClubAdminMembersPage() {
                 >
                   {t("orderLicenseButton", { year: new Date().getFullYear() })}
                 </Button>
+                <Select
+                  value={selectedQuickPrintPrinterProfileValue}
+                  onValueChange={setSelectedQuickPrintPrinterProfileValue}
+                >
+                  <SelectTrigger
+                    className="w-[220px]"
+                    aria-label={t("quickPrintEntryPrinterProfileLabel")}
+                  >
+                    <SelectValue placeholder={t("quickPrintEntryPrinterProfilePlaceholder")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_PRINTER_PROFILE_VALUE}>
+                      {t("quickPrintPrinterProfileNoneOption")}
+                    </SelectItem>
+                    {printerProfiles.map((profile) => (
+                      <SelectItem key={profile.id} value={String(profile.id)}>
+                        {profile.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button
                   variant="outline"
                   disabled={selectedIds.length === 0 || !selectedClubId}

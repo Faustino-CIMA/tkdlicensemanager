@@ -380,6 +380,8 @@
     "quickPrintPaperProfileLabel": "Pabeierprofil",
     "quickPrintPaperProfilePlaceholder": "Pabeierprofil auswielen",
     "quickPrintPaperProfileTemplateDefault": "Template-Standard benotzen",
+    "quickPrintEntryPrinterProfileLabel": "Quick-Print Profil",
+    "quickPrintEntryPrinterProfilePlaceholder": "Profil auswielen (optional)",
     "quickPrintPrinterProfileLabel": "Dréckerprofil",
     "quickPrintPrinterProfilePlaceholder": "Dréckerprofil auswielen",
     "quickPrintPrinterProfileNoneOption": "Keng Dréckerverschiebung",

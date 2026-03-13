@@ -28,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PrinterProfile, getPrinterProfiles } from "@/lib/license-card-api";
 
 type MemberLicenseRow = {
   member: Member;
@@ -40,6 +41,7 @@ type MemberLicenseRow = {
 
 type AuthMeResponse = { role: string };
 const QUICK_PRINT_STORAGE_KEY = "club_quick_print_payload";
+const NO_PRINTER_PROFILE_VALUE = "__no_printer_profile__";
 
 export default function ClubAdminLicensesPage() {
   const t = useTranslations("ClubAdmin");
@@ -52,6 +54,9 @@ export default function ClubAdminLicensesPage() {
   const [licenses, setLicenses] = useState<License[]>([]);
   const [selectedLicenseIds, setSelectedLicenseIds] = useState<number[]>([]);
   const [currentRole, setCurrentRole] = useState<string | null>(null);
+  const [printerProfiles, setPrinterProfiles] = useState<PrinterProfile[]>([]);
+  const [selectedQuickPrintPrinterProfileValue, setSelectedQuickPrintPrinterProfileValue] =
+    useState(NO_PRINTER_PROFILE_VALUE);
   const [licenseTypes, setLicenseTypes] = useState<LicenseType[]>([]);
   const [expandedMemberIds, setExpandedMemberIds] = useState<number[]>([]);
   const [expandedStateHydrated, setExpandedStateHydrated] = useState(false);
@@ -65,6 +70,43 @@ export default function ClubAdminLicensesPage() {
 
   const pageSizeOptions = ["10", "25", "50", "100", "150", "200"];
   const canManageLicenses = currentRole === "club_admin";
+
+  useEffect(() => {
+    if (!canManageLicenses) {
+      setPrinterProfiles([]);
+      setSelectedQuickPrintPrinterProfileValue(NO_PRINTER_PROFILE_VALUE);
+      return;
+    }
+    let isMounted = true;
+    const loadPrinterProfiles = async () => {
+      try {
+        const profiles = await getPrinterProfiles();
+        if (isMounted) {
+          setPrinterProfiles(profiles);
+        }
+      } catch {
+        if (isMounted) {
+          setPrinterProfiles([]);
+        }
+      }
+    };
+    void loadPrinterProfiles();
+    return () => {
+      isMounted = false;
+    };
+  }, [canManageLicenses]);
+
+  useEffect(() => {
+    if (selectedQuickPrintPrinterProfileValue === NO_PRINTER_PROFILE_VALUE) {
+      return;
+    }
+    const hasSelection = printerProfiles.some(
+      (profile) => String(profile.id) === selectedQuickPrintPrinterProfileValue
+    );
+    if (!hasSelection) {
+      setSelectedQuickPrintPrinterProfileValue(NO_PRINTER_PROFILE_VALUE);
+    }
+  }, [printerProfiles, selectedQuickPrintPrinterProfileValue]);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -212,6 +254,13 @@ export default function ClubAdminLicensesPage() {
     allLicenseIds.length > 0 &&
     allLicenseIds.every((licenseId) => selectedLicenseIds.includes(licenseId));
   const hiddenSelectedCount = Math.max(selectedLicenseIds.length - allLicenseIds.length, 0);
+  const selectedQuickPrintPrinterProfileId = useMemo(() => {
+    if (selectedQuickPrintPrinterProfileValue === NO_PRINTER_PROFILE_VALUE) {
+      return null;
+    }
+    const parsedValue = Number(selectedQuickPrintPrinterProfileValue);
+    return Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : null;
+  }, [selectedQuickPrintPrinterProfileValue]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -342,6 +391,7 @@ export default function ClubAdminLicensesPage() {
           selectedClubId,
           memberIds: [],
           licenseIds: selectedLicenseIds,
+          printerProfileId: selectedQuickPrintPrinterProfileId,
         })
       );
     }
@@ -423,13 +473,36 @@ export default function ClubAdminLicensesPage() {
               {t("collapseAllMembers")}
             </Button>
             {canManageLicenses ? (
-              <Button
-                variant="outline"
-                disabled={!selectedClubId || selectedLicenseIds.length === 0}
-                onClick={openQuickPrintPage}
-              >
-                {t("quickPrintSelectedCardsAction")}
-              </Button>
+              <>
+                <Select
+                  value={selectedQuickPrintPrinterProfileValue}
+                  onValueChange={setSelectedQuickPrintPrinterProfileValue}
+                >
+                  <SelectTrigger
+                    className="w-[220px]"
+                    aria-label={t("quickPrintEntryPrinterProfileLabel")}
+                  >
+                    <SelectValue placeholder={t("quickPrintEntryPrinterProfilePlaceholder")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_PRINTER_PROFILE_VALUE}>
+                      {t("quickPrintPrinterProfileNoneOption")}
+                    </SelectItem>
+                    {printerProfiles.map((profile) => (
+                      <SelectItem key={profile.id} value={String(profile.id)}>
+                        {profile.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  disabled={!selectedClubId || selectedLicenseIds.length === 0}
+                  onClick={openQuickPrintPage}
+                >
+                  {t("quickPrintSelectedCardsAction")}
+                </Button>
+              </>
             ) : null}
           </div>
           {canManageLicenses ? (
