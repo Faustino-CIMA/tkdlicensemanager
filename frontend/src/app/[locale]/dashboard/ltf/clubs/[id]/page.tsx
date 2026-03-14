@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
@@ -554,9 +555,11 @@ export default function LtfClubDetailPage() {
                     <article key={logo.id} className="rounded-xl border border-zinc-200 p-3">
                       <div className="aspect-[16/9] w-full overflow-hidden rounded-md bg-zinc-100">
                         {logo.content_url ? (
-                          <img
+                          <Image
                             src={logo.content_url}
                             alt={logo.label || logo.file_name}
+                            width={320}
+                            height={180}
                             className="h-full w-full object-contain"
                           />
                         ) : (

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -38,7 +38,7 @@ export default function LtfAdminCreateClubPage() {
   const {
     register,
     handleSubmit,
-    watch,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<ClubFormValues>({
     resolver: zodResolver(clubSchema),
@@ -51,7 +51,7 @@ export default function LtfAdminCreateClubPage() {
       iban: "",
     },
   });
-  const watchedIban = watch("iban");
+  const watchedIban = useWatch({ control, name: "iban", defaultValue: "" });
   const derivedBankName = deriveBankNameFromIban(watchedIban);
 
   const onSubmit = async (values: ClubFormValues) => {

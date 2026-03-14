@@ -1,8 +1,9 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -74,7 +75,7 @@ export default function ClubAdminSettingsPage() {
     register,
     handleSubmit,
     reset,
-    watch,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<ClubFormValues>({
     resolver: zodResolver(clubSchema),
@@ -87,7 +88,7 @@ export default function ClubAdminSettingsPage() {
       iban: "",
     },
   });
-  const watchedIban = watch("iban");
+  const watchedIban = useWatch({ control, name: "iban", defaultValue: "" });
   const derivedBankName = useMemo(
     () => deriveBankNameFromIban(watchedIban),
     [watchedIban]
@@ -400,9 +401,11 @@ export default function ClubAdminSettingsPage() {
                   <article key={logo.id} className="rounded-xl border border-zinc-200 p-3">
                     <div className="flex items-start gap-3">
                       {logo.content_url ? (
-                        <img
+                        <Image
                           src={logo.content_url}
                           alt={logo.label || logo.file_name}
+                          width={64}
+                          height={64}
                           className="h-16 w-16 rounded object-contain"
                         />
                       ) : (

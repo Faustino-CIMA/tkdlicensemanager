@@ -13,7 +13,7 @@ jest.mock("react-easy-crop", () => {
     }) {
       React.useEffect(() => {
         onCropComplete(null, { x: 0, y: 0, width: 500, height: 700 });
-      }, []);
+      }, [onCropComplete]);
       return <div data-testid="cropper">cropper</div>;
     },
   };

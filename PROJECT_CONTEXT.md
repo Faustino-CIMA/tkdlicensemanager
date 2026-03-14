@@ -1,5 +1,11 @@
 # LTF License Manager - Permanent Project Memory
-Last updated: 2026-03-13
+Last updated: 2026-03-14
+
+## Current Active Branch
+**Branch:** `feature/general-improvements`
+**Purpose:** Safe general improvements and bug fixes (Docker-first, cautious development).
+**Visual overhaul postponed** to a later dedicated branch.
+**Status:** In progress (Steps 1-5 applied; ready for Step 6 Decision Point)
 
 ## Current Stack (locked)
 - Backend: Django 6+ + DRF + PostgreSQL 18+

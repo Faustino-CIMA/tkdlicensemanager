@@ -579,6 +579,7 @@ export function ProfilePhotoManager({
             <div className="space-y-2">
               <p className="text-xs font-medium text-zinc-600">{labels.previewTitle}</p>
               <div className="h-48 w-40 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100">
+                {/* eslint-disable-next-line @next/next/no-img-element -- crop preview uses blob URL */}
                 <img
                   src={previewImageUrl}
                   alt={labels.currentPhotoAlt}
@@ -626,6 +627,7 @@ export function ProfilePhotoManager({
               <div className="flex items-start gap-4">
                 <div className="h-28 w-28 overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-100">
                   {storedPhotoPreviewUrl ? (
+                    /* eslint-disable-next-line @next/next/no-img-element -- stored photo can be blob or API URL */
                     <img
                       src={storedPhotoPreviewUrl}
                       alt={labels.currentPhotoAlt}

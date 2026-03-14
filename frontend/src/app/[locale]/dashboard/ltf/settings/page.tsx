@@ -1,8 +1,9 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -73,7 +74,7 @@ export default function LtfAdminSettingsPage() {
     register,
     handleSubmit,
     reset,
-    watch,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<FederationFormValues>({
     resolver: zodResolver(federationSchema),
@@ -86,7 +87,7 @@ export default function LtfAdminSettingsPage() {
       iban: "",
     },
   });
-  const watchedIban = watch("iban");
+  const watchedIban = useWatch({ control, name: "iban", defaultValue: "" });
   const derivedBankName = deriveBankNameFromIban(watchedIban);
   const usageLabelMap: Record<LogoUsageType, string> = useMemo(
     () => ({
@@ -345,9 +346,11 @@ export default function LtfAdminSettingsPage() {
                 <article key={logo.id} className="rounded-xl border border-zinc-200 p-3">
                   <div className="aspect-[16/9] w-full overflow-hidden rounded-md bg-zinc-100">
                     {logo.content_url ? (
-                      <img
+                      <Image
                         src={logo.content_url}
                         alt={logo.label || logo.file_name}
+                        width={320}
+                        height={180}
                         className="h-full w-full object-contain"
                       />
                     ) : (

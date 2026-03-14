@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
@@ -100,7 +101,7 @@ export function TopBar() {
     return (
       <div className="flex items-center justify-between gap-3 px-6 py-4">
         <div className="flex items-center gap-3">
-          <img src="/ltf-logo.svg" alt="LTF Logo" className="h-9 w-auto" />
+          <Image src="/ltf-logo.svg" alt="LTF Logo" width={120} height={36} className="h-9 w-auto" />
           <span className="text-base font-semibold text-zinc-900">{t("appTitle")}</span>
         </div>
         <LanguageSwitcher />
@@ -111,7 +112,7 @@ export function TopBar() {
   return (
     <div className="flex items-center justify-between gap-3 px-6 py-4">
       <div className="flex items-center gap-5">
-        <img src="/ltf-logo.svg" alt="LTF Logo" className="h-9 w-auto" />
+        <Image src="/ltf-logo.svg" alt="LTF Logo" width={120} height={36} className="h-9 w-auto" />
         <span className="text-3xl font-semibold text-zinc-900">{t("appTitle")}</span>
       </div>
       <div className="flex flex-col items-end gap-2">
