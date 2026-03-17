@@ -5,7 +5,7 @@ Last updated: 2026-03-14
 **Branch:** `feature/general-improvements`
 **Purpose:** Safe general improvements and bug fixes (Docker-first, cautious development).
 **Visual overhaul postponed** to a later dedicated branch.
-**Status:** In progress (Steps 1-5 applied; ready for Step 6 Decision Point)
+**Status:** Steps 1–5 complete; printer profile feature ready for merge/release (v0.3.6).
 
 ## Current Stack (locked)
 - Backend: Django 6+ + DRF + PostgreSQL 18+
@@ -41,6 +41,10 @@ Last updated: 2026-03-14
 - Card v2.1 Final Targeted SVG Fix: canonical SVG data-URI sanitization/normalization in render pipeline, strict SVG asset embedding for preview/PDF, simulation iframe refresh keying, and inspector image-source debug telemetry — completed
 - Card v2.1 Final Targeted SVG Fix (real uploaded logos): widened SVG sanitizer baseline allowlist (clip/mask/filter/logo attributes), deterministic SVG data-URI embedding for preview/PDF HTML, simulation iframe keying from full srcDoc payload, explicit real-world SVG regression coverage, and refreshed before/after + PDF evidence artifacts — completed
 - Printer Margin Profiles v2.1.2 closure (v0.3.5): owner-scoped printer-profile model/API integration (`created_by` ownership), quick-print/profile selection flow, final PDF x/y offset application for preview/print execution, and Step 5 full regression/stability gate PASS (`25/25`) on `9c03414` — completed
+- Printer Profile Step 1–2 (feature/general-improvements): PrinterProfile ownership + owner-scoped CRUD/selection (backend), render offset in final PDF only (backend). Step 3: Club Admin quick-print printer profile selection (members, licenses, quick-print page) + LTF Admin CRUD at /dashboard/ltf/printer-profiles — completed
+- Printer Profile Step 4 (feature/general-improvements): Full regression (licenses.test_cards 99/99), lint/build pass, Docker services healthy; end-to-end verification of Club Admin selection, LTF Admin CRUD, and PDF offset — completed
+- Printer Profile Step 5 (feature/general-improvements): CHANGELOG and PROJECT_CONTEXT updated; version bump to v0.3.6 prepared; recommendation: merge to main and release v0.3.6
+- **Release v0.3.6 (2026-03-14):** Merged `feature/general-improvements` to main. Printer profiles (user-owned) + photo fixes live on main. Tag `v0.3.6` created and pushed.
 
 ## Key Decisions
 - Material Design 3 is the only UI framework
@@ -51,9 +55,10 @@ Last updated: 2026-03-14
 - Docker containers run with host UID/GID + .cursor bind-mount for debugging
 
 ## Current Open / Next Priorities (update after every milestone)
+- Merge `feature/general-improvements` to main and tag v0.3.6; then post-rollout observation (print queue, printer-profile offset correctness in production).
 - Gather real Payconiq sandbox credentials and run first live sandbox verification
 - Any remaining Dokploy stability tweaks
-- Post-rollout production observation window for print queue throughput, simulation refresh latency, asset resolution telemetry, printer-profile offset correctness in live print batches, and artifact retention tuning (v0.3.5)
+- Post-rollout production observation window for print queue throughput, simulation refresh latency, asset resolution telemetry, printer-profile offset correctness in live print batches, and artifact retention tuning (v0.3.5 / v0.3.6)
 
 ## Coding & Memory Rules (always follow)
 - Explain ALL JS/TS in extreme beginner detail

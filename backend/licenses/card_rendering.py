@@ -2148,12 +2148,15 @@ def _render_sheet_document_html(preview_data: dict[str, Any]) -> str:
     )
 
 
-def _apply_final_pdf_translation(
+def _apply_printer_offset_to_pdf(
     html: str,
     *,
     x_offset_mm: Any = None,
     y_offset_mm: Any = None,
 ) -> str:
+    """Wrap the final HTML body content with a pure x/y translation (printer offset).
+    Applied only in final PDF render path; designer canvas, simulation, and
+    preview-data geometry are unchanged."""
     resolved_x_offset = _coerce_pdf_offset_mm(x_offset_mm, field_name="x_offset_mm")
     resolved_y_offset = _coerce_pdf_offset_mm(y_offset_mm, field_name="y_offset_mm")
     if resolved_x_offset == Decimal("0.00") and resolved_y_offset == Decimal("0.00"):
@@ -2183,7 +2186,7 @@ def _render_pdf(
     x_offset_mm: Any = None,
     y_offset_mm: Any = None,
 ) -> bytes:
-    html_with_offset = _apply_final_pdf_translation(
+    html_with_offset = _apply_printer_offset_to_pdf(
         html,
         x_offset_mm=x_offset_mm,
         y_offset_mm=y_offset_mm,

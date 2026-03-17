@@ -5,7 +5,7 @@ Modern, secure Taekwondo license management for the Luxembourg Taekwondo Federat
 ## Release Notes
 
 - See `CHANGELOG.md` for user-facing and technical release notes.
-- Current stable release: `v0.3.5` (Card v2.1.2 Printer Margin Profiles closure).
+- Current stable release: `v0.3.6` (Printer profiles user-owned + photo fixes).
 
 ## CI (GitHub Actions)
 
@@ -374,7 +374,7 @@ Role split:
 - LTF Admin: manages templates/versions, dual-side designer payloads, simulation previews, and can execute/retry/cancel any print job.
 - Club Admin: can quick-print from own-club members or licenses, execute/retry/cancel own-club print jobs, and view own-club print history.
 
-### License Card v2.1.2 Quick Usage (v0.3.5)
+### License Card v2.1.2 Quick Usage (v0.3.6)
 
 LTF Admin flow:
 1. Open `/{locale}/dashboard/ltf/license-cards`.
@@ -387,13 +387,13 @@ Club Admin flow:
 2. Select members/licenses and run quick print using the latest published template.
 3. Confirm job reaches `succeeded` and artifact download works from history.
 
-v0.3.5 Printer Margin Profiles notes:
-- Step 5 final gate is complete and recorded in `docs/license-card-v2-1-2-step5-uat.md` (`25 PASS`, `0 FAIL`).
-- LTF Admin can manage printer margin profiles in `/{locale}/dashboard/ltf/printer-profiles`.
-- Printer profiles are owner-scoped and only expose records belonging to the authenticated LTF Admin.
-- Sheet preview and print execution both apply selected `printer_profile` offsets (`x_offset_mm`, `y_offset_mm`) in final PDF rendering.
+v0.3.6 Printer profiles (user-owned) notes:
+- Printer profiles are owner-scoped: each user (LTF Admin or Club Admin) sees and manages only their own profiles.
+- LTF Admin: full CRUD at `/{locale}/dashboard/ltf/printer-profiles`. Club Admin: select own profile when creating quick-print jobs (members, licenses, quick-print page).
+- Offsets (`x_offset_mm`, `y_offset_mm`) are applied only in the final PDF; designer canvas and live simulation are unchanged.
+- Sheet preview and print execution apply the selected `printer_profile` offsets in final PDF rendering.
 - LP798 geometry and sheet-slot placement remain locked (`85.00x55.00`, margins/gaps `15/10/15` and `10/0`) with guide neutrality preserved.
-- Multi-image asset reliability and simulation/PDF parity remain stable after printer-profile integration.
+- Multi-image asset reliability and simulation/PDF parity remain stable.
 
 Primary API workflow:
 - Template manager/designer:

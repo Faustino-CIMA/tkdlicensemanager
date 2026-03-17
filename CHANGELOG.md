@@ -4,12 +4,17 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-03-14
+
 ### User-facing
+- **Printer profiles (user-owned):** Club Admins can select their own printer profile when creating quick-print jobs (members, licenses, and quick-print page). LTF Admins can create, edit, and delete their own printer profiles at **Dashboard → Printer profiles**. Offsets (X/Y mm) are applied only in the final PDF output; designer canvas and live simulation are unchanged.
 - Fixed member photo uploads that previously failed with generic errors.
 - Fixed cases where a photo saved successfully but did not display afterward.
 - Improved upload failure messages, including clearer feedback for server and size-related failures.
 
 ### Technical
+- Backend: PrinterProfile model with `created_by` ownership; owner-scoped list/retrieve/update/delete and create; print job creation accepts only the caller’s profiles. Render offset applied in final PDF path only (`_apply_printer_offset_to_pdf`).
+- Frontend: Printer profile API helpers and selection in Club Admin quick-print flows; LTF Admin CRUD page at `/dashboard/ltf/printer-profiles` with create/edit/delete modals.
 - Hardened backend photo processing and storage flow to tolerate partial derivative write failures while preserving required processed image saves.
 - Increased upload-size limits and made frontend multipart uploads size-aware by skipping oversized optional original files.
 - Added authenticated API endpoints for processed and thumbnail profile images to avoid reliance on direct `/media` routing.

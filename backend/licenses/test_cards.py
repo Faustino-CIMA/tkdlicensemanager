@@ -33,6 +33,7 @@ from .models import (
     PrintJob,
     PrintJobItem,
 )
+from .card_rendering import _apply_printer_offset_to_pdf
 from .print_jobs import execute_print_job_now
 from .tasks import execute_print_job_task
 
@@ -534,6 +535,21 @@ class LicenseCardRoleAccessTests(TestCase):
         self.assertEqual(str(created.x_offset_mm), "1.25")
         self.assertEqual(str(created.y_offset_mm), "-0.60")
         self.assertEqual(created.created_by_id, self.ltf_admin.id)
+
+        update_response = self.client.patch(
+            f"/api/printer-profiles/{self.ltf_printer_profile.id}/",
+            {"description": "Updated by LTF admin"},
+            format="json",
+        )
+        self.assertEqual(update_response.status_code, status.HTTP_200_OK)
+        self.ltf_printer_profile.refresh_from_db()
+        self.assertEqual(self.ltf_printer_profile.description, "Updated by LTF admin")
+
+        delete_response = self.client.delete(
+            f"/api/printer-profiles/{created.id}/"
+        )
+        self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(PrinterProfile.objects.filter(id=created.id).exists())
 
     def test_club_admin_printer_profile_crud_is_owner_scoped(self):
         self.client.force_authenticate(user=self.club_admin)
@@ -3007,6 +3023,58 @@ class LicenseCardPreviewApiTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(render_pdf_mock.call_args.kwargs.get("x_offset_mm"), "0.00")
         self.assertEqual(render_pdf_mock.call_args.kwargs.get("y_offset_mm"), "0.00")
+
+    def test_preview_data_and_simulation_do_not_include_printer_offset(self):
+        """Printer offset is applied only in final PDF render; preview-data and simulation are unchanged."""
+        self.client.force_authenticate(user=self.ltf_admin)
+        preview_data_payload = {
+            "member_id": self.member.id,
+            "license_id": self.license.id,
+            "paper_profile_id": self.paper_profile.id,
+            "selected_slots": [0, 5],
+        }
+        data_response = self.client.post(
+            self.preview_data_url,
+            preview_data_payload,
+            format="json",
+        )
+        self.assertEqual(data_response.status_code, status.HTTP_200_OK)
+        self.assertNotIn("x_offset_mm", data_response.data)
+        self.assertNotIn("y_offset_mm", data_response.data)
+        if "render_metadata" in data_response.data:
+            self.assertNotIn("x_offset_mm", data_response.data["render_metadata"])
+            self.assertNotIn("y_offset_mm", data_response.data["render_metadata"])
+        for element in data_response.data.get("elements") or []:
+            self.assertNotIn("printer_offset", str(element).lower())
+        for slot in data_response.data.get("slots") or []:
+            self.assertNotIn("printer_offset", str(slot).lower())
+
+        html_response = self.client.post(
+            self.preview_card_html_url,
+            {"member_id": self.member.id, "license_id": self.license.id},
+            format="json",
+        )
+        self.assertEqual(html_response.status_code, status.HTTP_200_OK)
+        self.assertNotIn("pdf-final-offset-root", html_response.data["html"])
+        self.assertNotIn("transform:translate(", html_response.data["html"])
+
+    def test_apply_printer_offset_to_pdf_wraps_body_in_final_render_only(self):
+        """Printer offset is applied as translate() wrapper only in final PDF HTML."""
+        html_no_offset = "<!doctype html><html><head></head><body><div>content</div></body></html>"
+        self.assertEqual(
+            _apply_printer_offset_to_pdf(html_no_offset, x_offset_mm=None, y_offset_mm=None),
+            html_no_offset,
+        )
+        self.assertEqual(
+            _apply_printer_offset_to_pdf(html_no_offset, x_offset_mm="0.00", y_offset_mm="0.00"),
+            html_no_offset,
+        )
+        result = _apply_printer_offset_to_pdf(
+            html_no_offset, x_offset_mm="1.25", y_offset_mm="-0.50"
+        )
+        self.assertIn("pdf-final-offset-root", result)
+        self.assertIn("transform:translate(1.25mm,-0.50mm)", result)
+        self.assertIn("<div>content</div>", result)
 
     def test_lp798_geometry_contract_and_bounds(self):
         self.client.force_authenticate(user=self.ltf_admin)

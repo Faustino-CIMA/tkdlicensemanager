@@ -596,6 +596,7 @@ export function deletePaperProfile(id: number) {
   });
 }
 
+/** List printer profiles (owner-scoped: only profiles created by the current user). */
 export function getPrinterProfiles(options?: ApiCallOptions) {
   return apiRequest<PrinterProfile[] | PaginatedResponse<PrinterProfile>>("/api/printer-profiles/", {
     signal: options?.signal,
