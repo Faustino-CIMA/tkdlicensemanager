@@ -3,6 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { useEffect, useMemo, useState } from "react";
+import { apiRequest } from "@/lib/api";
+
+type AuthMeResponse = { role: string };
 
 type ClubAdminLayoutProps = {
   title: string;
@@ -14,16 +18,43 @@ export function ClubAdminLayout({ title, subtitle, children }: ClubAdminLayoutPr
   const t = useTranslations("ClubAdmin");
   const pathname = usePathname();
   const locale = pathname?.split("/")[1] || "en";
+  const [currentRole, setCurrentRole] = useState<string | null>(null);
 
-  const navItems = [
-    { href: `/${locale}/dashboard/club`, label: t("navOverview"), matchChildren: false },
-    { href: `/${locale}/dashboard/club/members`, label: t("navMembers"), matchChildren: true },
-    { href: `/${locale}/dashboard/club/licenses`, label: t("navLicenses"), matchChildren: true },
-    { href: `/${locale}/dashboard/club/print-jobs`, label: t("navPrintJobs"), matchChildren: true },
-    { href: `/${locale}/dashboard/club/orders`, label: t("navOrders"), matchChildren: true },
-    { href: `/${locale}/dashboard/club/invoices`, label: t("navInvoices"), matchChildren: true },
-    { href: `/${locale}/dashboard/club/settings`, label: t("navSettings"), matchChildren: true },
-  ];
+  useEffect(() => {
+    let isMounted = true;
+    const loadRole = async () => {
+      try {
+        const me = await apiRequest<AuthMeResponse>("/api/auth/me/");
+        if (isMounted) setCurrentRole(me.role);
+      } catch {
+        if (isMounted) setCurrentRole(null);
+      }
+    };
+    void loadRole();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const navItems = useMemo(() => {
+    const base = [
+      { href: `/${locale}/dashboard/club`, label: t("navOverview"), matchChildren: false },
+      { href: `/${locale}/dashboard/club/members`, label: t("navMembers"), matchChildren: true },
+      { href: `/${locale}/dashboard/club/licenses`, label: t("navLicenses"), matchChildren: true },
+      { href: `/${locale}/dashboard/club/print-jobs`, label: t("navPrintJobs"), matchChildren: true },
+      { href: `/${locale}/dashboard/club/orders`, label: t("navOrders"), matchChildren: true },
+      { href: `/${locale}/dashboard/club/invoices`, label: t("navInvoices"), matchChildren: true },
+    ];
+    if (currentRole === "club_admin") {
+      base.push({
+        href: `/${locale}/dashboard/club/printer-profiles`,
+        label: t("navPrinterProfiles"),
+        matchChildren: true,
+      });
+    }
+    base.push({ href: `/${locale}/dashboard/club/settings`, label: t("navSettings"), matchChildren: true });
+    return base;
+  }, [locale, t, currentRole]);
 
   return (
     <main className="min-h-screen bg-zinc-50 px-6 py-10">
