@@ -207,7 +207,11 @@ export type LicenseRoleValue =
   | "referee"
   | "official"
   | "doctor"
-  | "physiotherapist";
+  | "physiotherapist"
+  | "volunteer"
+  | "staff"
+  | "media"
+  | "fan";
 
 export function getClubs() {
   return apiRequest<Club[]>("/api/clubs/");

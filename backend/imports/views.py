@@ -86,6 +86,10 @@ _LICENSE_ROLE_LOOKUP = {
     "official": "official",
     "doctor": "doctor",
     "physiotherapist": "physiotherapist",
+    "volunteer": "volunteer",
+    "staff": "staff",
+    "media": "media",
+    "fan": "fan",
 }
 
 
@@ -97,7 +101,7 @@ def normalize_license_role(value, errors, field_name):
     if canonical:
         return canonical
     errors.append(
-        f"{field_name} must be one of: Athlete, Coach, Referee, Official, Doctor, Physiotherapist"
+        f"{field_name} must be one of: Athlete, Coach, Referee, Official, Doctor, Physiotherapist, Volunteer, Staff, Media, Fan"
     )
     return ""
 

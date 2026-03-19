@@ -20,6 +20,10 @@ class Member(models.Model):
         OFFICIAL = "official", _("Official")
         DOCTOR = "doctor", _("Doctor")
         PHYSIOTHERAPIST = "physiotherapist", _("Physiotherapist")
+        VOLUNTEER = "volunteer", _("Volunteer")
+        STAFF = "staff", _("Staff")
+        MEDIA = "media", _("Media")
+        FAN = "fan", _("Fan")
 
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,

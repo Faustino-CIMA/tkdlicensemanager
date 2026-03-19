@@ -19,6 +19,7 @@ Last updated: 2026-03-19
 
 ## Major Features & Status (from transcripts)
 - Multi-role system (LTF Admin, LTF Finance (strict), Club Admin, Coach, Member) — completed
+- Member license-role taxonomy expanded (Volunteer, Staff, Media, Fan) across backend/frontend/import contracts with compatibility normalization — completed
 - Full Finance Module (Order, OrderItem, Invoice, Payment with card details, Stripe Checkout + webhooks + manual record payment, audit logs) — completed
 - License & Grade History tracking with django-simple-history — completed
 - Profile Picture system (upload, crop/framing for 8:10 print, @imgly/background-removal-js) — completed

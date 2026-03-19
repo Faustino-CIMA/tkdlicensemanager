@@ -162,7 +162,11 @@ export type LicenseRoleValue =
   | "referee"
   | "official"
   | "doctor"
-  | "physiotherapist";
+  | "physiotherapist"
+  | "volunteer"
+  | "staff"
+  | "media"
+  | "fan";
 
 export type FederationProfile = {
   id: number;

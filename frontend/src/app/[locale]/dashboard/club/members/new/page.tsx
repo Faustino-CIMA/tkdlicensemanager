@@ -33,6 +33,10 @@ const LICENSE_ROLE_VALUES = [
   "official",
   "doctor",
   "physiotherapist",
+  "volunteer",
+  "staff",
+  "media",
+  "fan",
 ] as const;
 
 const createMemberSchema = z
@@ -126,6 +130,10 @@ export default function ClubAdminMemberCreatePage() {
       official: t("licenseRoleOfficial"),
       doctor: t("licenseRoleDoctor"),
       physiotherapist: t("licenseRolePhysiotherapist"),
+      volunteer: t("licenseRoleVolunteer"),
+      staff: t("licenseRoleStaff"),
+      media: t("licenseRoleMedia"),
+      fan: t("licenseRoleFan"),
     }),
     [t]
   );

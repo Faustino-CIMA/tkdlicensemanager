@@ -334,6 +334,21 @@ class MemberApiTests(TestCase):
         self.assertEqual(self.member.primary_license_role, "athlete")
         self.assertEqual(self.member.secondary_license_role, "coach")
 
+    def test_club_admin_can_patch_member_with_new_license_roles(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.patch(
+            f"/api/members/{self.member.id}/",
+            {
+                "primary_license_role": "volunteer",
+                "secondary_license_role": "staff",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.primary_license_role, "volunteer")
+        self.assertEqual(self.member.secondary_license_role, "staff")
+
     def test_member_update_rejects_secondary_role_without_primary(self):
         self.client.force_authenticate(user=self.club_admin)
         response = self.client.patch(
@@ -850,3 +865,28 @@ class MemberImportTests(TestCase):
         created = Member.objects.get(first_name="Ana", last_name="NG")
         self.assertEqual(created.primary_license_role, "athlete")
         self.assertEqual(created.secondary_license_role, "coach")
+
+    def test_confirm_creates_members_with_new_license_roles(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        csv_data = "first_name,last_name,primary_role,secondary_role\nBen,Kay,Volunteer,Media\n"
+        file_obj = BytesIO(csv_data.encode("utf-8"))
+        file_obj.name = "members_roles_new.csv"
+        mapping = {
+            "first_name": "first_name",
+            "last_name": "last_name",
+            "primary_license_role": "primary_role",
+            "secondary_license_role": "secondary_role",
+        }
+        response = self.client.post(
+            "/api/imports/members/confirm/",
+            {
+                "file": file_obj,
+                "mapping": json.dumps(mapping),
+                "club_id": self.club.id,
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        created = Member.objects.get(first_name="Ben", last_name="KAY")
+        self.assertEqual(created.primary_license_role, "volunteer")
+        self.assertEqual(created.secondary_license_role, "media")
