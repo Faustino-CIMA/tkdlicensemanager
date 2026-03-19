@@ -1,11 +1,11 @@
 # LTF License Manager - Permanent Project Memory
-Last updated: 2026-03-14
+Last updated: 2026-03-19
 
 ## Current Active Branch
-**Branch:** `feature/general-improvements`
-**Purpose:** Safe general improvements and bug fixes (Docker-first, cautious development).
+**Branch:** `main`
+**Purpose:** Production line; printer profiles (v0.3.6) merged from `feature/general-improvements`.
 **Visual overhaul postponed** to a later dedicated branch.
-**Status:** Steps 1–5 complete; printer profile feature ready for merge/release (v0.3.6).
+**Status:** v0.3.6 released on main; Dokploy smoke test passed before merge/tag (2026-03-19).
 
 ## Current Stack (locked)
 - Backend: Django 6+ + DRF + PostgreSQL 18+
@@ -43,8 +43,8 @@ Last updated: 2026-03-14
 - Printer Margin Profiles v2.1.2 closure (v0.3.5): owner-scoped printer-profile model/API integration (`created_by` ownership), quick-print/profile selection flow, final PDF x/y offset application for preview/print execution, and Step 5 full regression/stability gate PASS (`25/25`) on `9c03414` — completed
 - Printer Profile Step 1–2 (feature/general-improvements): PrinterProfile ownership + owner-scoped CRUD/selection (backend), render offset in final PDF only (backend). Step 3: Club Admin quick-print printer profile selection (members, licenses, quick-print page) + LTF Admin CRUD at /dashboard/ltf/printer-profiles — completed. Step 3 (Club Admin access): "Printer Profiles" nav link in Club Admin layout (role=club_admin only) + /dashboard/club/printer-profiles page (CRUD, same as LTF) — completed
 - Printer Profile Step 4 (feature/general-improvements): Full regression (licenses.test_cards 99/99), lint/build pass, Docker services healthy; end-to-end verification of Club Admin selection, LTF Admin CRUD, and PDF offset — completed. Step 4 re-run (2026-03-18): licenses.test_cards 99/99 OK, npm lint/build OK, docker compose up -d --build + ps all healthy.
-- Printer Profile Step 5 (feature/general-improvements): CHANGELOG and PROJECT_CONTEXT updated; version bump to v0.3.6 prepared; recommendation: merge to main and release v0.3.6
-- **Release v0.3.6 (2026-03-14):** Merged `feature/general-improvements` to main. Printer profiles (user-owned) + photo fixes live on main. Tag `v0.3.6` created and pushed.
+- Printer Profile Step 5 (feature/general-improvements): Dokploy deploy + smoke tests passed; merged to `main`, tag `v0.3.6` created and pushed (2026-03-19).
+- **Release v0.3.6 (2026-03-19):** Merged `feature/general-improvements` to `main` (fast-forward). Printer profiles (user-owned, Club Admin nav + `/dashboard/club/printer-profiles`, LTF Admin CRUD, quick-print selection, PDF offset in final output) + photo fixes live on `main`. Tag `v0.3.6` created and pushed.
 
 ## Key Decisions
 - Material Design 3 is the only UI framework
@@ -55,7 +55,7 @@ Last updated: 2026-03-14
 - Docker containers run with host UID/GID + .cursor bind-mount for debugging
 
 ## Current Open / Next Priorities (update after every milestone)
-- Merge `feature/general-improvements` to main and tag v0.3.6; then post-rollout observation (print queue, printer-profile offset correctness in production).
+- Post-rollout observation on production/Dokploy (print queue, printer-profile offset correctness).
 - Gather real Payconiq sandbox credentials and run first live sandbox verification
 - Any remaining Dokploy stability tweaks
 - Post-rollout production observation window for print queue throughput, simulation refresh latency, asset resolution telemetry, printer-profile offset correctness in live print batches, and artifact retention tuning (v0.3.5 / v0.3.6)
