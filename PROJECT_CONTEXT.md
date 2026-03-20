@@ -5,9 +5,9 @@ Last updated: 2026-03-20
 Current main branch state:
 - Version: v0.3.6 (annotated tag v0.3.6 created and pushed)
 - Printer Profiles feature fully merged and live
-- Stack upgrade (Django 6.0.3 + Python 3.13 + Next.js 16.2.0) completed on current working branch
 
-Current working branch: feature/stack-upgrade-2026-03
+Current working branch: improvements
+Status: Stack upgrade (Django 6.0.3 + Python 3.13 + Next.js 16.2.0) successfully merged
 
 Current Stack (locked) — Updated 2026-03-20:
 - Backend: Django 6.0.3 + DRF 3.16.1 + PostgreSQL 18
@@ -67,10 +67,10 @@ Rules we follow:
 - Any remaining Dokploy stability tweaks
 - Post-rollout production observation window for print queue throughput, simulation refresh latency, asset resolution telemetry, printer-profile offset correctness in live print batches, and artifact retention tuning (v0.3.5 / v0.3.6)
 
-Next phase: Review and merge `feature/stack-upgrade-2026-03` into `improvements`, then continue with general improvements or next major feature (e.g. Invoice redesign, full Payconiq integration).
+Next phase: General improvements or next major feature (e.g. Invoice redesign, full Payconiq integration)
 
 Coding & Memory Rules (always follow)
-- Always work on dedicated feature branches
+- Always work on dedicated feature branches for new work
 - Always test in Docker (`docker compose up -d --build`)
 - Use oh-my-cursor Team Avatar agents
 - Update this file after every significant milestone
