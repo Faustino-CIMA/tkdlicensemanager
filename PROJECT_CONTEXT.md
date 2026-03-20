@@ -1,21 +1,28 @@
-# LTF License Manager - Permanent Project Memory
-Last updated: 2026-03-19
+**LTF Taekwondo License Manager — Master Summary (March 2026)**
 
-## Current Active Branch
-**Branch:** `main`
-**Purpose:** Production line; printer profiles (v0.3.6) merged from `feature/general-improvements`.
-**Visual overhaul postponed** to a later dedicated branch.
-**Status:** v0.3.6 released on main; Dokploy smoke test passed before merge/tag (2026-03-19).
+Last updated: 2026-03-20
 
-## Current Stack (locked)
-- Backend: Django 6+ + DRF + PostgreSQL 18+
-- Frontend: Next.js 16+ (App Router) + React + TypeScript + **Material Design 3 (@mui/material)**
-- Database: PostgreSQL 18+
-- Other: Redis + Celery (staggered schedules), Docker + docker-compose + Dokploy deployment
-- i18n: next-intl (EN/LU)
-- Security: GDPR-first (consent, minimization, rights, export/delete), OWASP, django-simple-history
-- Documentation: Comprehensive README + code comments + drf-spectacular API docs
-- CI/CD: GitHub Actions CI active (backend migrate/check/test + frontend lint/build)
+Current main branch state:
+- Version: v0.3.6 (annotated tag v0.3.6 created and pushed)
+- Printer Profiles feature fully merged and live
+- Stack upgrade (Django 6.0.3 + Python 3.13 + Next.js 16.2.0) completed on current working branch
+
+Current working branch: feature/stack-upgrade-2026-03
+
+Current Stack (locked) — Updated 2026-03-20:
+- Backend: Django 6.0.3 + DRF 3.16.1 + PostgreSQL 18
+- Frontend: Next.js 16.2.0 (App Router) + React 19.2.3 + TypeScript 5.9.3
+- Runtime: Python 3.13 + Node 20
+- Cache/Queue: Redis 8.4 + Celery 5.6.2
+- Containers: postgres:18-alpine, redis:8-alpine
+- Deployment: Docker + Dokploy
+- Other: next-intl (EN/LU), django-simple-history, drf-spectacular
+
+Rules we follow:
+- Always work on dedicated feature branches for new work
+- Always test in Docker (`docker compose up -d --build`)
+- Use oh-my-cursor Team Avatar agents (@toph, @iroh, @appa, @sokka, ...)
+- PROJECT_CONTEXT.md is the single source of truth
 
 ## Major Features & Status (from transcripts)
 - Multi-role system (LTF Admin, LTF Finance (strict), Club Admin, Coach, Member) — completed
@@ -48,7 +55,6 @@ Last updated: 2026-03-19
 - **Release v0.3.6 (2026-03-19):** Merged `feature/general-improvements` to `main` (fast-forward). Printer profiles (user-owned, Club Admin nav + `/dashboard/club/printer-profiles`, LTF Admin CRUD, quick-print selection, PDF offset in final output) + photo fixes live on `main`. Tag `v0.3.6` created and pushed.
 
 ## Key Decisions
-- Material Design 3 is the only UI framework
 - Club Admin payments do NOT require extra consent prompt
 - Batch orders create ONE Order + ONE Invoice (grouped)
 - Stripe uses invoice_number as reference (not order_number)
@@ -61,12 +67,13 @@ Last updated: 2026-03-19
 - Any remaining Dokploy stability tweaks
 - Post-rollout production observation window for print queue throughput, simulation refresh latency, asset resolution telemetry, printer-profile offset correctness in live print batches, and artifact retention tuning (v0.3.5 / v0.3.6)
 
-## Coding & Memory Rules (always follow)
-- Explain ALL JS/TS in extreme beginner detail
-- Small, testable steps with tests at every stage
-- Conventional commits
-- Update this file after every major feature
+Next phase: Review and merge `feature/stack-upgrade-2026-03` into `improvements`, then continue with general improvements or next major feature (e.g. Invoice redesign, full Payconiq integration).
+
+Coding & Memory Rules (always follow)
+- Always work on dedicated feature branches
+- Always test in Docker (`docker compose up -d --build`)
+- Use oh-my-cursor Team Avatar agents
+- Update this file after every significant milestone
 - Read this file FIRST in every session
 
----
-Update this file after every significant milestone.
+Ready for your next request. Paste this block into any new Grok chat to continue with full context.

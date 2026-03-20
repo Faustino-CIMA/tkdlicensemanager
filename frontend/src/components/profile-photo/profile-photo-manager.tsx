@@ -1,7 +1,7 @@
 "use client";
 
 import Cropper, { Area } from "react-easy-crop";
-import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -168,6 +168,10 @@ export function ProfilePhotoManager({
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
+
+  const handleCropComplete = useCallback((_area: Area, pixels: Area) => {
+    setCroppedAreaPixels(pixels);
+  }, []);
 
   const sourceInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
@@ -538,7 +542,7 @@ export function ProfilePhotoManager({
               showGrid
               onCropChange={setCrop}
               onZoomChange={setZoom}
-              onCropComplete={(_, croppedPixels) => setCroppedAreaPixels(croppedPixels)}
+              onCropComplete={handleCropComplete}
             />
           </div>
 

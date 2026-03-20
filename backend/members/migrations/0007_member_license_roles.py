@@ -42,7 +42,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="member",
             constraint=models.CheckConstraint(
-                check=models.Q(secondary_license_role="")
+                condition=models.Q(secondary_license_role="")
                 | ~models.Q(primary_license_role=""),
                 name="member_secondary_role_requires_primary",
             ),
@@ -50,7 +50,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="member",
             constraint=models.CheckConstraint(
-                check=~(
+                condition=~(
                     ~models.Q(primary_license_role="")
                     & models.Q(primary_license_role=models.F("secondary_license_role"))
                 ),

@@ -89,12 +89,12 @@ class Member(models.Model):
         ]
         constraints = [
             models.CheckConstraint(
-                check=models.Q(secondary_license_role="")
+                condition=models.Q(secondary_license_role="")
                 | ~models.Q(primary_license_role=""),
                 name="member_secondary_role_requires_primary",
             ),
             models.CheckConstraint(
-                check=models.Q(primary_license_role="")
+                condition=models.Q(primary_license_role="")
                 | ~models.Q(primary_license_role=models.F("secondary_license_role")),
                 name="member_primary_secondary_role_must_differ",
             ),
