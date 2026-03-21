@@ -1,22 +1,20 @@
 **LTF Taekwondo License Manager — Master Summary (March 2026)**
 
-Last updated: 2026-03-20
+Last updated: 2026-03-21
 
 Current main branch state:
 - Version: v0.3.6 (annotated tag v0.3.6 created and pushed)
 - Printer Profiles feature fully merged and live
 
 Current working branch: improvements
-Status: Stack upgrade (Django 6.0.3 + Python 3.13 + Next.js 16.2.0) successfully merged
+Status: Major Docker infrastructure cleanup completed (v0.3.8)
 
-Current Stack (locked) — Updated 2026-03-20:
-- Backend: Django 6.0.3 + DRF 3.16.1 + PostgreSQL 18
+Current Stack (locked) — Updated 2026-03-21:
+- Backend: python:3.13-slim-bookworm + Django 6.0.3 + DRF 3.16.1 + PostgreSQL 18
 - Frontend: Next.js 16.2.0 (App Router) + React 19.2.3 + TypeScript 5.9.3
 - Runtime: Python 3.13 + Node 20
 - Cache/Queue: Redis 8.4 + Celery 5.6.2
-- Containers: postgres:18-alpine, redis:8-alpine
-- Deployment: Docker + Dokploy
-- Other: next-intl (EN/LU), django-simple-history, drf-spectacular
+- Key improvements: procps + net-tools installed, removed all .cursor bind mounts and chown commands, stable healthchecks, no more ownership corruption
 
 Rules we follow:
 - Always work on dedicated feature branches for new work
@@ -53,27 +51,23 @@ Rules we follow:
 - Printer Profile Step 4 (feature/general-improvements): Full regression (licenses.test_cards 99/99), lint/build pass, Docker services healthy; end-to-end verification of Club Admin selection, LTF Admin CRUD, and PDF offset — completed. Step 4 re-run (2026-03-18): licenses.test_cards 99/99 OK, npm lint/build OK, docker compose up -d --build + ps all healthy.
 - Printer Profile Step 5 (feature/general-improvements): Dokploy deploy + smoke tests passed; merged to `main`, tag `v0.3.6` created and pushed (2026-03-19).
 - **Release v0.3.6 (2026-03-19):** Merged `feature/general-improvements` to `main` (fast-forward). Printer profiles (user-owned, Club Admin nav + `/dashboard/club/printer-profiles`, LTF Admin CRUD, quick-print selection, PDF offset in final output) + photo fixes live on `main`. Tag `v0.3.6` created and pushed.
+- Stack upgrade (post–v0.3.6): Django 6.0.3 + Python 3.13 + Next.js 16.2.0 merged on `improvements` — completed
+- **Release v0.3.8 (2026-03-21, `improvements`):** Docker stack hardening — `python:3.13-slim-bookworm` base image; `procps` + `net-tools` for debugging and healthchecks; removed risky `chown` logic and `.cursor` volume mounts from `docker-compose.yml`; fixed Celery Beat healthcheck; resolved long-standing `.cursor` ownership corruption — completed (tag + merge to `main` pending)
 
 ## Key Decisions
 - Club Admin payments do NOT require extra consent prompt
 - Batch orders create ONE Order + ONE Invoice (grouped)
 - Stripe uses invoice_number as reference (not order_number)
 - All history is immutable and audited
-- Docker containers run with host UID/GID + .cursor bind-mount for debugging
+- Docker: use stable base images and explicit packages for diagnostics; do not mount `.cursor` into containers via compose; avoid broad recursive `chown` in entrypoints — host project tree ownership stays predictable
 
 ## Current Open / Next Priorities (update after every milestone)
-- Post-rollout observation on production/Dokploy (print queue, printer-profile offset correctness).
+- Merge `improvements` (v0.3.8 Docker baseline) to `main`, create/push annotated tag `v0.3.8`, Dokploy smoke
+- Post-rollout observation on production/Dokploy (print queue, printer-profile offset correctness)
 - Gather real Payconiq sandbox credentials and run first live sandbox verification
 - Any remaining Dokploy stability tweaks
-- Post-rollout production observation window for print queue throughput, simulation refresh latency, asset resolution telemetry, printer-profile offset correctness in live print batches, and artifact retention tuning (v0.3.5 / v0.3.6)
+- Post-rollout production observation window for print queue throughput, simulation refresh latency, asset resolution telemetry, printer-profile offset correctness in live print batches, and artifact retention tuning
 
-Next phase: General improvements or next major feature (e.g. Invoice redesign, full Payconiq integration)
-
-Coding & Memory Rules (always follow)
-- Always work on dedicated feature branches for new work
-- Always test in Docker (`docker compose up -d --build`)
-- Use oh-my-cursor Team Avatar agents
-- Update this file after every significant milestone
-- Read this file FIRST in every session
+Next phase: Merge improvements branch to main, tag v0.3.8, then continue with general improvements or next major feature (e.g. Invoice redesign, full Payconiq integration).
 
 Ready for your next request. Paste this block into any new Grok chat to continue with full context.
