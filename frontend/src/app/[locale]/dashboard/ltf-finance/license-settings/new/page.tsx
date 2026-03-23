@@ -62,7 +62,7 @@ export default function LtfFinanceLicenseTypeCreatePage() {
     <LtfFinanceLayout title={t("createLicenseType")} subtitle={t("licenseTypeFormSubtitle")}>
       {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
 
-      <section className="space-y-5 rounded-3xl bg-white p-6 shadow-sm">
+      <section className="space-y-5 rounded-none bg-white p-6 shadow-sm">
         <form className="space-y-5" onSubmit={handleSubmit}>
           <div className="space-y-2">
             <label className="text-sm font-medium text-zinc-700">{t("licenseTypeNameLabel")}</label>
@@ -73,7 +73,7 @@ export default function LtfFinanceLicenseTypeCreatePage() {
             />
           </div>
 
-          <div className="space-y-4 rounded-xl border border-zinc-200 p-4">
+          <div className="space-y-4 rounded-none border border-zinc-200 p-4">
             <p className="text-sm font-medium text-zinc-700">{t("initialPriceSectionLabel")}</p>
             <label className="flex items-center gap-2 text-sm text-zinc-700">
               <input

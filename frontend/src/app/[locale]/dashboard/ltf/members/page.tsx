@@ -405,7 +405,7 @@ export default function LtfAdminMembersPage() {
         ) : groupedClubRows.length === 0 ? (
           <EmptyState title={t("noResultsTitle")} description={t("noMembersResultsSubtitle")} />
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-zinc-100 bg-white shadow-sm">
+          <div className="overflow-x-auto rounded-none border border-zinc-100 bg-white shadow-sm">
             <table className="min-w-full text-left text-sm">
               <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
                 <tr>
@@ -455,7 +455,7 @@ export default function LtfAdminMembersPage() {
                       {clubExpanded ? (
                         <tr className="bg-zinc-50/60">
                           <td colSpan={8} className="px-6 py-3">
-                            <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+                            <div className="overflow-x-auto rounded-none border border-zinc-200 bg-white">
                               <table className="min-w-full text-left text-sm">
                                 <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
                                   <tr>
@@ -530,7 +530,7 @@ export default function LtfAdminMembersPage() {
                                                   {t("noMemberLicensesSubtitle")}
                                                 </p>
                                               ) : (
-                                                <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
+                                                <div className="overflow-x-auto rounded-none border border-zinc-200 bg-white">
                                                   <table className="min-w-full text-left text-sm">
                                                     <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
                                                       <tr>
@@ -551,7 +551,7 @@ export default function LtfAdminMembersPage() {
                                                           <td className="px-4 py-2">{license.year}</td>
                                                           <td className="px-4 py-2">
                                                             <span
-                                                              className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${getStatusChipClasses(
+                                                              className={`inline-flex rounded-none border px-2.5 py-1 text-xs font-medium ${getStatusChipClasses(
                                                                 license.status
                                                               )}`}
                                                             >

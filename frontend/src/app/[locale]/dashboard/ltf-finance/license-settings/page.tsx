@@ -188,7 +188,7 @@ export default function LtfFinanceLicenseSettingsPage() {
       {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
       {successMessage ? <p className="text-sm text-emerald-600">{successMessage}</p> : null}
 
-      <section className="space-y-4 rounded-3xl bg-white p-6 shadow-sm">
+      <section className="space-y-4 rounded-none bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <Input
@@ -265,7 +265,7 @@ export default function LtfFinanceLicenseSettingsPage() {
         )}
       </section>
 
-      <section className="space-y-4 rounded-3xl bg-white p-6 shadow-sm">
+      <section className="space-y-4 rounded-none bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-zinc-900">{t("priceHistoryTitle")}</h2>
@@ -283,7 +283,7 @@ export default function LtfFinanceLicenseSettingsPage() {
               const currentPrice = rows[0] ?? null;
               const isSavingPrice = Boolean(savingPriceByType[licenseType.id]);
               return (
-                <article key={licenseType.id} className="overflow-hidden rounded-2xl border border-zinc-200">
+                <article key={licenseType.id} className="overflow-hidden rounded-none border border-zinc-200">
                   <div className="space-y-1 border-b border-zinc-200 bg-zinc-50 px-4 py-3">
                     <h3 className="text-sm font-semibold text-zinc-900">{licenseType.name}</h3>
                     <p className="text-xs text-zinc-600">

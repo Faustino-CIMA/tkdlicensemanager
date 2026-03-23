@@ -363,7 +363,7 @@ export default function LtfClubDetailPage() {
           <EmptyState title={t("noResultsTitle")} description={t("noClubsResultsSubtitle")} />
         ) : activeTab === "overview" ? (
           <div className="space-y-4">
-            <section className="rounded-3xl bg-white p-6 shadow-sm">
+            <section className="rounded-none bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold text-zinc-900">{t("clubOverviewTab")}</h2>
                 {!isEditingOverview ? (
@@ -482,7 +482,7 @@ export default function LtfClubDetailPage() {
               )}
             </section>
 
-            <section className="rounded-3xl bg-white p-6 shadow-sm">
+            <section className="rounded-none bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-zinc-900">{t("logoSectionTitle")}</h2>
               <p className="mt-1 text-sm text-zinc-500">{t("logoSectionSubtitle")}</p>
 
@@ -552,8 +552,8 @@ export default function LtfClubDetailPage() {
               ) : (
                 <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {clubLogos.map((logo) => (
-                    <article key={logo.id} className="rounded-xl border border-zinc-200 p-3">
-                      <div className="aspect-[16/9] w-full overflow-hidden rounded-md bg-zinc-100">
+                    <article key={logo.id} className="rounded-none border border-zinc-200 p-3">
+                      <div className="aspect-[16/9] w-full overflow-hidden rounded-none bg-zinc-100">
                         {logo.content_url ? (
                           <Image
                             src={logo.content_url}
@@ -605,7 +605,7 @@ export default function LtfClubDetailPage() {
             </section>
           </div>
         ) : (
-          <section className="rounded-3xl bg-white p-6 shadow-sm">
+          <section className="rounded-none bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-zinc-900">{t("clubAdminsTab")}</h2>
             <p className="mt-1 text-sm text-zinc-500">{t("adminsSubtitle")}</p>
 
@@ -648,7 +648,7 @@ export default function LtfClubDetailPage() {
                     {clubAdmins.map((admin) => (
                       <div
                         key={admin.id}
-                        className="flex items-center justify-between rounded-md border border-zinc-200 px-3 py-2"
+                        className="flex items-center justify-between rounded-none border border-zinc-200 px-3 py-2"
                       >
                         <div className="text-sm text-zinc-700">
                           {admin.username} · {admin.email}

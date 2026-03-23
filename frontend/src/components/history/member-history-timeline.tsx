@@ -107,12 +107,12 @@ export function MemberHistoryTimeline({
   };
 
   return (
-    <section className="rounded-3xl bg-white p-6 shadow-sm">
+    <section className="rounded-none bg-white p-6 shadow-sm">
       <h2 className="text-lg font-semibold text-zinc-900">{title}</h2>
       <p className="mt-1 text-sm text-zinc-500">{subtitle}</p>
 
       {onPromote && promoteTitle ? (
-        <div className="mt-6 rounded-xl border border-zinc-200 p-4">
+        <div className="mt-6 rounded-none border border-zinc-200 p-4">
           <p className="text-sm font-semibold text-zinc-900">{promoteTitle}</p>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             <div className="space-y-1">
@@ -151,7 +151,7 @@ export function MemberHistoryTimeline({
               <p className="text-sm text-zinc-500">{emptyLabel}</p>
             ) : (
               licenseHistory.map((item) => (
-                <article key={item.id} className="rounded-lg border border-zinc-200 p-3">
+                <article key={item.id} className="rounded-none border border-zinc-200 p-3">
                   <p className="text-sm font-medium text-zinc-900">
                     {item.license_year} - {humanizeEventType(item.event_type)}
                   </p>
@@ -181,7 +181,7 @@ export function MemberHistoryTimeline({
               <p className="text-sm text-zinc-500">{emptyLabel}</p>
             ) : (
               gradeHistory.map((item) => (
-                <article key={item.id} className="rounded-lg border border-zinc-200 p-3">
+                <article key={item.id} className="rounded-none border border-zinc-200 p-3">
                   <p className="text-sm font-medium text-zinc-900">
                     {fromLabel}: {item.from_grade || "-"} - {toLabel}: {item.to_grade}
                   </p>

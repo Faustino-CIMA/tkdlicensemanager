@@ -118,7 +118,7 @@ export default function LtfMemberDetailPage() {
         ) : !member ? (
           <EmptyState title={t("noResultsTitle")} description={t("memberNotFound")} />
         ) : activeTab === "overview" ? (
-          <section className="rounded-3xl bg-white p-6 shadow-sm">
+          <section className="rounded-none bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-zinc-900">{t("memberOverviewTab")}</h2>
             <p className="mt-1 text-sm text-zinc-500">{t("membersReadOnlyHint")}</p>
             <div className="mt-4">

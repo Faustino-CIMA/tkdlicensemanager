@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { getMessages } from "next-intl/server";
 
 import { ClubSelectionProvider } from "@/components/club-selection-provider";
+import { HeroUIProvider } from "@/components/heroui-provider";
 import { TopBar } from "@/components/top-bar";
 
 import "../globals.css";
@@ -36,10 +37,12 @@ export default async function LocaleLayout({ children, params }: LocaleLayoutPro
     <html lang={locale}>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <NextIntlClientProvider locale={locale} messages={messages}>
-          <ClubSelectionProvider>
-            <TopBar />
-            {children}
-          </ClubSelectionProvider>
+          <HeroUIProvider>
+            <ClubSelectionProvider>
+              <TopBar />
+              {children}
+            </ClubSelectionProvider>
+          </HeroUIProvider>
         </NextIntlClientProvider>
       </body>
     </html>

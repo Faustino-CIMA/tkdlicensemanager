@@ -526,7 +526,7 @@ export default function LtfAdminLicensesPage() {
         ) : groupedClubRows.length === 0 ? (
           <EmptyState title={t("noResultsTitle")} description={t("noLicensesResultsSubtitle")} />
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-zinc-100 bg-white shadow-sm">
+          <div className="overflow-x-auto rounded-none border border-zinc-100 bg-white shadow-sm">
             <table className="min-w-full text-left text-sm">
               <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
                 <tr>
@@ -572,7 +572,7 @@ export default function LtfAdminLicensesPage() {
                       {clubExpanded ? (
                         <tr className="bg-zinc-50/60">
                           <td colSpan={6} className="px-6 py-3">
-                            <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+                            <div className="overflow-x-auto rounded-none border border-zinc-200 bg-white">
                               <table className="min-w-full text-left text-sm">
                                 <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
                                   <tr>
@@ -619,7 +619,7 @@ export default function LtfAdminLicensesPage() {
                                         {yearExpanded ? (
                                           <tr className="bg-zinc-50/50">
                                             <td colSpan={6} className="px-6 py-3">
-                                              <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
+                                              <div className="overflow-x-auto rounded-none border border-zinc-200 bg-white">
                                                 <table className="min-w-full text-left text-sm">
                                                   <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
                                                     <tr>

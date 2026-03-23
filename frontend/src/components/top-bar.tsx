@@ -117,7 +117,7 @@ export function TopBar() {
       </div>
       <div className="flex flex-col items-end gap-2">
         {hasToken && isDashboardRoute && me ? (
-          <div className="flex max-w-full items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-3 py-2 shadow-sm">
+          <div className="flex max-w-full items-center gap-2 rounded-none border border-zinc-200 bg-white px-3 py-2 shadow-sm">
             <div className="text-right">
               <p className="text-xs text-zinc-500">{t("welcomeUser", { name: displayName })}</p>
               <p className="text-xs text-zinc-600">{t("loginAsLabel", { username: me.username })}</p>

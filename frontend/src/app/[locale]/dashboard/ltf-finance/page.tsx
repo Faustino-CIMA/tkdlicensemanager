@@ -140,7 +140,7 @@ export default function LtfFinanceDashboardPage() {
         <EmptyState title={t("overviewEmptyTitle")} description={t("overviewEmptySubtitle")} />
       ) : (
         <div className="space-y-5">
-          <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+          <section className="flex flex-wrap items-center justify-between gap-3 rounded-none border border-zinc-200 bg-white px-4 py-3 shadow-sm">
             <p className="text-xs text-zinc-500">
               {lastRefreshAt
                 ? t("lastRefreshLabel", { time: formatDisplayDateTime(lastRefreshAt) })
@@ -179,7 +179,7 @@ export default function LtfFinanceDashboardPage() {
             />
           </section>
 
-          <section className="space-y-3 rounded-3xl bg-white p-6 shadow-sm">
+          <section className="space-y-3 rounded-none bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-zinc-900">{t("actionQueueTitle")}</h2>
             {queueWithFindings.length === 0 ? (
               <p className="text-sm text-zinc-600">{t("actionQueueAllClear")}</p>
@@ -188,14 +188,14 @@ export default function LtfFinanceDashboardPage() {
                 {queueWithFindings.map((item) => (
                   <div
                     key={item.key}
-                    className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-3 ${getSeverityClasses(item.severity)}`}
+                    className={`flex flex-wrap items-center justify-between gap-3 rounded-none border px-3 py-3 ${getSeverityClasses(item.severity)}`}
                   >
                     <div className="min-w-0">
                       <p className="text-sm font-medium">{actionLabelByKey(item.key)}</p>
                       <p className="text-xs opacity-90">{t("actionQueueCountLabel", { count: item.count })}</p>
                     </div>
                     <Link
-                      className="rounded-full border border-current px-3 py-1 text-xs font-medium"
+                      className="rounded-none border border-current px-3 py-1 text-xs font-medium"
                       href={`/${locale}${item.link.path}`}
                     >
                       {t("openAction")}
@@ -207,7 +207,7 @@ export default function LtfFinanceDashboardPage() {
           </section>
 
           <section className="grid gap-4 lg:grid-cols-2">
-            <article className="space-y-3 rounded-3xl bg-white p-6 shadow-sm">
+            <article className="space-y-3 rounded-none bg-white p-6 shadow-sm">
               <h3 className="text-base font-semibold text-zinc-900">{t("ordersDistributionTitle")}</h3>
               <div className="grid gap-2 text-sm text-zinc-700 sm:grid-cols-2">
                 <p>{t("statusDraftLabel", { count: overview.distributions.orders_by_status.draft })}</p>
@@ -222,7 +222,7 @@ export default function LtfFinanceDashboardPage() {
                 </p>
               </div>
             </article>
-            <article className="space-y-3 rounded-3xl bg-white p-6 shadow-sm">
+            <article className="space-y-3 rounded-none bg-white p-6 shadow-sm">
               <h3 className="text-base font-semibold text-zinc-900">{t("invoicesDistributionTitle")}</h3>
               <div className="grid gap-2 text-sm text-zinc-700 sm:grid-cols-2">
                 <p>{t("statusDraftLabel", { count: overview.distributions.invoices_by_status.draft })}</p>
@@ -233,7 +233,7 @@ export default function LtfFinanceDashboardPage() {
             </article>
           </section>
 
-          <section className="space-y-3 rounded-3xl bg-white p-6 shadow-sm">
+          <section className="space-y-3 rounded-none bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-zinc-900">{t("recentActivityTitle")}</h2>
             {overview.recent_activity.length === 0 ? (
               <p className="text-sm text-zinc-600">{t("recentActivityEmpty")}</p>

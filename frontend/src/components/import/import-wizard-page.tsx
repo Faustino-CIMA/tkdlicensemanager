@@ -579,7 +579,7 @@ export function ImportWizardPage({
     <div className="space-y-4">
       {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
 
-      <section className="rounded-3xl bg-white p-6 shadow-sm">
+      <section className="rounded-none bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-center gap-2">
           {stepOrder.map((stepItem, index) => {
             const isCurrent = stepItem === step;
@@ -587,7 +587,7 @@ export function ImportWizardPage({
             return (
               <span
                 key={stepItem}
-                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${
+                className={`inline-flex items-center gap-2 rounded-none border px-3 py-1 text-xs font-medium ${
                   isCurrent
                     ? "border-zinc-800 bg-zinc-900 text-white"
                     : isDone
@@ -604,7 +604,7 @@ export function ImportWizardPage({
       </section>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
-        <section className="rounded-3xl bg-white p-6 shadow-sm">
+        <section className="rounded-none bg-white p-6 shadow-sm">
           {step === "source" ? (
             <div className="space-y-5">
               <div className="space-y-1">
@@ -652,7 +652,7 @@ export function ImportWizardPage({
                         </SelectContent>
                       </Select>
                     ) : (
-                      <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
+                      <div className="rounded-none border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
                         {selectedClubName ?? "-"}
                       </div>
                     )}
@@ -701,7 +701,7 @@ export function ImportWizardPage({
               </div>
 
               {file ? (
-                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700">
+                <div className="rounded-none border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700">
                   <p>
                     <span className="font-medium">{t("fileNameLabel")}:</span> {file.name}
                   </p>
@@ -721,7 +721,7 @@ export function ImportWizardPage({
               {headers.length > 0 && sampleRows.length > 0 ? (
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-zinc-700">{t("sampleRowsTitle")}</p>
-                  <div className="max-h-72 overflow-auto rounded-lg border border-zinc-200">
+                  <div className="max-h-72 overflow-auto rounded-none border border-zinc-200">
                     <table className="w-full text-sm">
                       <thead className="bg-zinc-50 text-left text-xs uppercase text-zinc-500">
                         <tr>
@@ -774,7 +774,7 @@ export function ImportWizardPage({
                 </Button>
               </div>
 
-              <div className="max-h-[520px] overflow-auto rounded-lg border border-zinc-200">
+              <div className="max-h-[520px] overflow-auto rounded-none border border-zinc-200">
                 <table className="w-full text-sm">
                   <thead className="bg-zinc-50 text-left text-xs uppercase text-zinc-500">
                     <tr>
@@ -829,7 +829,7 @@ export function ImportWizardPage({
               </div>
 
               {isPreviewDirty ? (
-                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <p className="rounded-none border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                   {t("previewOutdated")}
                 </p>
               ) : null}
@@ -849,7 +849,7 @@ export function ImportWizardPage({
                     <button
                       key={filterItem.id}
                       type="button"
-                      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${
+                      className={`inline-flex items-center rounded-none border px-2.5 py-1 text-xs font-medium ${
                         active
                           ? "border-zinc-700 bg-zinc-800 text-white"
                           : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
@@ -871,7 +871,7 @@ export function ImportWizardPage({
                 </Button>
               </div>
 
-              <div className="max-h-[520px] overflow-auto rounded-lg border border-zinc-200">
+              <div className="max-h-[520px] overflow-auto rounded-none border border-zinc-200">
                 <table className="w-full text-sm">
                   <thead className="bg-zinc-50 text-left text-xs uppercase text-zinc-500">
                     <tr>
@@ -891,7 +891,7 @@ export function ImportWizardPage({
                           <td className="px-2 py-2">{row.row_index}</td>
                           <td className="px-2 py-2">
                             <span
-                              className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${
+                              className={`inline-flex rounded-none border px-2 py-0.5 text-xs font-medium ${
                                 status === "ready"
                                   ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                                   : status === "duplicate"
@@ -951,7 +951,7 @@ export function ImportWizardPage({
               </div>
 
               <div className="grid gap-3 md:grid-cols-2">
-                <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
+                <div className="rounded-none border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
                   <p>
                     <span className="font-medium">{t("statusReady")}:</span> {summary.ready}
                   </p>
@@ -965,7 +965,7 @@ export function ImportWizardPage({
                     <span className="font-medium">{t("statusSkipped")}:</span> {summary.skipped}
                   </p>
                 </div>
-                <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
+                <div className="rounded-none border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
                   <p>
                     <span className="font-medium">{t("importTypeLabel")}:</span>{" "}
                     {importType === "members" ? t("importMembers") : t("importClubs")}
@@ -984,7 +984,7 @@ export function ImportWizardPage({
                 </div>
               </div>
 
-              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <p className="rounded-none border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                 {t("confirmWarning")}
               </p>
             </div>
@@ -998,19 +998,19 @@ export function ImportWizardPage({
               </div>
 
               <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                <div className="rounded-none border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
                   <span className="font-medium">{t("resultCreated")}:</span> {result?.created ?? 0}
                 </div>
-                <div className="rounded-lg border border-zinc-300 bg-zinc-100 px-3 py-2 text-sm text-zinc-700">
+                <div className="rounded-none border border-zinc-300 bg-zinc-100 px-3 py-2 text-sm text-zinc-700">
                   <span className="font-medium">{t("resultSkipped")}:</span> {result?.skipped ?? 0}
                 </div>
-                <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                <div className="rounded-none border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
                   <span className="font-medium">{t("resultErrors")}:</span> {result?.errors.length ?? 0}
                 </div>
               </div>
 
               {result && result.errors.length > 0 ? (
-                <div className="max-h-[340px] overflow-auto rounded-lg border border-zinc-200">
+                <div className="max-h-[340px] overflow-auto rounded-none border border-zinc-200">
                   <table className="w-full text-sm">
                     <thead className="bg-zinc-50 text-left text-xs uppercase text-zinc-500">
                       <tr>
@@ -1033,7 +1033,7 @@ export function ImportWizardPage({
           ) : null}
         </section>
 
-        <aside className="rounded-3xl bg-white p-5 shadow-sm">
+        <aside className="rounded-none bg-white p-5 shadow-sm">
           <h3 className="text-sm font-semibold text-zinc-900">{t("summaryTitle")}</h3>
           <div className="mt-3 space-y-2 text-sm text-zinc-700">
             <p>
@@ -1067,7 +1067,7 @@ export function ImportWizardPage({
             </p>
           </div>
           <p
-            className={`mt-4 rounded-lg border px-3 py-2 text-xs ${
+            className={`mt-4 rounded-none border px-3 py-2 text-xs ${
               summaryPreviewState === "stale"
                 ? "border-amber-200 bg-amber-50 text-amber-800"
                 : summaryPreviewState === "current"
@@ -1088,7 +1088,7 @@ export function ImportWizardPage({
         </aside>
       </div>
 
-      <section className="rounded-3xl bg-white p-4 shadow-sm">
+      <section className="rounded-none bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap gap-2">
             {showListButton ? (

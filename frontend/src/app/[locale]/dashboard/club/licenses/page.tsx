@@ -552,7 +552,7 @@ export default function ClubAdminLicensesPage() {
         ) : memberRows.length === 0 ? (
           <EmptyState title={t("noResultsTitle")} description={t("noLicensesResultsSubtitle")} />
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-zinc-100 bg-white shadow-sm">
+          <div className="overflow-x-auto rounded-none border border-zinc-100 bg-white shadow-sm">
             <table className="min-w-full text-left text-sm">
               <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
                 <tr>
@@ -611,7 +611,7 @@ export default function ClubAdminLicensesPage() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{memberName}</span>
-                            <span className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-700">
+                            <span className="inline-flex items-center rounded-none border border-zinc-200 bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-700">
                               {row.allLicenses.length}
                             </span>
                           </div>
@@ -624,7 +624,7 @@ export default function ClubAdminLicensesPage() {
                       {isExpanded ? (
                         <tr className="bg-zinc-50/60">
                           <td colSpan={canManageLicenses ? 7 : 6} className="px-6 py-3">
-                            <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+                            <div className="overflow-x-auto rounded-none border border-zinc-200 bg-white">
                               <table className="min-w-full text-left text-sm">
                                 <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
                                   <tr>
@@ -659,7 +659,7 @@ export default function ClubAdminLicensesPage() {
                                       </td>
                                       <td className="px-4 py-2">
                                         <span
-                                          className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${getStatusChipClasses(
+                                          className={`inline-flex rounded-none border px-2 py-0.5 text-xs font-medium ${getStatusChipClasses(
                                             license.status
                                           )}`}
                                         >

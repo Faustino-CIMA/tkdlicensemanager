@@ -558,7 +558,7 @@ export default function ClubAdminMembersPage() {
                 <button
                   key={chip.id}
                   type="button"
-                  className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                  className={`inline-flex items-center rounded-none border px-2.5 py-1 text-xs font-medium transition ${
                     isActive
                       ? "border-zinc-700 bg-zinc-800 text-white"
                       : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
@@ -683,7 +683,7 @@ export default function ClubAdminMembersPage() {
                   if (!canManageMembers) {
                     return (
                       <span
-                        className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${
+                        className={`inline-flex rounded-none border px-2.5 py-1 text-xs font-medium ${
                           member.is_active
                             ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                             : "border-zinc-300 bg-zinc-100 text-zinc-700"
@@ -697,7 +697,7 @@ export default function ClubAdminMembersPage() {
                     <button
                       type="button"
                       disabled={isUpdating}
-                      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                      className={`inline-flex rounded-none border px-2.5 py-1 text-xs font-medium transition ${
                         member.is_active
                           ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
                           : "border-zinc-300 bg-zinc-100 text-zinc-700 hover:bg-zinc-200"

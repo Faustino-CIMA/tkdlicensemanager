@@ -82,7 +82,7 @@ export default function MemberDashboardPage() {
   return (
     <main className="min-h-screen bg-zinc-50 px-6 py-10">
       <div className="mx-auto w-full max-w-5xl space-y-6">
-        <header className="rounded-3xl bg-white p-6 shadow-sm">
+        <header className="rounded-none bg-white p-6 shadow-sm">
           <h1 className="text-2xl font-semibold text-zinc-900">{t("title")}</h1>
           <p className="mt-2 text-sm text-zinc-500">{t("subtitle")}</p>
         </header>

@@ -488,7 +488,7 @@ export function ProfilePhotoManager({
         }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
-        className={`rounded-2xl border-2 border-dashed p-5 text-sm transition ${
+        className={`rounded-none border-2 border-dashed p-5 text-sm transition ${
           isDragging
             ? "border-zinc-900 bg-zinc-100 text-zinc-800"
             : "border-zinc-300 text-zinc-600"
@@ -532,7 +532,7 @@ export function ProfilePhotoManager({
 
       {workingImageUrl ? (
         <>
-          <div className="relative h-72 overflow-hidden rounded-2xl bg-zinc-950">
+          <div className="relative h-72 overflow-hidden rounded-none bg-zinc-950">
             <Cropper
               image={workingImageUrl}
               crop={crop}
@@ -582,7 +582,7 @@ export function ProfilePhotoManager({
           {previewImageUrl ? (
             <div className="space-y-2">
               <p className="text-xs font-medium text-zinc-600">{labels.previewTitle}</p>
-              <div className="h-48 w-40 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100">
+              <div className="h-48 w-40 overflow-hidden rounded-none border border-zinc-200 bg-zinc-100">
                 {/* eslint-disable-next-line @next/next/no-img-element -- crop preview uses blob URL */}
                 <img
                   src={previewImageUrl}
@@ -623,13 +623,13 @@ export function ProfilePhotoManager({
   return (
     <>
       {isPageEditor ? (
-        <section className="rounded-3xl bg-white p-6 shadow-sm">{editorContent}</section>
+        <section className="rounded-none bg-white p-6 shadow-sm">{editorContent}</section>
       ) : (
         <>
-          <section className="rounded-3xl bg-white p-6 shadow-sm">
+          <section className="rounded-none bg-white p-6 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex items-start gap-4">
-                <div className="h-28 w-28 overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-100">
+                <div className="h-28 w-28 overflow-hidden rounded-none border border-zinc-200 bg-zinc-100">
                   {storedPhotoPreviewUrl ? (
                     /* eslint-disable-next-line @next/next/no-img-element -- stored photo can be blob or API URL */
                     <img

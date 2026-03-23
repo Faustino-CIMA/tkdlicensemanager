@@ -441,7 +441,7 @@ export default function ClubQuickPrintPage() {
         <EmptyState title={t("quickPrintNoTemplateTitle")} description={t("quickPrintNoTemplateSubtitle")} />
       ) : (
         <div className="space-y-4">
-          <section className="rounded-2xl border border-zinc-200 bg-white p-4">
+          <section className="rounded-none border border-zinc-200 bg-white p-4">
             <h2 className="text-sm font-semibold text-zinc-900">{t("quickPrintSelectionSummaryTitle")}</h2>
             <div className="mt-3 grid gap-3 md:grid-cols-3">
               <p className="text-sm text-zinc-600">
@@ -461,7 +461,7 @@ export default function ClubQuickPrintPage() {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-zinc-200 bg-white p-4">
+          <section className="rounded-none border border-zinc-200 bg-white p-4">
             <div className="grid gap-4 md:grid-cols-3">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-zinc-700">{t("quickPrintTemplateLabel")}</label>
@@ -521,7 +521,7 @@ export default function ClubQuickPrintPage() {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-zinc-200 bg-white p-4">
+          <section className="rounded-none border border-zinc-200 bg-white p-4">
             <h2 className="text-sm font-semibold text-zinc-900">{t("quickPrintGuideOptionsTitle")}</h2>
             <div className="mt-3 grid gap-4 md:grid-cols-2">
               <div className="space-y-3">
@@ -562,7 +562,7 @@ export default function ClubQuickPrintPage() {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-zinc-200 bg-white p-4">
+          <section className="rounded-none border border-zinc-200 bg-white p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h2 className="text-sm font-semibold text-zinc-900">{t("quickPrintSlotPickerTitle")}</h2>
@@ -590,7 +590,7 @@ export default function ClubQuickPrintPage() {
                     key={index}
                     type="button"
                     onClick={() => toggleSlotSelection(index)}
-                    className={`rounded-lg border px-3 py-2 text-left text-xs transition ${
+                    className={`rounded-none border px-3 py-2 text-left text-xs transition ${
                       selectedSlots.includes(index)
                         ? "border-blue-300 bg-blue-50 text-blue-700"
                         : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"

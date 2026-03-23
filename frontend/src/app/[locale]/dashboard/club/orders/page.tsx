@@ -163,14 +163,14 @@ export default function ClubAdminOrdersPage() {
             <span>{t("pageLabel", { current: currentPage, total: totalPages })}</span>
             <div className="flex gap-2">
               <button
-                className="rounded-full border border-zinc-200 px-3 py-1"
+                className="rounded-none border border-zinc-200 px-3 py-1"
                 onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
               >
                 {t("previousPage")}
               </button>
               <button
-                className="rounded-full border border-zinc-200 px-3 py-1"
+                className="rounded-none border border-zinc-200 px-3 py-1"
                 onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
                 disabled={currentPage === totalPages}
               >

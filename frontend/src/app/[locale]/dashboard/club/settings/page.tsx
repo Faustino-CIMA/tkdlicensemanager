@@ -274,7 +274,7 @@ export default function ClubAdminSettingsPage() {
         <EmptyState title={t("clubProfileTitle")} description={t("selectClubPlaceholder")} />
       ) : (
         <div className="space-y-4">
-          <section className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm">
+          <section className="rounded-none border border-zinc-100 bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-zinc-900">{t("clubFormTitle")}</h2>
             <p className="mt-2 text-sm text-zinc-500">{t("clubFormSubtitle")}</p>
 
@@ -326,7 +326,7 @@ export default function ClubAdminSettingsPage() {
             </form>
           </section>
 
-          <section className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm">
+          <section className="rounded-none border border-zinc-100 bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-zinc-900">{t("logoSectionTitle")}</h2>
             <p className="mt-1 text-sm text-zinc-500">{t("logoSectionSubtitle")}</p>
 
@@ -398,7 +398,7 @@ export default function ClubAdminSettingsPage() {
             ) : (
               <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {clubLogos.map((logo) => (
-                  <article key={logo.id} className="rounded-xl border border-zinc-200 p-3">
+                  <article key={logo.id} className="rounded-none border border-zinc-200 p-3">
                     <div className="flex items-start gap-3">
                       {logo.content_url ? (
                         <Image

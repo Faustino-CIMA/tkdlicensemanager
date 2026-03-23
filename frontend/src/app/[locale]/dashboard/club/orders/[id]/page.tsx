@@ -169,7 +169,7 @@ export default function ClubOrderDetailPage() {
         </Button>
       </div>
 
-      <section className="rounded-3xl border border-zinc-100 bg-white p-6 shadow-sm">
+      <section className="rounded-none border border-zinc-100 bg-white p-6 shadow-sm">
         <div className="grid gap-4 text-sm text-zinc-700 md:grid-cols-2">
           <div className="flex flex-col gap-1">
             <span className="text-xs text-zinc-500">{t("orderNumberLabel")}</span>

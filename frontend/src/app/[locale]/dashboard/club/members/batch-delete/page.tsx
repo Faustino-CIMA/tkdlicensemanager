@@ -262,13 +262,13 @@ export default function ClubMembersBatchDeletePage() {
       ) : (
         <div className="space-y-5">
           <section className="grid gap-4 md:grid-cols-2">
-            <article className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">
+            <article className="rounded-none border border-zinc-100 bg-white p-4 shadow-sm">
               <p className="text-xs uppercase tracking-wide text-zinc-500">
                 {t("batchDeleteMembersSelectedCountLabel")}
               </p>
               <p className="mt-2 text-2xl font-semibold text-zinc-900">{selectedMembers.length}</p>
             </article>
-            <article className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">
+            <article className="rounded-none border border-zinc-100 bg-white p-4 shadow-sm">
               <p className="text-xs uppercase tracking-wide text-zinc-500">
                 {t("batchDeleteMembersCascadeLicensesLabel")}
               </p>
@@ -276,7 +276,7 @@ export default function ClubMembersBatchDeletePage() {
             </article>
           </section>
 
-          <section className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
+          <section className="rounded-none border border-red-100 bg-red-50 p-4 text-sm text-red-700">
             {t("batchDeleteMembersWarning")}
           </section>
 
@@ -290,7 +290,7 @@ export default function ClubMembersBatchDeletePage() {
           ) : null}
 
           {result ? (
-            <section className="space-y-3 rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">
+            <section className="space-y-3 rounded-none border border-zinc-100 bg-white p-4 shadow-sm">
               <p className="text-sm font-medium text-zinc-900">
                 {t("batchDeleteMembersResultLabel", {
                   deleted: result.deleted,

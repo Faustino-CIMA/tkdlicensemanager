@@ -15,7 +15,7 @@ export function Modal({ title, description, isOpen, onClose, children }: ModalPr
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-lg">
+      <div className="w-full max-w-xl rounded-md bg-white p-6 shadow-lg">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-zinc-900">{title}</h2>

@@ -265,7 +265,7 @@ export default function LtfFinanceLicenseTypeDetailPage() {
       {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
       {successMessage ? <p className="text-sm text-emerald-600">{successMessage}</p> : null}
 
-      <section className="space-y-4 rounded-3xl bg-white p-6 shadow-sm">
+      <section className="space-y-4 rounded-none bg-white p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-zinc-900">{t("licenseTypeLabel")}</h2>
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
@@ -283,10 +283,10 @@ export default function LtfFinanceLicenseTypeDetailPage() {
         </div>
       </section>
 
-      <section className="space-y-5 rounded-3xl bg-white p-6 shadow-sm">
+      <section className="space-y-5 rounded-none bg-white p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-zinc-900">{t("editPolicyAction")}</h2>
 
-        <section className="space-y-3 rounded-xl border border-zinc-200 p-4">
+        <section className="space-y-3 rounded-none border border-zinc-200 p-4">
           <label className="flex items-center gap-2 text-sm font-medium text-zinc-700">
             <input
               type="checkbox"
@@ -388,7 +388,7 @@ export default function LtfFinanceLicenseTypeDetailPage() {
           </div>
         </section>
 
-        <section className="space-y-3 rounded-xl border border-zinc-200 p-4">
+        <section className="space-y-3 rounded-none border border-zinc-200 p-4">
           <label className="flex items-center gap-2 text-sm font-medium text-zinc-700">
             <input
               type="checkbox"

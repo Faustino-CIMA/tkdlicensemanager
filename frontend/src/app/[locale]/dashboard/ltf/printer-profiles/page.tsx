@@ -384,7 +384,7 @@ export default function LtfAdminPrinterProfilesPage() {
               {t("printerProfilesDescriptionLabel")}
             </label>
             <textarea
-              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500"
+              className="w-full rounded-none border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500"
               rows={4}
               placeholder={t("printerProfilesDescriptionPlaceholder")}
               {...register("description")}

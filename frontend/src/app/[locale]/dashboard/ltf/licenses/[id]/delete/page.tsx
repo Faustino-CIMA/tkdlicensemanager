@@ -130,7 +130,7 @@ export default function LtfLicenseDeletePage() {
         </div>
       ) : (
         <div className="space-y-5">
-          <section className="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
+          <section className="rounded-none border border-zinc-100 bg-white p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-zinc-900">{t("singleDeleteLicensePreviewTitle")}</h2>
             <dl className="mt-3 grid gap-3 text-sm md:grid-cols-2">
               <div>
@@ -166,12 +166,12 @@ export default function LtfLicenseDeletePage() {
             </dl>
           </section>
 
-          <section className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
+          <section className="rounded-none border border-red-100 bg-red-50 p-4 text-sm text-red-700">
             {t("singleDeleteLicenseWarning")}
           </section>
 
           {isDeleted ? (
-            <section className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-700">
+            <section className="rounded-none border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-700">
               {t("singleDeleteLicenseDeletedMessage")}
             </section>
           ) : null}

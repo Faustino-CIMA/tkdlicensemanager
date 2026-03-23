@@ -79,7 +79,7 @@ export default function LtfAdminCreateClubPage() {
 
         {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
 
-        <section className="rounded-3xl bg-white p-6 shadow-sm">
+        <section className="rounded-none bg-white p-6 shadow-sm">
           <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
             <div className="space-y-2 md:col-span-2">
               <label className="text-sm font-medium text-zinc-700">{t("clubNameLabel")}</label>

@@ -216,7 +216,7 @@ export default function LtfAdminSettingsPage() {
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
       ) : (
         <div className="space-y-4">
-          <section className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm">
+          <section className="rounded-none border border-zinc-100 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-zinc-900">
             {t("federationSettingsFormTitle")}
           </h2>
@@ -276,7 +276,7 @@ export default function LtfAdminSettingsPage() {
           {errorMessage ? <p className="mt-4 text-sm text-red-600">{errorMessage}</p> : null}
           </section>
 
-          <section className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm">
+          <section className="rounded-none border border-zinc-100 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-zinc-900">{t("logoSectionTitle")}</h2>
           <p className="mt-2 text-sm text-zinc-500">{t("logoSectionSubtitle")}</p>
 
@@ -343,8 +343,8 @@ export default function LtfAdminSettingsPage() {
           ) : (
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {logos.map((logo) => (
-                <article key={logo.id} className="rounded-xl border border-zinc-200 p-3">
-                  <div className="aspect-[16/9] w-full overflow-hidden rounded-md bg-zinc-100">
+                <article key={logo.id} className="rounded-none border border-zinc-200 p-3">
+                  <div className="aspect-[16/9] w-full overflow-hidden rounded-none bg-zinc-100">
                     {logo.content_url ? (
                       <Image
                         src={logo.content_url}

@@ -394,7 +394,7 @@ export default function ClubMembersOrderLicensesPage() {
       {successMessage ? <p className="text-sm text-emerald-600">{successMessage}</p> : null}
 
       <div className="space-y-4">
-        <section className="rounded-2xl border border-zinc-200 bg-white p-4">
+        <section className="rounded-none border border-zinc-200 bg-white p-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <p className="text-sm text-zinc-600">
               <span className="font-medium text-zinc-800">{t("clubLabel")}:</span>{" "}
@@ -428,7 +428,7 @@ export default function ClubMembersOrderLicensesPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-zinc-200 bg-white p-4">
+        <section className="rounded-none border border-zinc-200 bg-white p-4">
           <p className="text-sm font-medium text-zinc-800">{t("licenseTypeLabel")}</p>
           <p className="mt-1 text-xs text-zinc-500">{t("orderLicenseTypePickerHelp")}</p>
           <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
@@ -437,7 +437,7 @@ export default function ClubMembersOrderLicensesPage() {
                 key={`eligible-${licenseType.id}`}
                 type="button"
                 onClick={() => setSelectedLicenseTypeId(String(licenseType.id))}
-                className={`rounded-xl border p-3 text-left transition ${
+                className={`rounded-none border p-3 text-left transition ${
                   selectedLicenseTypeId === String(licenseType.id)
                     ? "border-emerald-400 bg-emerald-50"
                     : "border-zinc-200 bg-white hover:bg-zinc-50"
@@ -455,7 +455,7 @@ export default function ClubMembersOrderLicensesPage() {
                 key={`ineligible-${licenseType.id}`}
                 type="button"
                 onClick={() => setSelectedLicenseTypeId(String(licenseType.id))}
-                className={`rounded-xl border p-3 text-left transition ${
+                className={`rounded-none border p-3 text-left transition ${
                   selectedLicenseTypeId === String(licenseType.id)
                     ? "border-amber-400 bg-amber-50"
                     : "border-zinc-200 bg-white hover:bg-zinc-50"
@@ -480,7 +480,7 @@ export default function ClubMembersOrderLicensesPage() {
           ) : null}
         </section>
 
-        <section className="rounded-2xl border border-zinc-200 bg-white p-4">
+        <section className="rounded-none border border-zinc-200 bg-white p-4">
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
@@ -532,7 +532,7 @@ export default function ClubMembersOrderLicensesPage() {
           )}
         </section>
 
-        <div className="sticky bottom-4 flex flex-wrap items-center gap-3 rounded-2xl border border-zinc-200 bg-white/95 p-4 backdrop-blur">
+        <div className="sticky bottom-4 flex flex-wrap items-center gap-3 rounded-none border border-zinc-200 bg-white/95 p-4 backdrop-blur">
           <Button
             onClick={handleCreateOrder}
             disabled={

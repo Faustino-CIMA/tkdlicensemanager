@@ -256,7 +256,7 @@ export default function LtfAdminLicenseCardPrintJobsPage() {
             description={t("licenseCardPrintJobsEmptySubtitle")}
           />
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-zinc-100 bg-white shadow-sm">
+          <div className="overflow-x-auto rounded-none border border-zinc-100 bg-white shadow-sm">
             <table className="min-w-full text-left text-sm">
               <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
                 <tr>

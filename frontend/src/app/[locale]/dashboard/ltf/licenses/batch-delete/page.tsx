@@ -221,13 +221,13 @@ export default function LtfLicenseBatchDeletePage() {
       ) : (
         <div className="space-y-5">
           <section className="grid gap-4 md:grid-cols-2">
-            <article className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">
+            <article className="rounded-none border border-zinc-100 bg-white p-4 shadow-sm">
               <p className="text-xs uppercase tracking-wide text-zinc-500">
                 {t("batchDeleteLicensesSelectedCountLabel")}
               </p>
               <p className="mt-2 text-2xl font-semibold text-zinc-900">{selectedLicenses.length}</p>
             </article>
-            <article className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">
+            <article className="rounded-none border border-zinc-100 bg-white p-4 shadow-sm">
               <p className="text-xs uppercase tracking-wide text-zinc-500">
                 {t("batchDeleteLicensesImpactedMembersLabel")}
               </p>
@@ -235,7 +235,7 @@ export default function LtfLicenseBatchDeletePage() {
             </article>
           </section>
 
-          <section className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
+          <section className="rounded-none border border-red-100 bg-red-50 p-4 text-sm text-red-700">
             {t("batchDeleteLicensesWarning")}
           </section>
 
@@ -249,7 +249,7 @@ export default function LtfLicenseBatchDeletePage() {
           ) : null}
 
           {result ? (
-            <section className="space-y-3 rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">
+            <section className="space-y-3 rounded-none border border-zinc-100 bg-white p-4 shadow-sm">
               <p className="text-sm font-medium text-zinc-900">
                 {t("batchDeleteLicensesResultLabel", {
                   deleted: result.deleted,

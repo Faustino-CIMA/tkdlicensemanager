@@ -359,7 +359,7 @@ export default function ClubMemberDetailPage() {
         ) : !member ? (
           <EmptyState title={t("noResultsTitle")} description={t("memberNotFound")} />
         ) : activeTab === "overview" ? (
-          <section className="rounded-3xl bg-white p-6 shadow-sm">
+          <section className="rounded-none bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-lg font-semibold text-zinc-900">{t("memberOverviewTab")}</h2>
               {isEditing ? (

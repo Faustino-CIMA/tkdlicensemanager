@@ -48,7 +48,7 @@ export default function DashboardPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-zinc-50 px-6">
-      <div className="w-full max-w-3xl rounded-3xl bg-white p-10 shadow-sm">
+      <div className="w-full max-w-3xl rounded-none bg-white p-10 shadow-sm">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold text-zinc-900">{t("title")}</h1>
@@ -62,7 +62,7 @@ export default function DashboardPage() {
         {errorMessage ? <p className="mt-6 text-sm text-red-600">{errorMessage}</p> : null}
 
         {user ? (
-          <div className="mt-6 rounded-2xl border border-zinc-100 bg-zinc-50 p-6">
+          <div className="mt-6 rounded-none border border-zinc-100 bg-zinc-50 p-6">
             <p className="text-sm text-zinc-500">Signed in as</p>
             <p className="mt-1 text-lg font-semibold text-zinc-900">{user.username}</p>
             <p className="mt-2 text-sm text-zinc-600">Role: {user.role}</p>

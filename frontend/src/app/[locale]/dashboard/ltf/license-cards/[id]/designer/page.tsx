@@ -632,7 +632,7 @@ function DesignerLookupField({
         placeholder={searchPlaceholder}
         onChange={(event) => onQueryChange(event.target.value)}
       />
-      <div className="max-h-36 space-y-1 overflow-auto rounded-md border border-zinc-200 bg-zinc-50 p-1">
+      <div className="max-h-36 space-y-1 overflow-auto rounded-none border border-zinc-200 bg-zinc-50 p-1">
         {isLoading ? (
           <p className="px-2 py-1 text-xs text-zinc-500">{loadingLabel}</p>
         ) : options.length === 0 ? (
@@ -644,7 +644,7 @@ function DesignerLookupField({
               <button
                 key={item.id}
                 type="button"
-                className={`w-full rounded-md border px-2 py-1 text-left text-xs transition ${
+                className={`w-full rounded-none border px-2 py-1 text-left text-xs transition ${
                   isSelected
                     ? "border-blue-500 bg-blue-50 text-blue-700"
                     : "border-transparent bg-white text-zinc-700 hover:border-zinc-300"
@@ -3935,7 +3935,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
       {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
       {successMessage ? <p className="text-sm text-emerald-700">{successMessage}</p> : null}
 
-      <section className="mb-4 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+      <section className="mb-4 rounded-none border border-zinc-100 bg-white p-4 shadow-sm">
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-1">
             <p className="text-xs text-zinc-500">{t("licenseCardsTemplateNameLabel")}</p>
@@ -3971,7 +3971,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
         </div>
       </section>
 
-      <section className="mb-4 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+      <section className="mb-4 rounded-none border border-zinc-100 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-end gap-3">
           <div className="w-full max-w-xs space-y-2">
             <label className="text-sm font-medium text-zinc-700">
@@ -4039,7 +4039,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
         </div>
       </section>
 
-      <section className="mb-4 space-y-3 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+      <section className="mb-4 space-y-3 rounded-none border border-zinc-100 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-zinc-900">
             {t("licenseCardDesignerSidesTitle")}
@@ -4088,7 +4088,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
         </div>
       </section>
 
-      <section className="mb-4 space-y-3 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+      <section className="mb-4 space-y-3 rounded-none border border-zinc-100 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-zinc-900">{t("licenseCardEditorToolsTitle")}</h2>
           <p className="text-xs text-zinc-500">
@@ -4266,7 +4266,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
         </div>
       </section>
 
-      <section className="mb-4 space-y-4 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+      <section className="mb-4 space-y-4 rounded-none border border-zinc-100 bg-white p-4 shadow-sm">
         <div>
           <h2 className="text-sm font-semibold text-zinc-900">
             {t("licenseCardPreviewControlsTitle")}
@@ -4419,7 +4419,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
           </div>
         </div>
 
-        <div className="space-y-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+        <div className="space-y-2 rounded-none border border-zinc-200 bg-zinc-50 p-3">
           <label className="inline-flex items-center gap-2 text-xs font-medium text-zinc-700">
             <Checkbox
               checked={isAdvancedPreviewMode}
@@ -4434,7 +4434,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                 {t("licenseCardPreviewSampleDataLabel")}
               </label>
               <textarea
-                className="min-h-[132px] w-full rounded-md border border-zinc-300 bg-white px-3 py-2 font-mono text-xs outline-none focus:border-zinc-500"
+                className="min-h-[132px] w-full rounded-none border border-zinc-300 bg-white px-3 py-2 font-mono text-xs outline-none focus:border-zinc-500"
                 value={previewSampleDataInput}
                 placeholder={t("licenseCardPreviewSampleDataPlaceholder")}
                 onChange={(event) => setPreviewSampleDataInput(event.target.value)}
@@ -4477,7 +4477,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
           </div>
         </div>
 
-        <div className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+        <div className="space-y-3 rounded-none border border-zinc-200 bg-zinc-50 p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-zinc-900">
               {t("licenseCardPreviewSlotSelectorTitle")}
@@ -4517,7 +4517,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                   <button
                     key={index}
                     type="button"
-                    className={`rounded-lg border px-2 py-2 text-xs transition ${
+                    className={`rounded-none border px-2 py-2 text-xs transition ${
                       selected
                         ? "border-blue-500 bg-blue-50 text-blue-700"
                         : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"
@@ -4533,7 +4533,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
         </div>
       </section>
 
-      <section className="mb-4 space-y-4 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+      <section className="mb-4 space-y-4 rounded-none border border-zinc-100 bg-white p-4 shadow-sm">
         <div>
           <h2 className="text-sm font-semibold text-zinc-900">{t("licenseCardPreviewDataTitle")}</h2>
           <p className="mt-1 text-xs text-zinc-500">{t("licenseCardPreviewDataSubtitle")}</p>
@@ -4542,7 +4542,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
           <p className="text-sm text-zinc-500">{t("licenseCardPreviewNoData")}</p>
         ) : (
           <div className="space-y-4">
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+            <div className="rounded-none border border-zinc-200 bg-zinc-50 p-3">
               <p className="text-xs text-zinc-600">
                 {t("licenseCardPreviewSideMetadataLabel", {
                   active: sideLabelByValue[(previewData.active_side || activeSide) as CardSide],
@@ -4555,12 +4555,12 @@ export default function LtfAdminLicenseCardDesignerPage() {
               </p>
             </div>
             {sheetGeometryProfile ? (
-              <div className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+              <div className="space-y-3 rounded-none border border-zinc-200 bg-zinc-50 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold text-zinc-900">
                     {t("licenseCardPreviewSheetGeometryTitle")}
                   </h3>
-                  <span className="rounded-full border border-zinc-300 bg-white px-2 py-0.5 text-[11px] text-zinc-700">
+                  <span className="rounded-none border border-zinc-300 bg-white px-2 py-0.5 text-[11px] text-zinc-700">
                     {t("licenseCardPreviewSheetGeometrySourceLabel", {
                       source: sheetGeometrySourceLabel || "-",
                     })}
@@ -4574,7 +4574,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                     maxY: toMmString(sheetLayoutMetadata?.max_y_mm || 0),
                   })}
                 </p>
-                <div className="space-y-1 rounded-md border border-zinc-200 bg-white px-2 py-2">
+                <div className="space-y-1 rounded-none border border-zinc-200 bg-white px-2 py-2">
                   <p className="font-mono text-[11px] text-zinc-700">{sheetGeometryFormulaX}</p>
                   <p className="font-mono text-[11px] text-zinc-700">{sheetGeometryFormulaY}</p>
                 </div>
@@ -4589,7 +4589,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         count: sheetGeometryParityIssues.length,
                       })}
                 </p>
-                <div className="overflow-auto rounded-xl border border-zinc-200 bg-white p-3">
+                <div className="overflow-auto rounded-none border border-zinc-200 bg-white p-3">
                   <div
                     className="relative mx-auto border border-zinc-300 bg-zinc-50"
                     style={{
@@ -4651,7 +4651,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                   </div>
                 </div>
                 {sheetGeometryParityPreview.length > 0 ? (
-                  <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-2 text-[11px] text-amber-700">
+                  <div className="space-y-1 rounded-none border border-amber-200 bg-amber-50 px-2 py-2 text-[11px] text-amber-700">
                     {sheetGeometryParityPreview.map((issue, issueIndex) => (
                       <p key={`sheet-geometry-issue-${issueIndex}`}>
                         {t("licenseCardPreviewSheetGeometryParityIssueLabel", {
@@ -4671,7 +4671,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
               </p>
             )}
             <div className="grid gap-4 lg:grid-cols-3">
-              <div className="space-y-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+              <div className="space-y-2 rounded-none border border-zinc-200 bg-zinc-50 p-3">
               <h3 className="text-sm font-semibold text-zinc-900">
                 {t("licenseCardPreviewContextTitle")}
               </h3>
@@ -4680,7 +4680,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                   <p className="text-xs text-zinc-500">-</p>
                 ) : (
                   Object.entries(previewData.context).map(([key, value]) => (
-                    <div key={key} className="rounded-md border border-zinc-200 bg-white px-2 py-1">
+                    <div key={key} className="rounded-none border border-zinc-200 bg-white px-2 py-1">
                       <p className="font-mono text-[11px] text-zinc-700">{key}</p>
                       <p className="text-xs text-zinc-900">{value || "-"}</p>
                     </div>
@@ -4688,7 +4688,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                 )}
               </div>
             </div>
-              <div className="space-y-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+              <div className="space-y-2 rounded-none border border-zinc-200 bg-zinc-50 p-3">
               <h3 className="text-sm font-semibold text-zinc-900">
                 {t("licenseCardPreviewElementsTitle")}
               </h3>
@@ -4696,7 +4696,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                 {previewData.elements.map((element) => (
                   <div
                     key={element.id}
-                    className="rounded-md border border-zinc-200 bg-white px-2 py-2 text-xs"
+                    className="rounded-none border border-zinc-200 bg-white px-2 py-2 text-xs"
                   >
                     <p className="font-medium text-zinc-900">
                       #{element.render_order + 1} - {element.id || "-"} ({element.type})
@@ -4714,7 +4714,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                 ))}
               </div>
             </div>
-              <div className="space-y-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+              <div className="space-y-2 rounded-none border border-zinc-200 bg-zinc-50 p-3">
               <h3 className="text-sm font-semibold text-zinc-900">
                 {t("licenseCardPreviewSlotLayoutTitle")}
               </h3>
@@ -4725,7 +4725,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                   previewData.slots.map((slot) => (
                     <div
                       key={slot.slot_index}
-                      className={`rounded-md border px-2 py-2 text-xs ${
+                      className={`rounded-none border px-2 py-2 text-xs ${
                         slot.selected
                           ? "border-blue-300 bg-blue-50 text-blue-700"
                           : "border-zinc-200 bg-white text-zinc-700"
@@ -4751,13 +4751,13 @@ export default function LtfAdminLicenseCardDesignerPage() {
       </section>
 
       {selectedVersion?.status === "published" ? (
-        <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+        <p className="mb-4 rounded-none border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
           {t("licenseCardDesignerPublishedReadOnlyHint")}
         </p>
       ) : null}
 
       <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
-        <section className="space-y-4 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+        <section className="space-y-4 rounded-none border border-zinc-100 bg-white p-4 shadow-sm">
           <div>
             <h2 className="text-sm font-semibold text-zinc-900">
               {t("licenseCardDesignerElementToolsTitle")}
@@ -4771,7 +4771,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
               <button
                 key={type}
                 type="button"
-                className="rounded-xl border border-zinc-200 px-3 py-2 text-left text-sm text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-none border border-zinc-200 px-3 py-2 text-left text-sm text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
                 draggable={isEditableDraft}
                 disabled={!isEditableDraft}
                 onDragStart={(event) => {
@@ -4795,7 +4795,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                   <button
                     key={field.key}
                     type="button"
-                    className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-left transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-full rounded-none border border-zinc-200 px-3 py-2 text-left transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={!isEditableDraft || !selectedElement}
                     onClick={() => {
                       if (!selectedElement || !isEditableDraft) {
@@ -4828,13 +4828,13 @@ export default function LtfAdminLicenseCardDesignerPage() {
           </div>
         </section>
 
-        <section className="space-y-3 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+        <section className="space-y-3 rounded-none border border-zinc-100 bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-zinc-900">
               {t("licenseCardDesignerCanvasTitle")}
             </h2>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-zinc-300 bg-zinc-50 px-2 py-0.5 text-[11px] text-zinc-700">
+              <span className="rounded-none border border-zinc-300 bg-zinc-50 px-2 py-0.5 text-[11px] text-zinc-700">
                 {t("licenseCardDesignerCanvasActiveSideBadge", { side: activeSideLabel })}
               </span>
               <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
@@ -4883,7 +4883,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
           ) : (
             <>
             <div
-              className={`overflow-auto rounded-2xl border border-zinc-200 bg-zinc-100 p-4 ${
+              className={`overflow-auto rounded-none border border-zinc-200 bg-zinc-100 p-4 ${
                 isLivePrintSimulationEnabled ? "hidden" : ""
               }`}
             >
@@ -4973,7 +4973,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                           height: liveMeasurementBounds.height * canvasScale,
                         }}
                       />
-                      <div className="pointer-events-none absolute left-2 top-2 rounded-md bg-zinc-900/85 px-2 py-1 text-[10px] text-white">
+                      <div className="pointer-events-none absolute left-2 top-2 rounded-none bg-zinc-900/85 px-2 py-1 text-[10px] text-white">
                         {t("licenseCardEditorMeasurementReadout", {
                           x: liveMeasurementBounds.left.toFixed(2),
                           y: liveMeasurementBounds.top.toFixed(2),
@@ -5032,7 +5032,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         {isSelected && isEditableDraft && selectedCount === 1 ? (
                           <button
                             type="button"
-                            className="absolute -bottom-1 -right-1 h-3 w-3 rounded-full border border-blue-600 bg-blue-200 shadow-sm"
+                            className="absolute -bottom-1 -right-1 h-3 w-3 rounded-none border border-blue-600 bg-blue-200 shadow-sm"
                             onMouseDown={(event) => handleResizeHandleMouseDown(event, element)}
                             aria-label={t("licenseCardEditorResizeHandleLabel")}
                           />
@@ -5044,7 +5044,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
               </div>
             </div>
             {isLivePrintSimulationEnabled ? (
-              <div className="space-y-2 rounded-2xl border border-zinc-200 bg-zinc-100 p-4">
+              <div className="space-y-2 rounded-none border border-zinc-200 bg-zinc-100 p-4">
                 <div className="text-xs text-zinc-600">
                   {t("licenseCardPreviewSimulationActiveSideLabel", { side: activeSideLabel })}
                 </div>
@@ -5056,7 +5056,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                     {t("licenseCardPreviewSimulationEmptyHint")}
                   </p>
                 ) : null}
-                <div className="mx-auto overflow-hidden rounded-lg border border-zinc-300 bg-white shadow-sm">
+                <div className="mx-auto overflow-hidden rounded-none border border-zinc-300 bg-white shadow-sm">
                   <div
                     className="relative"
                     style={{
@@ -5082,8 +5082,8 @@ export default function LtfAdminLicenseCardDesignerPage() {
           )}
         </section>
 
-        <section className="space-y-4 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
-          <div className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+        <section className="space-y-4 rounded-none border border-zinc-100 bg-white p-4 shadow-sm">
+          <div className="space-y-3 rounded-none border border-zinc-200 bg-zinc-50 p-3">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-zinc-900">
                 {t("licenseCardEditorLayerPanelTitle")}
@@ -5120,7 +5120,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                   return (
                     <div
                       key={`layer-${element.id}`}
-                      className={`flex items-center gap-2 rounded-md border px-2 py-1 text-xs ${
+                      className={`flex items-center gap-2 rounded-none border px-2 py-1 text-xs ${
                         isSelected
                           ? "border-blue-400 bg-blue-50 text-blue-700"
                           : "border-zinc-200 bg-white text-zinc-700"
@@ -5182,7 +5182,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
             </div>
           </div>
 
-          <div className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+          <div className="space-y-3 rounded-none border border-zinc-200 bg-zinc-50 p-3">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-zinc-900">
                 {t("licenseCardAssetLibraryTitle")}
@@ -5276,7 +5276,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
           ) : (
             <div className="space-y-4">
               {selectedCount > 1 ? (
-                <p className="rounded-md border border-blue-100 bg-blue-50 px-2 py-1 text-xs text-blue-700">
+                <p className="rounded-none border border-blue-100 bg-blue-50 px-2 py-1 text-xs text-blue-700">
                   {t("licenseCardEditorMultiSelectionInspectorHint", { count: selectedCount })}
                 </p>
               ) : null}
@@ -5490,7 +5490,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
               ) : null}
 
               {selectedElement.type === "text" ? (
-                <div className="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                <div className="space-y-3 rounded-none border border-zinc-200 bg-zinc-50 p-3">
                   <h3 className="text-xs font-semibold uppercase text-zinc-600">
                     {t("licenseCardInspectorTextAdvancedTitle")}
                   </h3>
@@ -5499,7 +5499,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                       {t("licenseCardDesignerTextLabel")}
                     </label>
                     <textarea
-                      className="min-h-[84px] w-full rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="min-h-[84px] w-full rounded-none border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
                       value={selectedElement.text || ""}
                       disabled={!isEditableDraft}
                       onChange={(event) => {
@@ -5630,7 +5630,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         {t("licenseCardInspectorTextAlignLabel")}
                       </label>
                       <select
-                        className="w-full rounded-md border border-zinc-300 bg-white px-2 py-2 text-sm"
+                        className="w-full rounded-none border border-zinc-300 bg-white px-2 py-2 text-sm"
                         value={getStyleStringValue(selectedElementStyle, "text_align", "left")}
                         disabled={!isEditableDraft}
                         onChange={(event) => {
@@ -5667,7 +5667,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         {t("licenseCardInspectorTextTransformLabel")}
                       </label>
                       <select
-                        className="w-full rounded-md border border-zinc-300 bg-white px-2 py-2 text-sm"
+                        className="w-full rounded-none border border-zinc-300 bg-white px-2 py-2 text-sm"
                         value={getStyleStringValue(selectedElementStyle, "text_transform", "none")}
                         disabled={!isEditableDraft}
                         onChange={(event) => {
@@ -5688,7 +5688,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         {t("licenseCardInspectorTextDecorationLabel")}
                       </label>
                       <select
-                        className="w-full rounded-md border border-zinc-300 bg-white px-2 py-2 text-sm"
+                        className="w-full rounded-none border border-zinc-300 bg-white px-2 py-2 text-sm"
                         value={getStyleStringValue(selectedElementStyle, "text_decoration", "none")}
                         disabled={!isEditableDraft}
                         onChange={(event) => {
@@ -5803,7 +5803,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
               ) : null}
 
               {selectedElement.type === "image" ? (
-                <div className="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                <div className="space-y-3 rounded-none border border-zinc-200 bg-zinc-50 p-3">
                   <h3 className="text-xs font-semibold uppercase text-zinc-600">
                     {t("licenseCardInspectorImageAdvancedTitle")}
                   </h3>
@@ -5812,7 +5812,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                       {t("licenseCardInspectorImageSourceModeLabel")}
                     </label>
                     <select
-                      className="w-full rounded-md border border-zinc-300 bg-white px-2 py-2 text-sm"
+                      className="w-full rounded-none border border-zinc-300 bg-white px-2 py-2 text-sm"
                       value={selectedImageSourceMode}
                       disabled={!isEditableDraft}
                       onChange={(event) => {
@@ -5986,7 +5986,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         {t("licenseCardInspectorObjectFitLabel")}
                       </label>
                       <select
-                        className="w-full rounded-md border border-zinc-300 bg-white px-2 py-2 text-sm"
+                        className="w-full rounded-none border border-zinc-300 bg-white px-2 py-2 text-sm"
                         value={getStyleStringValue(selectedElementStyle, "object_fit", "contain")}
                         disabled={!isEditableDraft}
                         onChange={(event) => {
@@ -6112,7 +6112,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
               ) : null}
 
               {selectedElement.type === "shape" ? (
-                <div className="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                <div className="space-y-3 rounded-none border border-zinc-200 bg-zinc-50 p-3">
                   <h3 className="text-xs font-semibold uppercase text-zinc-600">
                     {t("licenseCardInspectorShapeAdvancedTitle")}
                   </h3>
@@ -6122,7 +6122,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         {t("licenseCardInspectorShapeKindLabel")}
                       </label>
                       <select
-                        className="w-full rounded-md border border-zinc-300 bg-white px-2 py-2 text-sm"
+                        className="w-full rounded-none border border-zinc-300 bg-white px-2 py-2 text-sm"
                         value={getStyleStringValue(selectedElementStyle, "shape_kind", "rectangle")}
                         disabled={!isEditableDraft}
                         onChange={(event) => {
@@ -6141,7 +6141,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         {t("licenseCardInspectorBorderStyleLabel")}
                       </label>
                       <select
-                        className="w-full rounded-md border border-zinc-300 bg-white px-2 py-2 text-sm"
+                        className="w-full rounded-none border border-zinc-300 bg-white px-2 py-2 text-sm"
                         value={getStyleStringValue(selectedElementStyle, "border_style", "solid")}
                         disabled={!isEditableDraft}
                         onChange={(event) => {
@@ -6365,7 +6365,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
               ) : null}
 
               {selectedElement.type === "qr" ? (
-                <div className="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                <div className="space-y-3 rounded-none border border-zinc-200 bg-zinc-50 p-3">
                   <h3 className="text-xs font-semibold uppercase text-zinc-600">
                     {t("licenseCardInspectorQrAdvancedTitle")}
                   </h3>
@@ -6374,7 +6374,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                       {t("licenseCardInspectorQrModeLabel")}
                     </label>
                     <select
-                      className="w-full rounded-md border border-zinc-300 bg-white px-2 py-2 text-sm"
+                      className="w-full rounded-none border border-zinc-300 bg-white px-2 py-2 text-sm"
                       value={selectedQrDataMode}
                       disabled={!isEditableDraft}
                       onChange={(event) => {
@@ -6450,7 +6450,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                       </label>
                       <select
                         multiple
-                        className="min-h-[88px] w-full rounded-md border border-zinc-300 bg-white px-2 py-2 text-sm"
+                        className="min-h-[88px] w-full rounded-none border border-zinc-300 bg-white px-2 py-2 text-sm"
                         value={selectedQrMergeFields}
                         disabled={!isEditableDraft}
                         onChange={(event) => {
@@ -6476,7 +6476,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         {t("licenseCardInspectorQrCustomDataLabel")}
                       </label>
                       <textarea
-                        className="min-h-[76px] w-full rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="min-h-[76px] w-full rounded-none border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
                         value={getStyleStringValue(selectedElementStyle, "custom_data")}
                         disabled={!isEditableDraft}
                         onChange={(event) => {
@@ -6597,7 +6597,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
               </div>
               {assetLibraryTab === "fonts" ? (
                 <div className="space-y-3">
-                  <div className="grid gap-2 rounded-md border border-zinc-200 p-3">
+                  <div className="grid gap-2 rounded-none border border-zinc-200 p-3">
                     <label className="text-xs font-medium uppercase text-zinc-500">
                       {t("licenseCardAssetLibraryFontNameLabel")}
                     </label>
@@ -6643,7 +6643,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         : t("licenseCardAssetLibraryUploadFontAction")}
                     </Button>
                   </div>
-                  <div className="max-h-56 space-y-1 overflow-auto rounded-md border border-zinc-200 p-2">
+                  <div className="max-h-56 space-y-1 overflow-auto rounded-none border border-zinc-200 p-2">
                     {fontAssets.length === 0 ? (
                       <p className="text-xs text-zinc-500">{t("licenseCardAssetLibraryNoFonts")}</p>
                     ) : (
@@ -6676,7 +6676,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="grid gap-2 rounded-md border border-zinc-200 p-3">
+                  <div className="grid gap-2 rounded-none border border-zinc-200 p-3">
                     <label className="text-xs font-medium uppercase text-zinc-500">
                       {t("licenseCardAssetLibraryImageNameLabel")}
                     </label>
@@ -6722,7 +6722,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         : t("licenseCardAssetLibraryUploadImageAction")}
                     </Button>
                   </div>
-                  <div className="max-h-56 space-y-1 overflow-auto rounded-md border border-zinc-200 p-2">
+                  <div className="max-h-56 space-y-1 overflow-auto rounded-none border border-zinc-200 p-2">
                     {imageAssets.length === 0 ? (
                       <p className="text-xs text-zinc-500">{t("licenseCardAssetLibraryNoImages")}</p>
                     ) : (

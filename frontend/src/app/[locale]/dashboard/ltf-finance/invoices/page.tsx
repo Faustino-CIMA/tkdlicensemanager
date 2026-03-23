@@ -422,7 +422,7 @@ export default function LtfFinanceInvoicesPage() {
         <EmptyState title={t("noInvoicesTitle")} description={t("noInvoicesSubtitle")} />
       ) : (
         <div className="space-y-3">
-          <div className="overflow-x-auto rounded-2xl border border-zinc-100 bg-white shadow-sm">
+          <div className="overflow-x-auto rounded-none border border-zinc-100 bg-white shadow-sm">
             <table className="min-w-full text-left text-sm">
               <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
                 <tr>
@@ -470,7 +470,7 @@ export default function LtfFinanceInvoicesPage() {
                       {clubExpanded ? (
                         <tr className="bg-zinc-50/60">
                           <td colSpan={7} className="px-6 py-3">
-                            <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+                            <div className="overflow-x-auto rounded-none border border-zinc-200 bg-white">
                               <table className="min-w-full text-left text-sm">
                                 <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
                                   <tr>
@@ -521,7 +521,7 @@ export default function LtfFinanceInvoicesPage() {
                                         {yearExpanded ? (
                                           <tr className="bg-zinc-50/50">
                                             <td colSpan={7} className="px-6 py-3">
-                                              <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
+                                              <div className="overflow-x-auto rounded-none border border-zinc-200 bg-white">
                                                 <table className="min-w-full text-left text-sm">
                                                   <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
                                                     <tr>
@@ -610,14 +610,14 @@ export default function LtfFinanceInvoicesPage() {
             <span>{t("pageLabel", { current: currentPage, total: totalPages })}</span>
             <div className="flex gap-2">
               <button
-                className="rounded-full border border-zinc-200 px-3 py-1"
+                className="rounded-none border border-zinc-200 px-3 py-1"
                 onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
               >
                 {t("previousPage")}
               </button>
               <button
-                className="rounded-full border border-zinc-200 px-3 py-1"
+                className="rounded-none border border-zinc-200 px-3 py-1"
                 onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
                 disabled={currentPage === totalPages}
               >

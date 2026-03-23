@@ -81,7 +81,7 @@ export default function PrivacySettingsPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-zinc-50 px-6">
-      <div className="w-full max-w-3xl rounded-3xl bg-white p-10 shadow-sm">
+      <div className="w-full max-w-3xl rounded-none bg-white p-10 shadow-sm">
         <h1 className="text-2xl font-semibold text-zinc-900">Privacy & GDPR</h1>
         <p className="mt-2 text-sm text-zinc-500">
           Manage your consent and data rights in line with GDPR.
@@ -104,7 +104,7 @@ export default function PrivacySettingsPage() {
         {errorMessage ? <p className="mt-4 text-sm text-red-600">{errorMessage}</p> : null}
 
         {exportData ? (
-          <div className="mt-6 rounded-2xl border border-zinc-100 bg-zinc-50 p-4">
+          <div className="mt-6 rounded-none border border-zinc-100 bg-zinc-50 p-4">
             <p className="text-sm font-medium text-zinc-700">Export preview</p>
             <pre className="mt-3 overflow-auto text-xs text-zinc-600">
               {JSON.stringify(exportData, null, 2)}
