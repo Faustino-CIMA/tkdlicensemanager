@@ -22,8 +22,8 @@ services:
       -c log_min_duration_statement=${POSTGRES_LOG_MIN_DURATION_STATEMENT_MS:-750}
       -c log_checkpoints=on
       -c log_lock_waits=on
-    ports:
-      - "${DB_BIND_ADDRESS:-127.0.0.1}:5432:5432"
+    # No host ports: avoids conflicts on servers where 5432 is already bound (e.g. Dokploy
+    # host Postgres). Use docker-compose.host-ports.yml locally if you need localhost:5432.
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -41,8 +41,7 @@ services:
     init: true
     stop_grace_period: 20s
     command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "${REDIS_BIND_ADDRESS:-127.0.0.1}:6379:6379"
+    # No host ports: same rationale as db (see docker-compose.host-ports.yml for local).
     volumes:
       - redis_data:/data
     healthcheck:

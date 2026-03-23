@@ -1,0 +1,17 @@
+# Optional overlay: publish Postgres and Redis on the host loopback for local tools
+# (TablePlus, psql, redis-cli from the host). Not needed for production: app services
+# talk to db/redis on the internal Docker network only.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.host-ports.yml up -d
+#
+# If 5432 or 6379 is already in use on your machine, edit the host ports below.
+
+services:
+  db:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"

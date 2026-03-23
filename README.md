@@ -61,6 +61,12 @@ cp .env.example .env
 docker compose up --build
 ```
 
+Optional — expose Postgres and Redis on `localhost` (for GUI clients). Omit this unless you need host access; it matches older compose behavior:
+
+```
+docker compose -f docker-compose.yml -f docker-compose.host-ports.yml up --build
+```
+
 4. Apply migrations:
 
 ```
@@ -109,7 +115,8 @@ Common Docker commands you will use:
 - Run a command inside a container: `docker compose exec backend python manage.py migrate`
 
 Traefik routing (optional):
-- Base `docker-compose.yml` is Traefik-agnostic (safe for Dokploy without external network coupling).
+- Base `docker-compose.yml` does **not** publish Postgres/Redis on the host (avoids `5432`/`6379` clashes on machines that already run a database). App containers still reach `db` and `redis` on the internal Docker network.
+- Base compose is Traefik-agnostic (safe for Dokploy without external network coupling).
 - Use Traefik labels via override file when needed:
 ```
 docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d --build
@@ -126,8 +133,8 @@ docker compose -f docker-compose.yml -f docker-compose.pgbouncer.yml up -d --bui
 What the services are:
 - `frontend`: Next.js UI (accessible at `http://localhost:3000/`)
 - `backend`: Django API (accessible at `http://localhost:8000/`)
-- `db`: PostgreSQL database (data stored in a volume)
-- `redis`: Redis message broker/cache
+- `db`: PostgreSQL database (data stored in a volume; not on `localhost:5432` unless you use `docker-compose.host-ports.yml`)
+- `redis`: Redis message broker/cache (same; use host-ports overlay for `localhost:6379`)
 - `worker`: Celery background jobs (runs tasks like invoice emails)
 - `beat`: Celery scheduler (runs periodic jobs like license expiry reconciliation)
 
@@ -149,6 +156,8 @@ If Docker fails to start:
 ## Deploy (Dokploy)
 
 Use this short runbook to reduce cold-boot false negatives and proxy/routing surprises on Dokploy.
+
+0. **Host port conflicts:** the default `docker-compose.yml` does not bind Postgres or Redis to the host. If you previously set `DB_BIND_ADDRESS` / `REDIS_BIND_ADDRESS`, remove them from Dokploy env — they are no longer used. Redeploy with the current compose file.
 
 1. Required env values (minimum):
 - `DJANGO_ALLOWED_HOSTS`
@@ -463,8 +472,7 @@ NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
 Ports used:
 - `3000` (Frontend)
 - `8000` (Backend API)
-- `5432` (PostgreSQL)
-- `6379` (Redis)
+- `5432` / `6379` (PostgreSQL / Redis) — only when using `docker-compose.host-ports.yml`; default compose keeps them internal-only
 
 ## Local Development (optional)
 
@@ -598,7 +606,7 @@ GDPR:
 ## Troubleshooting
 
 - **Missing `.env`**: Create it from `.env.example` and ensure values are set.
-- **Port conflicts**: Stop services using ports 3000/8000/5432/6379 or change ports in `docker-compose.yml`.
+- **Port conflicts**: Stop services using ports 3000/8000 or change `BACKEND_BIND_ADDRESS` / `FRONTEND_BIND_ADDRESS` in `.env`. Postgres/Redis are internal-only by default; use `docker-compose.host-ports.yml` only if you need `localhost:5432` / `6379` and adjust ports there if busy.
 - **LAN/mobile login issues (`DisallowedHost` / CORS)**: for local dev, keep `DJANGO_ALLOW_ALL_HOSTS_IN_DEBUG=True` and restart backend. Frontend API requests now remap loopback API URLs (`localhost`/`127.0.0.1`) to the browser hostname, so phone access via `http://<your-lan-ip>:3000` can call `http://<your-lan-ip>:8000` without hardcoding IPs. If using `CORS_ALLOWED_ORIGIN_REGEXES`, separate multiple patterns with semicolons (`;`) or use a JSON array.
 - **Debug log mount**: Docker mounts `.cursor/` into backend/worker for runtime debug logs. Keep it unless you remove debug logging.
 - **Database not ready**: Wait for `docker compose ps` to show healthy, or restart with `docker compose restart db`.
