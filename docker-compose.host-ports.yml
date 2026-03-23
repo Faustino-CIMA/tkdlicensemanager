@@ -1,11 +1,12 @@
-# Optional overlay: publish Postgres and Redis on the host loopback for local tools
-# (TablePlus, psql, redis-cli from the host). Not needed for production: app services
-# talk to db/redis on the internal Docker network only.
+# Optional overlay: publish app + data services on the host for local development.
+# Production / Dokploy: omit this file — Traefik and other containers use Docker DNS
+# (backend:8000, frontend:3000, db:5432, redis:6379) with no host port binding.
 #
 # Usage:
 #   docker compose -f docker-compose.yml -f docker-compose.host-ports.yml up -d
 #
-# If 5432 or 6379 is already in use on your machine, edit the host ports below.
+# If any port is busy on your machine, change the host side (left of the colon) or
+# set BACKEND_BIND_ADDRESS / FRONTEND_BIND_ADDRESS in `.env` (host IP to bind).
 
 services:
   db:
@@ -15,3 +16,11 @@ services:
   redis:
     ports:
       - "127.0.0.1:6379:6379"
+
+  backend:
+    ports:
+      - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:8000:8000"
+
+  frontend:
+    ports:
+      - "${FRONTEND_BIND_ADDRESS:-127.0.0.1}:3000:3000"

@@ -88,8 +88,9 @@ services:
       - staticfiles_data:/app/staticfiles
       - mediafiles_data:/app/media
       # .cursor is deliberately NOT mounted to prevent ownership conflicts
-    ports:
-      - "${BACKEND_BIND_ADDRESS:-0.0.0.0}:8000:8000"
+    # No host ports: avoids conflicts when another stack uses 8000 (common on Dokploy/VPS).
+    # Traefik reaches backend on the internal network. For curl from your laptop, use
+    # docker-compose.host-ports.yml.
     healthcheck:
       test: ["CMD-SHELL", "curl -sf --max-time 5 http://localhost:8000/api/health/ || exit 1"]
       interval: 15s
@@ -198,8 +199,7 @@ services:
       backend:
         condition: service_healthy
     command: ["npm", "run", "start", "--", "-p", "3000"]
-    ports:
-      - "${FRONTEND_BIND_ADDRESS:-0.0.0.0}:3000:3000"
+    # No host ports: same rationale as backend (3000 often taken); use host-ports overlay locally.
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
       interval: 15s
