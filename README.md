@@ -165,7 +165,8 @@ Use this short runbook to reduce cold-boot false negatives and proxy/routing sur
 ```
 docker compose -f docker-compose.yml config
 docker compose -f docker-compose.yml -f docker-compose.traefik.yml config
-docker compose up -d --build
+# Production hostnames (api.* / app.*) need Traefik labels + traefik-public:
+docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d --build
 ```
 
 3. Health verification:
@@ -605,3 +606,5 @@ GDPR:
 - **Celery Beat schedule file**: `backend/celerybeat-schedule` is generated locally; keep it out of git.
 - **makemigrations permission denied in Docker**: run `python backend/manage.py makemigrations` locally or add the migration file in the repo, then run `docker compose exec backend python manage.py migrate`.
 - **`traefik-public` network not found**: either create it manually (`docker network create traefik-public`) or deploy with base compose only (without `docker-compose.traefik.yml`) and use Dokploy domain routing UI.
+- **HTTPS `502 Bad Gateway` on the API while `docker compose ps` shows backend healthy**: check backend logs for `Listening at: http://127.0.0.1:8000`. Gunicorn’s default bind is loopback-only; Traefik must reach `0.0.0.0:8000`. This repo uses `backend/gunicorn.conf.py` (bind `0.0.0.0:8000`) via `docker-compose.yml` and the backend image `CMD`. If Dokploy overrides the container command, ensure you do **not** run plain `gunicorn config.wsgi:application` without `-c gunicorn.conf.py` or `--bind 0.0.0.0:8000`.
+- **Gunicorn `Control server error: [Errno 13] Permission denied`**: Gunicorn 25+ enables a control Unix socket by default; it is disabled in `gunicorn.conf.py` for the non-root Docker user. Rebuild/redeploy the backend image after pulling this fix.

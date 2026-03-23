@@ -38,3 +38,7 @@ COPY --chown=app:app . /app
 EXPOSE 8000
 
 USER app
+
+# Default process when the image is run without a Compose `command:` override.
+# Always bind 0.0.0.0 so reverse proxies on the Docker network can reach the app.
+CMD ["gunicorn", "-c", "gunicorn.conf.py", "config.wsgi:application"]
