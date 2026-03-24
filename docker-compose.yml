@@ -61,7 +61,6 @@ services:
     init: true
     stop_signal: SIGTERM
     stop_grace_period: 60s
-    user: "0:0"
     env_file:
       - .env
     environment:
@@ -77,34 +76,28 @@ services:
       redis:
         condition: service_healthy
     command: >
-      sh -c "APP_UID=$$(id -u app) &&
-      APP_GID=$$(id -g app) &&
-      mkdir -p /app/media /app/staticfiles /app/.cursor 2>/dev/null || true &&
-      chown -R $$APP_UID:$$APP_GID /app/media /app/staticfiles /app/.cursor /var/lib/celerybeat 2>/dev/null || true &&
-      sh /app/scripts/check-env.sh &&
-      runuser -u app -- sh -lc 'python manage.py migrate --noinput &&
-      python manage.py check &&
-      python manage.py collectstatic --noinput &&
-      gunicorn config.wsgi:application
-      --bind 0.0.0.0:8000
-      --workers $${GUNICORN_WORKERS:-4}
-      --threads $${GUNICORN_THREADS:-2}
-      --timeout $${GUNICORN_TIMEOUT:-120}
-      --access-logfile -'"
+      sh -c "
+        set -e
+        sh /app/scripts/check-env.sh
+        python manage.py migrate --noinput
+        python manage.py check
+        python manage.py collectstatic --noinput
+        exec gunicorn config.wsgi:application \
+          --bind 0.0.0.0:8000 \
+          --workers \${GUNICORN_WORKERS:-4} \
+          --threads \${GUNICORN_THREADS:-2} \
+          --timeout \${GUNICORN_TIMEOUT:-120} \
+          --access-logfile -
+      "
     volumes:
       - ./backend:/app
-      # Keep for debug-mode logging (shared host log path)
-      - ./.cursor:/app/.cursor
       - staticfiles_data:/app/staticfiles
       - mediafiles_data:/app/media
+      # .cursor folder is deliberately NOT mounted to prevent ownership wars with the host
     ports:
       - "${BACKEND_BIND_ADDRESS:-0.0.0.0}:8000:8000"
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "curl -sf --max-time 5 -H 'X-Forwarded-Proto: https' http://localhost:8000/api/health/ || exit 1",
-        ]
+      test: ["CMD-SHELL", "curl -sf --max-time 5 http://localhost:8000/api/health/ || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 8
@@ -119,7 +112,6 @@ services:
     init: true
     stop_signal: SIGTERM
     stop_grace_period: 120s
-    user: "0:0"
     env_file:
       - .env
     environment:
@@ -137,16 +129,13 @@ services:
       backend:
         condition: service_healthy
     command: >
-      sh -c "APP_UID=$$(id -u app) &&
-      APP_GID=$$(id -g app) &&
-      mkdir -p /app/media /app/.cursor 2>/dev/null || true &&
-      chown -R $$APP_UID:$$APP_GID /app/media /app/.cursor /var/lib/celerybeat 2>/dev/null || true &&
-      runuser -u app -- sh -lc 'python manage.py migrate --check &&
-      celery -A config worker -l info -Q celery,$${CELERY_PRINT_JOB_QUEUE:-print_jobs}'"
+      sh -c "
+        set -e
+        python manage.py migrate --check
+        exec celery -A config worker -l info -Q celery,\${CELERY_PRINT_JOB_QUEUE:-print_jobs}
+      "
     volumes:
       - ./backend:/app
-      # Keep for debug-mode logging (shared host log path)
-      - ./.cursor:/app/.cursor
       - mediafiles_data:/app/media
     healthcheck:
       test: ["CMD-SHELL", "celery -A config inspect ping -d celery@$$HOSTNAME 2>/dev/null || exit 1"]
@@ -164,7 +153,6 @@ services:
     init: true
     stop_signal: SIGTERM
     stop_grace_period: 60s
-    user: "0:0"
     env_file:
       - .env
     environment:
@@ -183,24 +171,17 @@ services:
       backend:
         condition: service_healthy
     command: >
-      sh -c "APP_UID=$$(id -u app) &&
-      APP_GID=$$(id -g app) &&
-      mkdir -p /app/media /app/.cursor /var/lib/celerybeat 2>/dev/null || true &&
-      chown -R $$APP_UID:$$APP_GID /app/media /app/.cursor /var/lib/celerybeat 2>/dev/null || true &&
-      runuser -u app -- sh -lc 'python manage.py migrate --check &&
-      celery -A config beat -l info'"
+      sh -c "
+        set -e
+        python manage.py migrate --check
+        exec celery -A config beat -l info
+      "
     volumes:
       - ./backend:/app
-      # Keep for debug-mode logging (shared host log path)
-      - ./.cursor:/app/.cursor
       - mediafiles_data:/app/media
       - celerybeat_data:/var/lib/celerybeat
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "python -c \"import os; c=open('/proc/1/cmdline').read().replace(chr(0),' '); exit(0 if 'celery' in c else 1)\" 2>/dev/null || exit 1",
-        ]
+      test: ["CMD-SHELL", "python -c \"import os; exit(0 if 'celery' in open('/proc/1/cmdline').read() else 1)\""]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -244,7 +225,7 @@ volumes:
   staticfiles_data:
   mediafiles_data:
   celerybeat_data:
-  
+
 networks:
   app-net:
     driver: bridge
