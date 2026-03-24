@@ -1,17 +1,17 @@
 **LTF Taekwondo License Manager — Master Summary (March 2026)**
 
-Last updated: 2026-03-20
+Last updated: 2026-03-24
 
 Current main branch state:
-- Version: v0.3.6 (annotated tag v0.3.6 created and pushed)
-- Printer Profiles feature fully merged and live
+- Version: v0.3.7 (annotated tag `v0.3.7` on the repository timeline)
+- Printer profiles and prior releases through v0.3.6 remain merged; v0.3.7 is the documented **stable baseline** for ongoing hygiene work.
 
-Current working branch: improvements
-Status: Stack upgrade (Django 6.0.3 + Python 3.13 + Next.js 16.2.0) successfully merged
+Current working branch: feature/cleanup-before-heroui
+Status: Pre-HeroUI cleanup: safe frontend dependency patch/minor bumps verified (`npm run lint`, `npm run build`) on this branch; HeroUI / radius work intentionally not started here.
 
-Current Stack (locked) — Updated 2026-03-20:
-- Backend: Django 6.0.3 + DRF 3.16.1 + PostgreSQL 18
-- Frontend: Next.js 16.2.0 (App Router) + React 19.2.3 + TypeScript 5.9.3
+Current Stack (locked) — Updated 2026-03-24:
+- Backend: Django 6.0.3 + DRF 3.17.0 + PostgreSQL 18
+- Frontend: Next.js 16.2.1 (App Router) + React 19.2.4 + TypeScript 5.9.x
 - Runtime: Python 3.13 + Node 20
 - Cache/Queue: Redis 8.4 + Celery 5.6.2
 - Containers: postgres:18-alpine, redis:8-alpine
@@ -53,6 +53,7 @@ Rules we follow:
 - Printer Profile Step 4 (feature/general-improvements): Full regression (licenses.test_cards 99/99), lint/build pass, Docker services healthy; end-to-end verification of Club Admin selection, LTF Admin CRUD, and PDF offset — completed. Step 4 re-run (2026-03-18): licenses.test_cards 99/99 OK, npm lint/build OK, docker compose up -d --build + ps all healthy.
 - Printer Profile Step 5 (feature/general-improvements): Dokploy deploy + smoke tests passed; merged to `main`, tag `v0.3.6` created and pushed (2026-03-19).
 - **Release v0.3.6 (2026-03-19):** Merged `feature/general-improvements` to `main` (fast-forward). Printer profiles (user-owned, Club Admin nav + `/dashboard/club/printer-profiles`, LTF Admin CRUD, quick-print selection, PDF offset in final output) + photo fixes live on `main`. Tag `v0.3.6` created and pushed.
+- **Pre-HeroUI cleanup (feature/cleanup-before-heroui, 2026-03-24):** Safe frontend dependency hygiene — Next.js 16.2.1, `eslint-config-next` 16.2.1, React/React DOM 19.2.4, Tailwind CSS + `@tailwindcss/postcss` 4.2.2, `next-intl` 4.8.x, Jest 30.3.x, and related patch/minor bumps; `onnxruntime-web` kept on the 1.21.x line required by `@imgly/background-removal` peer deps. Removed stray `docker-compose.yml.bak*` artifacts from the working tree. Planned next: fresh HeroUI integration on a dedicated branch (no radius/theme work on this cleanup branch).
 
 ## Key Decisions
 - Club Admin payments do NOT require extra consent prompt
@@ -62,12 +63,13 @@ Rules we follow:
 - Docker containers run with host UID/GID + .cursor bind-mount for debugging
 
 ## Current Open / Next Priorities (update after every milestone)
+- Merge `feature/cleanup-before-heroui` when reviewed; then open a **new** branch for HeroUI-only work (do not mix with this cleanup).
 - Post-rollout observation on production/Dokploy (print queue, printer-profile offset correctness).
 - Gather real Payconiq sandbox credentials and run first live sandbox verification
 - Any remaining Dokploy stability tweaks
-- Post-rollout production observation window for print queue throughput, simulation refresh latency, asset resolution telemetry, printer-profile offset correctness in live print batches, and artifact retention tuning (v0.3.5 / v0.3.6)
+- Post-rollout production observation window for print queue throughput, simulation refresh latency, asset resolution telemetry, printer-profile offset correctness in live print batches, and artifact retention tuning (v0.3.5 / v0.3.6 / v0.3.7 baseline)
 
-Next phase: General improvements or next major feature (e.g. Invoice redesign, full Payconiq integration)
+Next phase: HeroUI integration (dedicated branch after cleanup merge), then general improvements or next major feature (e.g. Invoice redesign, full Payconiq integration)
 
 Coding & Memory Rules (always follow)
 - Always work on dedicated feature branches for new work
