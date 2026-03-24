@@ -10,6 +10,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@heroui/react": "^3.0.1",
     "@hookform/resolvers": "^5.2.2",
     "@imgly/background-removal-js": "npm:@imgly/background-removal@^1.7.0",
     "@radix-ui/react-checkbox": "^1.3.3",
