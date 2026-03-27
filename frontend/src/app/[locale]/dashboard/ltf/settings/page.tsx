@@ -216,28 +216,28 @@ export default function LtfAdminSettingsPage() {
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
       ) : (
         <div className="space-y-4">
-          <section className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-zinc-900">
+          <section className="rounded-[var(--radius-card)] border border-border bg-card p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-foreground">
             {t("federationSettingsFormTitle")}
           </h2>
-          <p className="mt-2 text-sm text-zinc-500">
+          <p className="mt-2 text-sm text-muted">
             {t("federationSettingsFormSubtitle")}
           </p>
 
           <form className="mt-6 grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
             <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-medium text-zinc-700">{t("federationNameLabel")}</label>
+              <label className="text-sm font-medium text-foreground">{t("federationNameLabel")}</label>
               <Input placeholder="Luxembourg Taekwondo Federation" {...register("name")} />
-              {errors.name ? <p className="text-sm text-red-600">{errors.name.message}</p> : null}
+              {errors.name ? <p className="text-sm text-destructive">{errors.name.message}</p> : null}
             </div>
 
             <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-medium text-zinc-700">{t("addressLine1Label")}</label>
+              <label className="text-sm font-medium text-foreground">{t("addressLine1Label")}</label>
               <Input placeholder="12 Rue de la Gare" {...register("address_line1")} />
             </div>
 
             <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-medium text-zinc-700">{t("addressLine2Label")}</label>
+              <label className="text-sm font-medium text-foreground">{t("addressLine2Label")}</label>
               <Input
                 placeholder="Building, floor, unit (optional)"
                 {...register("address_line2")}
@@ -245,23 +245,23 @@ export default function LtfAdminSettingsPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-700">{t("postalCodeLabel")}</label>
+              <label className="text-sm font-medium text-foreground">{t("postalCodeLabel")}</label>
               <Input placeholder="1234" {...register("postal_code")} />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-700">{t("localityLabel")}</label>
+              <label className="text-sm font-medium text-foreground">{t("localityLabel")}</label>
               <Input placeholder="Luxembourg" {...register("locality")} />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-700">{t("ibanLabel")}</label>
+              <label className="text-sm font-medium text-foreground">{t("ibanLabel")}</label>
               <Input placeholder="LU28 0019 4006 4475 0000" {...register("iban")} />
-              {errors.iban ? <p className="text-sm text-red-600">{errors.iban.message}</p> : null}
+              {errors.iban ? <p className="text-sm text-destructive">{errors.iban.message}</p> : null}
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-700">{t("bankNameLabel")}</label>
+              <label className="text-sm font-medium text-foreground">{t("bankNameLabel")}</label>
               <Input value={derivedBankName || "-"} readOnly />
             </div>
 
@@ -272,17 +272,17 @@ export default function LtfAdminSettingsPage() {
             </div>
           </form>
 
-          {successMessage ? <p className="mt-4 text-sm text-emerald-600">{successMessage}</p> : null}
-          {errorMessage ? <p className="mt-4 text-sm text-red-600">{errorMessage}</p> : null}
+          {successMessage ? <p className="mt-4 text-sm text-success">{successMessage}</p> : null}
+          {errorMessage ? <p className="mt-4 text-sm text-destructive">{errorMessage}</p> : null}
           </section>
 
-          <section className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-zinc-900">{t("logoSectionTitle")}</h2>
-          <p className="mt-2 text-sm text-zinc-500">{t("logoSectionSubtitle")}</p>
+          <section className="rounded-[var(--radius-card)] border border-border bg-card p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-foreground">{t("logoSectionTitle")}</h2>
+          <p className="mt-2 text-sm text-muted">{t("logoSectionSubtitle")}</p>
 
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-700">{t("logoLabelInputLabel")}</label>
+              <label className="text-sm font-medium text-foreground">{t("logoLabelInputLabel")}</label>
               <Input
                 value={logoLabel}
                 onChange={(event) => setLogoLabel(event.target.value)}
@@ -290,7 +290,7 @@ export default function LtfAdminSettingsPage() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-700">{t("logoUsageLabel")}</label>
+              <label className="text-sm font-medium text-foreground">{t("logoUsageLabel")}</label>
               <Select value={logoUsage} onValueChange={(value) => setLogoUsage(value as LogoUsageType)}>
                 <SelectTrigger>
                   <SelectValue />
@@ -317,7 +317,7 @@ export default function LtfAdminSettingsPage() {
             <Button type="button" variant="outline" onClick={() => logoFileInputRef.current?.click()}>
               {t("chooseLogoFileAction")}
             </Button>
-            <label className="flex items-center gap-2 text-sm text-zinc-600">
+            <label className="flex items-center gap-2 text-sm text-muted">
               <input
                 type="checkbox"
                 checked={markUploadedAsSelected}
@@ -331,20 +331,20 @@ export default function LtfAdminSettingsPage() {
           </div>
 
           {logoFile ? (
-            <p className="mt-2 text-sm text-zinc-600">
+            <p className="mt-2 text-sm text-muted">
               {t("selectedFileLabel")}: {logoFile.name} ({formatFileSize(logoFile.size)})
             </p>
           ) : null}
 
           {isLoadingLogos ? (
-            <p className="mt-4 text-sm text-zinc-600">{t("loadingTitle")}</p>
+            <p className="mt-4 text-sm text-muted">{t("loadingTitle")}</p>
           ) : logos.length === 0 ? (
-            <p className="mt-4 text-sm text-zinc-600">{t("logoEmptyState")}</p>
+            <p className="mt-4 text-sm text-muted">{t("logoEmptyState")}</p>
           ) : (
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {logos.map((logo) => (
-                <article key={logo.id} className="rounded-xl border border-zinc-200 p-3">
-                  <div className="aspect-[16/9] w-full overflow-hidden rounded-md bg-zinc-100">
+                <article key={logo.id} className="rounded-[var(--radius-card)] border border-border p-3">
+                  <div className="aspect-[16/9] w-full overflow-hidden rounded-[var(--radius-form)] bg-secondary">
                     {logo.content_url ? (
                       <Image
                         src={logo.content_url}
@@ -354,19 +354,19 @@ export default function LtfAdminSettingsPage() {
                         className="h-full w-full object-contain"
                       />
                     ) : (
-                      <div className="flex h-full items-center justify-center text-xs text-zinc-500">
+                      <div className="flex h-full items-center justify-center text-xs text-muted">
                         {t("noPreviewAvailable")}
                       </div>
                     )}
                   </div>
-                  <div className="mt-3 space-y-1 text-xs text-zinc-600">
-                    <p className="font-medium text-zinc-800">{logo.label || logo.file_name}</p>
+                  <div className="mt-3 space-y-1 text-xs text-muted">
+                    <p className="font-medium text-foreground">{logo.label || logo.file_name}</p>
                     <p>
                       {t("logoUsageLabel")}: {usageLabelMap[logo.usage_type]}
                     </p>
                     <p>{formatFileSize(logo.file_size)}</p>
                     {logo.is_selected ? (
-                      <p className="font-medium text-emerald-700">{t("logoSelectedBadge")}</p>
+                      <p className="font-medium text-success">{t("logoSelectedBadge")}</p>
                     ) : null}
                   </div>
                   <div className="mt-3 flex items-center gap-2">

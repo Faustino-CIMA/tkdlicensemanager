@@ -355,7 +355,7 @@ export default function LtfClubDetailPage() {
           </div>
         </div>
 
-        {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+        {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
         {isLoading ? (
           <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
@@ -363,9 +363,9 @@ export default function LtfClubDetailPage() {
           <EmptyState title={t("noResultsTitle")} description={t("noClubsResultsSubtitle")} />
         ) : activeTab === "overview" ? (
           <div className="space-y-4">
-            <section className="rounded-3xl bg-white p-6 shadow-sm">
+            <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold text-zinc-900">{t("clubOverviewTab")}</h2>
+                <h2 className="text-lg font-semibold text-foreground">{t("clubOverviewTab")}</h2>
                 {!isEditingOverview ? (
                   <Button size="sm" variant="outline" onClick={() => setIsEditingOverview(true)}>
                     {t("editAction")}
@@ -374,51 +374,51 @@ export default function LtfClubDetailPage() {
               </div>
 
               {!isEditingOverview ? (
-                <div className="mt-4 grid gap-3 text-sm text-zinc-700 md:grid-cols-2">
+                <div className="mt-4 grid gap-3 text-sm text-foreground md:grid-cols-2">
                   <div className="flex flex-col gap-1">
-                    <span className="text-xs text-zinc-500">{t("clubNameLabel")}</span>
+                    <span className="text-xs text-muted">{t("clubNameLabel")}</span>
                     <span className="font-medium">{club.name}</span>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <span className="text-xs text-zinc-500">{t("postalCodeLabel")}</span>
+                    <span className="text-xs text-muted">{t("postalCodeLabel")}</span>
                     <span className="font-medium">{club.postal_code || "-"}</span>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <span className="text-xs text-zinc-500">{t("localityLabel")}</span>
+                    <span className="text-xs text-muted">{t("localityLabel")}</span>
                     <span className="font-medium">{club.locality || club.city || "-"}</span>
                   </div>
                   <div className="flex flex-col gap-1 md:col-span-2">
-                    <span className="text-xs text-zinc-500">{t("addressLine1Label")}</span>
+                    <span className="text-xs text-muted">{t("addressLine1Label")}</span>
                     <span className="font-medium">{club.address_line1 || club.address || "-"}</span>
                   </div>
                   <div className="flex flex-col gap-1 md:col-span-2">
-                    <span className="text-xs text-zinc-500">{t("addressLine2Label")}</span>
+                    <span className="text-xs text-muted">{t("addressLine2Label")}</span>
                     <span className="font-medium">{club.address_line2 || "-"}</span>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <span className="text-xs text-zinc-500">{t("ibanLabel")}</span>
+                    <span className="text-xs text-muted">{t("ibanLabel")}</span>
                     <span className="font-medium">{club.iban || "-"}</span>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <span className="text-xs text-zinc-500">{t("bankNameLabel")}</span>
+                    <span className="text-xs text-muted">{t("bankNameLabel")}</span>
                     <span className="font-medium">{club.bank_name || "-"}</span>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <span className="text-xs text-zinc-500">{t("maxAdminsLabel")}</span>
+                    <span className="text-xs text-muted">{t("maxAdminsLabel")}</span>
                     <span className="font-medium">{club.max_admins}</span>
                   </div>
                 </div>
               ) : (
                 <form className="mt-4 grid gap-3 md:grid-cols-2" onSubmit={handleSaveOverview}>
                   <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-medium text-zinc-700">{t("clubNameLabel")}</label>
+                    <label className="text-sm font-medium text-foreground">{t("clubNameLabel")}</label>
                     <Input
                       value={editValues.name}
                       onChange={(event) => handleOverviewFieldChange("name", event.target.value)}
                     />
                   </div>
                   <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-medium text-zinc-700">{t("addressLine1Label")}</label>
+                    <label className="text-sm font-medium text-foreground">{t("addressLine1Label")}</label>
                     <Input
                       value={editValues.address_line1}
                       onChange={(event) =>
@@ -427,7 +427,7 @@ export default function LtfClubDetailPage() {
                     />
                   </div>
                   <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-medium text-zinc-700">{t("addressLine2Label")}</label>
+                    <label className="text-sm font-medium text-foreground">{t("addressLine2Label")}</label>
                     <Input
                       value={editValues.address_line2}
                       onChange={(event) =>
@@ -436,7 +436,7 @@ export default function LtfClubDetailPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-zinc-700">{t("postalCodeLabel")}</label>
+                    <label className="text-sm font-medium text-foreground">{t("postalCodeLabel")}</label>
                     <Input
                       value={editValues.postal_code}
                       onChange={(event) =>
@@ -445,7 +445,7 @@ export default function LtfClubDetailPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-zinc-700">{t("localityLabel")}</label>
+                    <label className="text-sm font-medium text-foreground">{t("localityLabel")}</label>
                     <Input
                       value={editValues.locality}
                       onChange={(event) =>
@@ -454,7 +454,7 @@ export default function LtfClubDetailPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-zinc-700">{t("ibanLabel")}</label>
+                    <label className="text-sm font-medium text-foreground">{t("ibanLabel")}</label>
                     <Input
                       value={editValues.iban}
                       onChange={(event) => handleOverviewFieldChange("iban", event.target.value)}
@@ -462,7 +462,7 @@ export default function LtfClubDetailPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-zinc-700">{t("bankNameLabel")}</label>
+                    <label className="text-sm font-medium text-foreground">{t("bankNameLabel")}</label>
                     <Input value={derivedBankName || "-"} readOnly />
                   </div>
                   <div className="flex items-center gap-2 md:col-span-2">
@@ -482,13 +482,13 @@ export default function LtfClubDetailPage() {
               )}
             </section>
 
-            <section className="rounded-3xl bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-semibold text-zinc-900">{t("logoSectionTitle")}</h2>
-              <p className="mt-1 text-sm text-zinc-500">{t("logoSectionSubtitle")}</p>
+            <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
+              <h2 className="text-lg font-semibold text-foreground">{t("logoSectionTitle")}</h2>
+              <p className="mt-1 text-sm text-muted">{t("logoSectionSubtitle")}</p>
 
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-700">{t("logoLabelInputLabel")}</label>
+                  <label className="text-sm font-medium text-foreground">{t("logoLabelInputLabel")}</label>
                   <Input
                     value={logoLabel}
                     onChange={(event) => setLogoLabel(event.target.value)}
@@ -496,7 +496,7 @@ export default function LtfClubDetailPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-700">{t("logoUsageLabel")}</label>
+                  <label className="text-sm font-medium text-foreground">{t("logoUsageLabel")}</label>
                   <Select
                     value={logoUsage}
                     onValueChange={(value) => setLogoUsage(value as LogoUsageType)}
@@ -526,7 +526,7 @@ export default function LtfClubDetailPage() {
                 <Button type="button" variant="outline" onClick={() => logoFileInputRef.current?.click()}>
                   {t("chooseLogoFileAction")}
                 </Button>
-                <label className="flex items-center gap-2 text-sm text-zinc-600">
+                <label className="flex items-center gap-2 text-sm text-muted">
                   <input
                     type="checkbox"
                     checked={markUploadedAsSelected}
@@ -540,20 +540,20 @@ export default function LtfClubDetailPage() {
               </div>
 
               {logoFile ? (
-                <p className="mt-2 text-sm text-zinc-600">
+                <p className="mt-2 text-sm text-muted">
                   {t("selectedFileLabel")}: {logoFile.name} ({formatFileSize(logoFile.size)})
                 </p>
               ) : null}
 
               {isLoadingLogos ? (
-                <p className="mt-4 text-sm text-zinc-600">{t("loadingTitle")}</p>
+                <p className="mt-4 text-sm text-muted">{t("loadingTitle")}</p>
               ) : clubLogos.length === 0 ? (
-                <p className="mt-4 text-sm text-zinc-600">{t("logoEmptyState")}</p>
+                <p className="mt-4 text-sm text-muted">{t("logoEmptyState")}</p>
               ) : (
                 <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {clubLogos.map((logo) => (
-                    <article key={logo.id} className="rounded-xl border border-zinc-200 p-3">
-                      <div className="aspect-[16/9] w-full overflow-hidden rounded-md bg-zinc-100">
+                    <article key={logo.id} className="rounded-[var(--radius-card)] border border-border p-3">
+                      <div className="aspect-[16/9] w-full overflow-hidden rounded-[var(--radius-form)] bg-secondary">
                         {logo.content_url ? (
                           <Image
                             src={logo.content_url}
@@ -563,19 +563,19 @@ export default function LtfClubDetailPage() {
                             className="h-full w-full object-contain"
                           />
                         ) : (
-                          <div className="flex h-full items-center justify-center text-xs text-zinc-500">
+                          <div className="flex h-full items-center justify-center text-xs text-muted">
                             {t("noPreviewAvailable")}
                           </div>
                         )}
                       </div>
-                      <div className="mt-3 space-y-1 text-xs text-zinc-600">
-                        <p className="font-medium text-zinc-800">{logo.label || logo.file_name}</p>
+                      <div className="mt-3 space-y-1 text-xs text-muted">
+                        <p className="font-medium text-foreground">{logo.label || logo.file_name}</p>
                         <p>
                           {t("logoUsageLabel")}: {usageLabelMap[logo.usage_type]}
                         </p>
                         <p>{formatFileSize(logo.file_size)}</p>
                         {logo.is_selected ? (
-                          <p className="font-medium text-emerald-700">{t("logoSelectedBadge")}</p>
+                          <p className="font-medium text-success">{t("logoSelectedBadge")}</p>
                         ) : null}
                       </div>
                       <div className="mt-3 flex items-center gap-2">
@@ -605,13 +605,13 @@ export default function LtfClubDetailPage() {
             </section>
           </div>
         ) : (
-          <section className="rounded-3xl bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-zinc-900">{t("clubAdminsTab")}</h2>
-            <p className="mt-1 text-sm text-zinc-500">{t("adminsSubtitle")}</p>
+          <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-foreground">{t("clubAdminsTab")}</h2>
+            <p className="mt-1 text-sm text-muted">{t("adminsSubtitle")}</p>
 
             <div className="mt-6 grid gap-6">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-zinc-700">{t("maxAdminsLabel")}</label>
+                <label className="text-sm font-medium text-foreground">{t("maxAdminsLabel")}</label>
                 <Input
                   type="number"
                   min={1}
@@ -621,7 +621,7 @@ export default function LtfClubDetailPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-zinc-700">{t("addAdminLabel")}</label>
+                <label className="text-sm font-medium text-foreground">{t("addAdminLabel")}</label>
                 <div className="flex flex-wrap items-center gap-2">
                   <Select value={selectedMemberId} onValueChange={setSelectedMemberId}>
                     <SelectTrigger className="w-64">
@@ -640,17 +640,17 @@ export default function LtfClubDetailPage() {
               </div>
 
               <div className="space-y-2">
-                <p className="text-sm font-medium text-zinc-700">{t("currentAdminsLabel")}</p>
+                <p className="text-sm font-medium text-foreground">{t("currentAdminsLabel")}</p>
                 {clubAdmins.length === 0 ? (
-                  <p className="text-sm text-zinc-500">{t("noAdminsLabel")}</p>
+                  <p className="text-sm text-muted">{t("noAdminsLabel")}</p>
                 ) : (
                   <div className="space-y-2">
                     {clubAdmins.map((admin) => (
                       <div
                         key={admin.id}
-                        className="flex items-center justify-between rounded-md border border-zinc-200 px-3 py-2"
+                        className="flex items-center justify-between rounded-md border border-border px-3 py-2"
                       >
-                        <div className="text-sm text-zinc-700">
+                        <div className="text-sm text-foreground">
                           {admin.username} · {admin.email}
                         </div>
                         <Button

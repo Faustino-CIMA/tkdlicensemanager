@@ -88,28 +88,28 @@ export default function VerifyEmailPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-zinc-50 px-6">
-      <div className="w-full max-w-md rounded-3xl bg-white p-8 shadow-sm">
-        <h1 className="text-2xl font-semibold text-zinc-900">{t("title")}</h1>
-        <p className="mt-2 text-sm text-zinc-500">{t("subtitle")}</p>
+    <main className="flex min-h-screen items-center justify-center bg-background px-6">
+      <div className="w-full max-w-md rounded-[var(--radius-card)] bg-card p-8 shadow-sm">
+        <h1 className="text-2xl font-semibold text-foreground">{t("title")}</h1>
+        <p className="mt-2 text-sm text-muted">{t("subtitle")}</p>
 
         {isVerifying ? (
-          <p className="mt-4 text-sm text-zinc-600">{t("verifying")}</p>
+          <p className="mt-4 text-sm text-muted">{t("verifying")}</p>
         ) : null}
 
         {statusMessage ? (
-          <p className="mt-4 text-sm text-emerald-600">{statusMessage}</p>
+          <p className="mt-4 text-sm text-success">{statusMessage}</p>
         ) : null}
         {isVerified ? (
-          <p className="mt-2 text-sm text-zinc-500">{t("redirecting")}</p>
+          <p className="mt-2 text-sm text-muted">{t("redirecting")}</p>
         ) : null}
-        {errorMessage ? <p className="mt-4 text-sm text-red-600">{errorMessage}</p> : null}
+        {errorMessage ? <p className="mt-4 text-sm text-destructive">{errorMessage}</p> : null}
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit(onSubmit)}>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("emailLabel")}</label>
+            <label className="text-sm font-medium text-foreground">{t("emailLabel")}</label>
             <Input type="email" placeholder="john@example.com" {...register("email")} />
-            {errors.email ? <p className="text-sm text-red-600">{errors.email.message}</p> : null}
+            {errors.email ? <p className="text-sm text-destructive">{errors.email.message}</p> : null}
           </div>
 
           <Button className="w-full" type="submit" disabled={isSubmitting}>
@@ -117,8 +117,8 @@ export default function VerifyEmailPage() {
           </Button>
         </form>
 
-        <p className="mt-4 text-sm text-zinc-500">
-          <Link className="font-medium text-zinc-900" href={`/${locale}/login`}>
+        <p className="mt-4 text-sm text-muted">
+          <Link className="font-medium text-foreground" href={`/${locale}/login`}>
             {t("backToLogin")}
           </Link>
         </p>

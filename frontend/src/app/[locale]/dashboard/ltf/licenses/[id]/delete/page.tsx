@@ -114,7 +114,7 @@ export default function LtfLicenseDeletePage() {
 
   return (
     <LtfAdminLayout title={t("singleDeleteLicenseTitle")} subtitle={t("singleDeleteLicenseSubtitle")}>
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
       {isLoading ? (
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
@@ -130,48 +130,48 @@ export default function LtfLicenseDeletePage() {
         </div>
       ) : (
         <div className="space-y-5">
-          <section className="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
-            <h2 className="text-sm font-semibold text-zinc-900">{t("singleDeleteLicensePreviewTitle")}</h2>
+          <section className="rounded-[var(--radius-card)] border border-border bg-card p-5 shadow-sm">
+            <h2 className="text-sm font-semibold text-foreground">{t("singleDeleteLicensePreviewTitle")}</h2>
             <dl className="mt-3 grid gap-3 text-sm md:grid-cols-2">
               <div>
-                <dt className="text-zinc-500">{t("memberLabel")}</dt>
-                <dd className="font-medium text-zinc-900">
+                <dt className="text-muted">{t("memberLabel")}</dt>
+                <dd className="font-medium text-foreground">
                   {member ? `${member.first_name} ${member.last_name}` : t("unknownMember")}
                 </dd>
               </div>
               <div>
-                <dt className="text-zinc-500">{t("clubLabel")}</dt>
-                <dd className="font-medium text-zinc-900">{club?.name ?? t("unknownClub")}</dd>
+                <dt className="text-muted">{t("clubLabel")}</dt>
+                <dd className="font-medium text-foreground">{club?.name ?? t("unknownClub")}</dd>
               </div>
               <div>
-                <dt className="text-zinc-500">{t("licenseTypeLabel")}</dt>
-                <dd className="font-medium text-zinc-900">
+                <dt className="text-muted">{t("licenseTypeLabel")}</dt>
+                <dd className="font-medium text-foreground">
                   {licenseType?.name ?? t("unknownLicenseType")}
                 </dd>
               </div>
               <div>
-                <dt className="text-zinc-500">{t("yearLabel")}</dt>
-                <dd className="font-medium text-zinc-900">{license.year}</dd>
+                <dt className="text-muted">{t("yearLabel")}</dt>
+                <dd className="font-medium text-foreground">{license.year}</dd>
               </div>
               <div>
-                <dt className="text-zinc-500">{t("statusLabel")}</dt>
-                <dd className="font-medium text-zinc-900">{statusLabel}</dd>
+                <dt className="text-muted">{t("statusLabel")}</dt>
+                <dd className="font-medium text-foreground">{statusLabel}</dd>
               </div>
               <div>
-                <dt className="text-zinc-500">{t("issuedAtLabel")}</dt>
-                <dd className="font-medium text-zinc-900">
+                <dt className="text-muted">{t("issuedAtLabel")}</dt>
+                <dd className="font-medium text-foreground">
                   {formatDisplayDate(license.issued_at)}
                 </dd>
               </div>
             </dl>
           </section>
 
-          <section className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
+          <section className="rounded-[var(--radius-card)] border p-4 text-sm banner-danger">
             {t("singleDeleteLicenseWarning")}
           </section>
 
           {isDeleted ? (
-            <section className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-700">
+            <section className="rounded-[var(--radius-card)] border p-4 text-sm banner-success">
               {t("singleDeleteLicenseDeletedMessage")}
             </section>
           ) : null}

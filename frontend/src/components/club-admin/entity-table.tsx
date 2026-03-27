@@ -17,9 +17,9 @@ export function EntityTable<T extends { id: number | string }>({
 }: EntityTableProps<T>) {
   const isClickable = Boolean(onRowClick);
   return (
-    <div className="overflow-x-auto rounded-2xl border border-zinc-100 bg-white shadow-sm">
+    <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-card shadow-sm">
       <table className="min-w-full text-left text-sm">
-        <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+        <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
           <tr>
             {columns.map((column) => (
               <th key={column.key} className="px-4 py-3 font-medium">
@@ -28,11 +28,11 @@ export function EntityTable<T extends { id: number | string }>({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-zinc-100">
+        <tbody className="divide-y divide-border">
           {rows.map((row) => (
             <tr
               key={row.id}
-              className={`text-zinc-700 ${isClickable ? "cursor-pointer hover:bg-zinc-50" : ""}`}
+              className={`text-foreground ${isClickable ? "cursor-pointer hover:bg-secondary" : ""}`}
               onClick={(event) => {
                 if (!onRowClick) {
                   return;

@@ -23,3 +23,5 @@ dist/
 .cursor/
 .~lock.*
 backend/celerybeat-schedule*
+# Local Docker bind mounts (postgres, redis, media, staticfiles, celerybeat)
+docker-data/

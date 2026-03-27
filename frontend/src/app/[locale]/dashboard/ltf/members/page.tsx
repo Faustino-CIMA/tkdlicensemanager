@@ -53,15 +53,15 @@ type ClubGroup = {
 
 function getStatusChipClasses(status: License["status"]): string {
   if (status === "active") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    return "badge-success";
   }
   if (status === "pending") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
+    return "badge-warning";
   }
   if (status === "expired") {
-    return "border-zinc-300 bg-zinc-100 text-zinc-700";
+    return "border-border bg-secondary text-muted";
   }
-  return "border-rose-200 bg-rose-50 text-rose-700";
+  return "badge-danger";
 }
 
 function formatIssuedAt(value: string | null): string {
@@ -320,7 +320,7 @@ export default function LtfAdminMembersPage() {
 
   return (
     <LtfAdminLayout title={t("membersTitle")} subtitle={t("membersSubtitle")}>
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -376,10 +376,10 @@ export default function LtfAdminMembersPage() {
               {t("collapseAllMembers")}
             </Button>
           </div>
-          <div className="space-y-1 text-xs text-zinc-500">
+          <div className="space-y-1 text-xs text-muted">
             <p>{t("membersReadOnlyHint")}</p>
           </div>
-          <div className="flex items-center gap-2 text-sm text-zinc-500">
+          <div className="flex items-center gap-2 text-sm text-muted">
             {t("pageLabel", { current: currentPage, total: totalPages })}
             <Button
               variant="outline"
@@ -405,9 +405,9 @@ export default function LtfAdminMembersPage() {
         ) : groupedClubRows.length === 0 ? (
           <EmptyState title={t("noResultsTitle")} description={t("noMembersResultsSubtitle")} />
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-zinc-100 bg-white shadow-sm">
+          <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-card shadow-sm">
             <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+              <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
                 <tr>
                   <th className="w-10 px-4 py-3 font-medium" />
                   <th className="px-4 py-3 font-medium">{t("clubLabel")}</th>
@@ -419,13 +419,13 @@ export default function LtfAdminMembersPage() {
                   <th className="px-4 py-3 font-medium">{t("statusRevoked")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-100">
+              <tbody className="divide-y divide-border">
                 {pagedClubRows.map((clubGroup) => {
                   const clubExpanded = expandedClubSet.has(clubGroup.clubId);
                   return (
                     <Fragment key={clubGroup.clubId}>
                       <tr
-                        className="cursor-pointer text-zinc-700 hover:bg-zinc-50"
+                        className="cursor-pointer text-foreground hover:bg-secondary"
                         onClick={() => toggleClubExpanded(clubGroup.clubId)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
@@ -437,7 +437,7 @@ export default function LtfAdminMembersPage() {
                         role="button"
                         aria-expanded={clubExpanded}
                       >
-                        <td className="px-4 py-3 text-zinc-500">
+                        <td className="px-4 py-3 text-muted">
                           {clubExpanded ? (
                             <ChevronDown className="h-4 w-4" />
                           ) : (
@@ -453,11 +453,11 @@ export default function LtfAdminMembersPage() {
                         <td className="px-4 py-3">{clubGroup.revokedCount}</td>
                       </tr>
                       {clubExpanded ? (
-                        <tr className="bg-zinc-50/60">
+                        <tr className="bg-secondary/60">
                           <td colSpan={8} className="px-6 py-3">
-                            <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+                            <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-card">
                               <table className="min-w-full text-left text-sm">
-                                <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+                                <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
                                   <tr>
                                     <th className="w-10 px-4 py-2 font-medium" />
                                     <th className="px-4 py-2 font-medium">{t("memberLabel")}</th>
@@ -471,7 +471,7 @@ export default function LtfAdminMembersPage() {
                                     <th className="px-4 py-2 font-medium">{t("actionsLabel")}</th>
                                   </tr>
                                 </thead>
-                                <tbody className="divide-y divide-zinc-100">
+                                <tbody className="divide-y divide-border">
                                   {clubGroup.members.map((memberGroup) => {
                                     const memberExpanded = expandedMemberSet.has(
                                       memberGroup.member.id
@@ -479,7 +479,7 @@ export default function LtfAdminMembersPage() {
                                     return (
                                       <Fragment key={memberGroup.member.id}>
                                         <tr
-                                          className="cursor-pointer text-zinc-700 hover:bg-zinc-50"
+                                          className="cursor-pointer text-foreground hover:bg-secondary"
                                           onClick={() => toggleMemberExpanded(memberGroup.member.id)}
                                           onKeyDown={(event) => {
                                             if (event.key === "Enter" || event.key === " ") {
@@ -491,7 +491,7 @@ export default function LtfAdminMembersPage() {
                                           role="button"
                                           aria-expanded={memberExpanded}
                                         >
-                                          <td className="px-4 py-2 text-zinc-500">
+                                          <td className="px-4 py-2 text-muted">
                                             {memberExpanded ? (
                                               <ChevronDown className="h-4 w-4" />
                                             ) : (
@@ -523,16 +523,16 @@ export default function LtfAdminMembersPage() {
                                           </td>
                                         </tr>
                                         {memberExpanded ? (
-                                          <tr className="bg-zinc-50/50">
+                                          <tr className="bg-secondary/50">
                                             <td colSpan={10} className="px-6 py-3">
                                               {memberGroup.licenses.length === 0 ? (
-                                                <p className="text-sm text-zinc-500">
+                                                <p className="text-sm text-muted">
                                                   {t("noMemberLicensesSubtitle")}
                                                 </p>
                                               ) : (
-                                                <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
+                                                <div className="overflow-x-auto rounded-[var(--radius-form)] border border-border bg-card">
                                                   <table className="min-w-full text-left text-sm">
-                                                    <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+                                                    <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
                                                       <tr>
                                                         <th className="px-4 py-2 font-medium">
                                                           {t("yearLabel")}
@@ -545,13 +545,13 @@ export default function LtfAdminMembersPage() {
                                                         </th>
                                                       </tr>
                                                     </thead>
-                                                    <tbody className="divide-y divide-zinc-100">
+                                                    <tbody className="divide-y divide-border">
                                                       {memberGroup.licenses.map((license) => (
-                                                        <tr key={license.id} className="text-zinc-700">
+                                                        <tr key={license.id} className="text-foreground">
                                                           <td className="px-4 py-2">{license.year}</td>
                                                           <td className="px-4 py-2">
                                                             <span
-                                                              className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${getStatusChipClasses(
+                                                              className={`inline-flex rounded-[var(--radius-form)] border px-2.5 py-1 text-xs font-medium ${getStatusChipClasses(
                                                                 license.status
                                                               )}`}
                                                             >

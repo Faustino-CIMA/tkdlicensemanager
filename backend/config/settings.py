@@ -401,6 +401,9 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "0.3.6",
 }
 
+# Required when the browser sends credentialed requests (cookies/CORS) from the SPA, e.g. fetch(..., { credentials: "include" }).
+# Origins must be listed explicitly — CORS_ALLOW_ALL_ORIGINS must stay False (django-cors-headers default).
+CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = split_csv(
     config(
         "CORS_ALLOWED_ORIGINS",

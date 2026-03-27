@@ -42,6 +42,15 @@ function resolveApiUrl(configuredUrl?: string): string {
 const API_URL = resolveApiUrl(process.env.NEXT_PUBLIC_API_URL);
 export { API_URL };
 
+/** Django CSRF cookie name (default). Used when the API origin exposes `csrftoken` to JS (e.g. shared cookie domain). */
+function readCsrfCookie(): string | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
 function buildRequestSignal(externalSignal?: AbortSignal | null) {
   const hasFiniteTimeout = Number.isFinite(API_REQUEST_TIMEOUT_MS) && API_REQUEST_TIMEOUT_MS > 0;
   if (!hasFiniteTimeout && !externalSignal) {
@@ -104,12 +113,19 @@ async function executeApiRequest<T>(path: string, options: RequestOptions = {}):
   if (!isFormDataRequest) {
     defaultHeaders["Content-Type"] = "application/json";
   }
+  const isLoginPath = path.startsWith("/api/auth/login/");
+  const csrfToken = isLoginPath ? readCsrfCookie() : null;
+  if (csrfToken) {
+    defaultHeaders["X-CSRFToken"] = csrfToken;
+  }
   const { signal, didTimeout, cleanup } = buildRequestSignal(options.signal);
   let response: Response;
   try {
     response = await fetch(requestUrl, {
       ...options,
       signal,
+      credentials:
+        csrfToken != null ? "include" : (options.credentials ?? "same-origin"),
       headers: {
         ...defaultHeaders,
         ...options.headers,

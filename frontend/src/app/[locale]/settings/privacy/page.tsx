@@ -80,16 +80,16 @@ export default function PrivacySettingsPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-zinc-50 px-6">
-      <div className="w-full max-w-3xl rounded-3xl bg-white p-10 shadow-sm">
-        <h1 className="text-2xl font-semibold text-zinc-900">Privacy & GDPR</h1>
-        <p className="mt-2 text-sm text-zinc-500">
+    <main className="flex min-h-screen items-center justify-center bg-background px-6">
+      <div className="w-full max-w-3xl rounded-[var(--radius-card)] bg-card p-10 shadow-sm">
+        <h1 className="text-2xl font-semibold text-foreground">Privacy & GDPR</h1>
+        <p className="mt-2 text-sm text-muted">
           Manage your consent and data rights in line with GDPR.
         </p>
 
         <div className="mt-6 flex items-center gap-3">
           <Checkbox checked={consentGiven} onCheckedChange={handleConsentChange} />
-          <span className="text-sm text-zinc-700">I consent to data processing.</span>
+          <span className="text-sm text-foreground">I consent to data processing.</span>
         </div>
 
         <div className="mt-8 flex flex-wrap gap-3">
@@ -101,12 +101,12 @@ export default function PrivacySettingsPage() {
           </Button>
         </div>
 
-        {errorMessage ? <p className="mt-4 text-sm text-red-600">{errorMessage}</p> : null}
+        {errorMessage ? <p className="mt-4 text-sm text-destructive">{errorMessage}</p> : null}
 
         {exportData ? (
-          <div className="mt-6 rounded-2xl border border-zinc-100 bg-zinc-50 p-4">
-            <p className="text-sm font-medium text-zinc-700">Export preview</p>
-            <pre className="mt-3 overflow-auto text-xs text-zinc-600">
+          <div className="mt-6 rounded-[var(--radius-card)] border border-border bg-secondary p-4">
+            <p className="text-sm font-medium text-foreground">Export preview</p>
+            <pre className="mt-3 overflow-auto text-xs text-muted">
               {JSON.stringify(exportData, null, 2)}
             </pre>
           </div>

@@ -80,14 +80,14 @@ export default function MemberDashboardPage() {
   }, [loadData]);
 
   return (
-    <main className="min-h-screen bg-zinc-50 px-6 py-10">
+    <main className="min-h-screen bg-background px-6 py-10">
       <div className="mx-auto w-full max-w-5xl space-y-6">
-        <header className="rounded-3xl bg-white p-6 shadow-sm">
-          <h1 className="text-2xl font-semibold text-zinc-900">{t("title")}</h1>
-          <p className="mt-2 text-sm text-zinc-500">{t("subtitle")}</p>
+        <header className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
+          <h1 className="text-2xl font-semibold text-foreground">{t("title")}</h1>
+          <p className="mt-2 text-sm text-muted">{t("subtitle")}</p>
         </header>
 
-        {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+        {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
         {isLoading ? (
           <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />

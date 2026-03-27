@@ -76,13 +76,13 @@ export function PayconiqPaymentCard({
   const createDisabled = isBusy || Boolean(payment && !statusMeta.isTerminal);
 
   return (
-    <section className="mt-6 rounded-3xl border border-zinc-100 bg-white p-6 shadow-sm">
+    <section className="mt-6 rounded-[var(--radius-card)] border border-border bg-card p-6 shadow-sm">
       <div className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-zinc-700">{t("payconiqTitle")}</h2>
-        <p className="text-sm text-zinc-600">{t("payconiqHint")}</p>
-        {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+        <h2 className="text-sm font-semibold text-foreground">{t("payconiqTitle")}</h2>
+        <p className="text-sm text-muted">{t("payconiqHint")}</p>
+        {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
         {payment ? (
-          <div className="flex flex-col gap-2 text-sm text-zinc-700">
+          <div className="flex flex-col gap-2 text-sm text-foreground">
             <div className="flex items-center gap-2">
               <span className="font-medium">{t("payconiqStatusLabel")}</span>
               <StatusBadge label={statusMeta.label} tone={statusMeta.tone} />
@@ -90,7 +90,7 @@ export function PayconiqPaymentCard({
             <div>
               <span className="font-medium">{t("payconiqLinkLabel")}</span>{" "}
               <a
-                className="text-blue-600 underline"
+                className="text-primary underline"
                 href={payment.payconiq_payment_url}
                 target="_blank"
                 rel="noopener noreferrer"

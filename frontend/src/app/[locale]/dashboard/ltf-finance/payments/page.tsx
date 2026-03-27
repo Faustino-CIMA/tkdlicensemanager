@@ -452,7 +452,7 @@ export default function LtfFinancePaymentsPage() {
               ))}
             </SelectContent>
           </Select>
-          <span className="text-sm text-zinc-600">{common("rowsPerPageLabel")}</span>
+          <span className="text-sm text-muted">{common("rowsPerPageLabel")}</span>
           <Select value={pageSize} onValueChange={setPageSize}>
             <SelectTrigger className="w-[120px]">
               <SelectValue />
@@ -474,9 +474,9 @@ export default function LtfFinancePaymentsPage() {
         <EmptyState title={t("noPaymentsTitle")} description={t("noPaymentsSubtitle")} />
       ) : (
         <div className="space-y-3">
-          <div className="overflow-x-auto rounded-2xl border border-zinc-100 bg-white shadow-sm">
+          <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-card shadow-sm">
             <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+              <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
                 <tr>
                   <th className="w-10 px-4 py-3 font-medium" />
                   <th className="px-4 py-3 font-medium">{t("clubLabel")}</th>
@@ -487,13 +487,13 @@ export default function LtfFinancePaymentsPage() {
                   <th className="px-4 py-3 font-medium">{t("invoicesVoidCountLabel")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-100">
+              <tbody className="divide-y divide-border">
                 {groupedClubRows.map((clubGroup) => {
                   const clubExpanded = expandedClubSet.has(clubGroup.clubId);
                   return (
                     <Fragment key={clubGroup.clubId}>
                       <tr
-                        className="cursor-pointer text-zinc-700 hover:bg-zinc-50"
+                        className="cursor-pointer text-foreground hover:bg-secondary"
                         onClick={() => toggleClubExpanded(clubGroup.clubId)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
@@ -505,7 +505,7 @@ export default function LtfFinancePaymentsPage() {
                         role="button"
                         aria-expanded={clubExpanded}
                       >
-                        <td className="px-4 py-3 text-zinc-500">
+                        <td className="px-4 py-3 text-muted">
                           {clubExpanded ? (
                             <ChevronDown className="h-4 w-4" />
                           ) : (
@@ -520,11 +520,11 @@ export default function LtfFinancePaymentsPage() {
                         <td className="px-4 py-3">{clubGroup.voidCount}</td>
                       </tr>
                       {clubExpanded ? (
-                        <tr className="bg-zinc-50/60">
+                        <tr className="bg-secondary/60">
                           <td colSpan={7} className="px-6 py-3">
-                            <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+                            <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-card">
                               <table className="min-w-full text-left text-sm">
-                                <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+                                <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
                                   <tr>
                                     <th className="w-10 px-4 py-2 font-medium" />
                                     <th className="px-4 py-2 font-medium">{t("yearLabel")}</th>
@@ -535,14 +535,14 @@ export default function LtfFinancePaymentsPage() {
                                     <th className="px-4 py-2 font-medium">{t("invoicesVoidCountLabel")}</th>
                                   </tr>
                                 </thead>
-                                <tbody className="divide-y divide-zinc-100">
+                                <tbody className="divide-y divide-border">
                                   {clubGroup.years.map((yearGroup) => {
                                     const yearKey = getYearKey(clubGroup.clubId, yearGroup.year);
                                     const yearExpanded = expandedYearSet.has(yearKey);
                                     return (
                                       <Fragment key={yearKey}>
                                         <tr
-                                          className="cursor-pointer text-zinc-700 hover:bg-zinc-50"
+                                          className="cursor-pointer text-foreground hover:bg-secondary"
                                           onClick={() => toggleYearExpanded(clubGroup.clubId, yearGroup.year)}
                                           onKeyDown={(event) => {
                                             if (event.key === "Enter" || event.key === " ") {
@@ -554,7 +554,7 @@ export default function LtfFinancePaymentsPage() {
                                           role="button"
                                           aria-expanded={yearExpanded}
                                         >
-                                          <td className="px-4 py-2 text-zinc-500">
+                                          <td className="px-4 py-2 text-muted">
                                             {yearExpanded ? (
                                               <ChevronDown className="h-4 w-4" />
                                             ) : (
@@ -571,11 +571,11 @@ export default function LtfFinancePaymentsPage() {
                                           <td className="px-4 py-2">{yearGroup.voidCount}</td>
                                         </tr>
                                         {yearExpanded ? (
-                                          <tr className="bg-zinc-50/50">
+                                          <tr className="bg-secondary/50">
                                             <td colSpan={7} className="px-6 py-3">
-                                              <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
+                                              <div className="overflow-x-auto rounded-[var(--radius-form)] border border-border bg-card">
                                                 <table className="min-w-full text-left text-sm">
-                                                  <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+                                                  <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
                                                     <tr>
                                                       <th className="px-4 py-2 font-medium">{t("invoiceNumberLabel")}</th>
                                                       <th className="px-4 py-2 font-medium">{t("statusLabel")}</th>
@@ -586,7 +586,7 @@ export default function LtfFinancePaymentsPage() {
                                                       <th className="px-4 py-2 font-medium">{common("paymentActionsLabel")}</th>
                                                     </tr>
                                                   </thead>
-                                                  <tbody className="divide-y divide-zinc-100">
+                                                  <tbody className="divide-y divide-border">
                                                     {yearGroup.invoices.map((invoice) => {
                                                       const meta = getInvoiceStatusMeta(invoice.status);
                                                       const canRecord =
@@ -594,7 +594,7 @@ export default function LtfFinancePaymentsPage() {
                                                       return (
                                                         <tr
                                                           key={invoice.id}
-                                                          className="cursor-pointer text-zinc-700 hover:bg-zinc-50"
+                                                          className="cursor-pointer text-foreground hover:bg-secondary"
                                                           onClick={() => {
                                                             router.push(
                                                               `/${locale}/dashboard/ltf-finance/payments/${invoice.id}`
@@ -678,18 +678,18 @@ export default function LtfFinancePaymentsPage() {
               </tbody>
             </table>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-600">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
             <span>{t("pageLabel", { current: currentPage, total: totalPages })}</span>
             <div className="flex gap-2">
               <button
-                className="rounded-full border border-zinc-200 px-3 py-1"
+                className="rounded-[var(--radius-form)] border border-border px-3 py-1"
                 onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
               >
                 {t("previousPage")}
               </button>
               <button
-                className="rounded-full border border-zinc-200 px-3 py-1"
+                className="rounded-[var(--radius-form)] border border-border px-3 py-1"
                 onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
                 disabled={currentPage === totalPages}
               >
@@ -700,8 +700,8 @@ export default function LtfFinancePaymentsPage() {
         </div>
       )}
 
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
-      {actionError ? <p className="text-sm text-red-600">{actionError}</p> : null}
+      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+      {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
 
       <Modal
         title={t("recordPaymentTitle")}
@@ -711,7 +711,7 @@ export default function LtfFinancePaymentsPage() {
       >
         <div className="grid gap-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">
+            <label className="text-sm font-medium text-foreground">
               {t("paymentMethodLabel")}
             </label>
             <Select value={paymentMethod} onValueChange={setPaymentMethod}>
@@ -728,7 +728,7 @@ export default function LtfFinancePaymentsPage() {
             </Select>
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">
+            <label className="text-sm font-medium text-foreground">
               {t("paymentProviderLabel")}
             </label>
             <Select value={paymentProvider} onValueChange={setPaymentProvider}>
@@ -745,7 +745,7 @@ export default function LtfFinancePaymentsPage() {
             </Select>
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">
+            <label className="text-sm font-medium text-foreground">
               {t("paymentReferenceLabel")}
             </label>
             <Input
@@ -755,7 +755,7 @@ export default function LtfFinancePaymentsPage() {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">
+            <label className="text-sm font-medium text-foreground">
               {t("paymentNotesLabel")}
             </label>
             <Input
@@ -765,7 +765,7 @@ export default function LtfFinancePaymentsPage() {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">
+            <label className="text-sm font-medium text-foreground">
               {t("paymentDateLabel")}
             </label>
             <Input

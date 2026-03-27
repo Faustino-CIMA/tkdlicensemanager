@@ -25,7 +25,7 @@ services:
     ports:
       - "${DB_BIND_ADDRESS:-127.0.0.1}:5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
@@ -57,9 +57,6 @@ services:
   backend:
     build:
       context: ./backend
-      args:
-        UID: ${UID:-1000}
-        GID: ${GID:-1000}
     restart: unless-stopped
     init: true
     stop_signal: SIGTERM
@@ -118,9 +115,6 @@ services:
   worker:
     build:
       context: ./backend
-      args:
-        UID: ${UID:-1000}
-        GID: ${GID:-1000}
     restart: unless-stopped
     init: true
     stop_signal: SIGTERM
@@ -166,9 +160,6 @@ services:
   beat:
     build:
       context: ./backend
-      args:
-        UID: ${UID:-1000}
-        GID: ${GID:-1000}
     restart: unless-stopped
     init: true
     stop_signal: SIGTERM
