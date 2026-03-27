@@ -107,20 +107,20 @@ export function MemberHistoryTimeline({
   };
 
   return (
-    <section className="rounded-3xl bg-white p-6 shadow-sm">
-      <h2 className="text-lg font-semibold text-zinc-900">{title}</h2>
-      <p className="mt-1 text-sm text-zinc-500">{subtitle}</p>
+    <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
+      <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+      <p className="mt-1 text-sm text-muted">{subtitle}</p>
 
       {onPromote && promoteTitle ? (
-        <div className="mt-6 rounded-xl border border-zinc-200 p-4">
-          <p className="text-sm font-semibold text-zinc-900">{promoteTitle}</p>
+        <div className="mt-6 rounded-[var(--radius-card)] border border-border p-4">
+          <p className="text-sm font-semibold text-foreground">{promoteTitle}</p>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             <div className="space-y-1">
-              <p className="text-xs text-zinc-500">{promoteToGradeLabel}</p>
+              <p className="text-xs text-muted">{promoteToGradeLabel}</p>
               <Input value={toGrade} onChange={(event) => setToGrade(event.target.value)} />
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-zinc-500">{promoteDateLabel}</p>
+              <p className="text-xs text-muted">{promoteDateLabel}</p>
               <Input
                 type="date"
                 value={promotionDate}
@@ -128,15 +128,15 @@ export function MemberHistoryTimeline({
               />
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-zinc-500">{promoteProofLabel}</p>
+              <p className="text-xs text-muted">{promoteProofLabel}</p>
               <Input value={proofRef} onChange={(event) => setProofRef(event.target.value)} />
             </div>
             <div className="space-y-1 md:col-span-2">
-              <p className="text-xs text-zinc-500">{promoteNotesLabel}</p>
+              <p className="text-xs text-muted">{promoteNotesLabel}</p>
               <Input value={notes} onChange={(event) => setNotes(event.target.value)} />
             </div>
           </div>
-          {errorMessage ? <p className="mt-2 text-sm text-red-600">{errorMessage}</p> : null}
+          {errorMessage ? <p className="mt-2 text-sm text-destructive">{errorMessage}</p> : null}
           <Button className="mt-3" disabled={isSubmitting || !toGrade.trim()} onClick={submitPromotion}>
             {promoteSubmitLabel}
           </Button>
@@ -145,27 +145,27 @@ export function MemberHistoryTimeline({
 
       <div className="mt-6 grid gap-4 md:grid-cols-2">
         <div>
-          <h3 className="text-sm font-semibold text-zinc-900">{licenseTitle}</h3>
+          <h3 className="text-sm font-semibold text-foreground">{licenseTitle}</h3>
           <div className="mt-2 space-y-2">
             {licenseHistory.length === 0 ? (
-              <p className="text-sm text-zinc-500">{emptyLabel}</p>
+              <p className="text-sm text-muted">{emptyLabel}</p>
             ) : (
               licenseHistory.map((item) => (
-                <article key={item.id} className="rounded-lg border border-zinc-200 p-3">
-                  <p className="text-sm font-medium text-zinc-900">
+                <article key={item.id} className="rounded-[var(--radius-form)] border border-border p-3">
+                  <p className="text-sm font-medium text-foreground">
                     {item.license_year} - {humanizeEventType(item.event_type)}
                   </p>
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-xs text-muted">
                     {eventLabel}: {humanizeEventType(item.event_type)} - {formatDisplayDate(item.event_at)}
                   </p>
                   {item.status_before !== item.status_after &&
                   (item.status_before || item.status_after) ? (
-                    <p className="text-xs text-zinc-600">
+                    <p className="text-xs text-muted">
                       {fromLabel}: {item.status_before || "-"} - {toLabel}: {item.status_after || "-"}
                     </p>
                   ) : null}
                   {item.reason ? (
-                    <p className="text-xs text-zinc-600">
+                    <p className="text-xs text-muted">
                       {reasonLabel}: {item.reason}
                     </p>
                   ) : null}
@@ -175,19 +175,19 @@ export function MemberHistoryTimeline({
           </div>
         </div>
         <div>
-          <h3 className="text-sm font-semibold text-zinc-900">{gradeTitle}</h3>
+          <h3 className="text-sm font-semibold text-foreground">{gradeTitle}</h3>
           <div className="mt-2 space-y-2">
             {gradeHistory.length === 0 ? (
-              <p className="text-sm text-zinc-500">{emptyLabel}</p>
+              <p className="text-sm text-muted">{emptyLabel}</p>
             ) : (
               gradeHistory.map((item) => (
-                <article key={item.id} className="rounded-lg border border-zinc-200 p-3">
-                  <p className="text-sm font-medium text-zinc-900">
+                <article key={item.id} className="rounded-[var(--radius-form)] border border-border p-3">
+                  <p className="text-sm font-medium text-foreground">
                     {fromLabel}: {item.from_grade || "-"} - {toLabel}: {item.to_grade}
                   </p>
-                  <p className="text-xs text-zinc-500">{formatDisplayDate(item.promotion_date)}</p>
+                  <p className="text-xs text-muted">{formatDisplayDate(item.promotion_date)}</p>
                   {item.notes ? (
-                    <p className="text-xs text-zinc-600">
+                    <p className="text-xs text-muted">
                       {notesLabel}: {item.notes}
                     </p>
                   ) : null}

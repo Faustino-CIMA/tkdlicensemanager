@@ -39,7 +39,7 @@ class LoginView(views.APIView):
     serializer_class = LoginSerializer
 
     def post(self, request):
-        serializer = LoginSerializer(data=request.data)
+        serializer = LoginSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data["user"]
         token, _ = Token.objects.get_or_create(user=user)

@@ -139,7 +139,7 @@ export default function ClubMemberDeletePage() {
 
   return (
     <ClubAdminLayout title={t("singleDeleteMemberTitle")} subtitle={t("singleDeleteMemberSubtitle")}>
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
       {isLoading ? (
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
@@ -165,39 +165,39 @@ export default function ClubMemberDeletePage() {
         </div>
       ) : (
         <div className="space-y-5">
-          <section className="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
-            <h2 className="text-sm font-semibold text-zinc-900">{t("singleDeleteMemberPreviewTitle")}</h2>
+          <section className="rounded-[var(--radius-card)] border border-border bg-card p-5 shadow-sm">
+            <h2 className="text-sm font-semibold text-foreground">{t("singleDeleteMemberPreviewTitle")}</h2>
             <dl className="mt-3 grid gap-3 text-sm md:grid-cols-2">
               <div>
-                <dt className="text-zinc-500">{t("memberLabel")}</dt>
-                <dd className="font-medium text-zinc-900">
+                <dt className="text-muted">{t("memberLabel")}</dt>
+                <dd className="font-medium text-foreground">
                   {member.first_name} {member.last_name}
                 </dd>
               </div>
               <div>
-                <dt className="text-zinc-500">{t("ltfLicenseLabel")}</dt>
-                <dd className="font-medium text-zinc-900">{member.ltf_licenseid || "—"}</dd>
+                <dt className="text-muted">{t("ltfLicenseLabel")}</dt>
+                <dd className="font-medium text-foreground">{member.ltf_licenseid || "—"}</dd>
               </div>
               <div>
-                <dt className="text-zinc-500">{t("statusLabel")}</dt>
-                <dd className="font-medium text-zinc-900">
+                <dt className="text-muted">{t("statusLabel")}</dt>
+                <dd className="font-medium text-foreground">
                   {member.is_active ? t("activeLabel") : t("inactiveLabel")}
                 </dd>
               </div>
               <div>
-                <dt className="text-zinc-500">{t("singleDeleteMemberCascadeCountLabel")}</dt>
-                <dd className="font-medium text-zinc-900">{cascadeLicenses.length}</dd>
+                <dt className="text-muted">{t("singleDeleteMemberCascadeCountLabel")}</dt>
+                <dd className="font-medium text-foreground">{cascadeLicenses.length}</dd>
               </div>
             </dl>
           </section>
 
-          <section className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
+          <section className="rounded-[var(--radius-card)] border p-4 text-sm banner-danger">
             {t("singleDeleteMemberWarning")}
           </section>
 
           {cascadePreviewRows.length > 0 ? (
             <section className="space-y-3">
-              <h2 className="text-sm font-semibold text-zinc-900">{t("singleDeleteMemberCascadeTitle")}</h2>
+              <h2 className="text-sm font-semibold text-foreground">{t("singleDeleteMemberCascadeTitle")}</h2>
               <EntityTable
                 columns={[
                   { key: "yearLabel", header: t("yearLabel") },
@@ -215,7 +215,7 @@ export default function ClubMemberDeletePage() {
           ) : null}
 
           {isDeleted ? (
-            <section className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-700">
+            <section className="rounded-[var(--radius-card)] border p-4 text-sm banner-success">
               {t("singleDeleteMemberDeletedMessage")}
             </section>
           ) : null}

@@ -352,16 +352,16 @@ export default function ClubMemberDetailPage() {
           </div>
         </div>
 
-        {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+        {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
         {isLoading ? (
           <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
         ) : !member ? (
           <EmptyState title={t("noResultsTitle")} description={t("memberNotFound")} />
         ) : activeTab === "overview" ? (
-          <section className="rounded-3xl bg-white p-6 shadow-sm">
+          <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="text-lg font-semibold text-zinc-900">{t("memberOverviewTab")}</h2>
+              <h2 className="text-lg font-semibold text-foreground">{t("memberOverviewTab")}</h2>
               {isEditing ? (
                 <Button variant="outline" size="sm" onClick={onCancelEdit}>
                   {t("cancelEdit")}
@@ -430,7 +430,7 @@ export default function ClubMemberDetailPage() {
                     {...register("first_name")}
                   />
                   {errors.first_name ? (
-                    <p className="text-sm text-red-600">{errors.first_name.message}</p>
+                    <p className="text-sm text-destructive">{errors.first_name.message}</p>
                   ) : null}
                 </div>
 
@@ -443,7 +443,7 @@ export default function ClubMemberDetailPage() {
                     {...register("last_name")}
                   />
                   {errors.last_name ? (
-                    <p className="text-sm text-red-600">{errors.last_name.message}</p>
+                    <p className="text-sm text-destructive">{errors.last_name.message}</p>
                   ) : null}
                 </div>
 
@@ -466,7 +466,7 @@ export default function ClubMemberDetailPage() {
                       <SelectItem value="F">{t("sexFemale")}</SelectItem>
                     </SelectContent>
                   </Select>
-                  {errors.sex ? <p className="text-sm text-red-600">{errors.sex.message}</p> : null}
+                  {errors.sex ? <p className="text-sm text-destructive">{errors.sex.message}</p> : null}
                 </div>
 
                 <div className="space-y-2">
@@ -478,7 +478,7 @@ export default function ClubMemberDetailPage() {
                     disabled={isCoach}
                     {...register("email")}
                   />
-                  {errors.email ? <p className="text-sm text-red-600">{errors.email.message}</p> : null}
+                  {errors.email ? <p className="text-sm text-destructive">{errors.email.message}</p> : null}
                 </div>
 
                 <div className="space-y-2">
@@ -490,7 +490,7 @@ export default function ClubMemberDetailPage() {
                     {...register("wt_licenseid")}
                   />
                   {errors.wt_licenseid ? (
-                    <p className="text-sm text-red-600">{errors.wt_licenseid.message}</p>
+                    <p className="text-sm text-destructive">{errors.wt_licenseid.message}</p>
                   ) : null}
                 </div>
 
@@ -503,7 +503,7 @@ export default function ClubMemberDetailPage() {
                     {...register("ltf_licenseid")}
                   />
                   {errors.ltf_licenseid ? (
-                    <p className="text-sm text-red-600">{errors.ltf_licenseid.message}</p>
+                    <p className="text-sm text-destructive">{errors.ltf_licenseid.message}</p>
                   ) : null}
                 </div>
 
@@ -516,7 +516,7 @@ export default function ClubMemberDetailPage() {
                     {...register("date_of_birth")}
                   />
                   {errors.date_of_birth ? (
-                    <p className="text-sm text-red-600">{errors.date_of_birth.message}</p>
+                    <p className="text-sm text-destructive">{errors.date_of_birth.message}</p>
                   ) : null}
                 </div>
 
@@ -524,7 +524,7 @@ export default function ClubMemberDetailPage() {
                   <Label htmlFor="member-belt-rank">{t("beltRankLabel")}</Label>
                   <Input id="member-belt-rank" placeholder="1st Dan" {...register("belt_rank")} />
                   {errors.belt_rank ? (
-                    <p className="text-sm text-red-600">{errors.belt_rank.message}</p>
+                    <p className="text-sm text-destructive">{errors.belt_rank.message}</p>
                   ) : null}
                 </div>
 
@@ -612,43 +612,43 @@ export default function ClubMemberDetailPage() {
                 </div>
               </form>
             ) : (
-              <div className="mt-4 grid gap-3 text-sm text-zinc-700 md:grid-cols-2">
+              <div className="mt-4 grid gap-3 text-sm text-foreground md:grid-cols-2">
                 <div className="flex flex-col gap-1">
-                  <span className="text-xs text-zinc-500">{t("firstNameLabel")}</span>
+                  <span className="text-xs text-muted">{t("firstNameLabel")}</span>
                   <span className="font-medium">{member.first_name}</span>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <span className="text-xs text-zinc-500">{t("lastNameLabel")}</span>
+                  <span className="text-xs text-muted">{t("lastNameLabel")}</span>
                   <span className="font-medium">{member.last_name}</span>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <span className="text-xs text-zinc-500">{t("sexLabel")}</span>
+                  <span className="text-xs text-muted">{t("sexLabel")}</span>
                   <span className="font-medium">
                     {member.sex === "M" ? t("sexMale") : t("sexFemale")}
                   </span>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <span className="text-xs text-zinc-500">{t("emailLabel")}</span>
+                  <span className="text-xs text-muted">{t("emailLabel")}</span>
                   <span className="font-medium">{member.email || "-"}</span>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <span className="text-xs text-zinc-500">{importT("wtLicenseLabel")}</span>
+                  <span className="text-xs text-muted">{importT("wtLicenseLabel")}</span>
                   <span className="font-medium">{member.wt_licenseid || "-"}</span>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <span className="text-xs text-zinc-500">{t("ltfLicenseLabel")}</span>
+                  <span className="text-xs text-muted">{t("ltfLicenseLabel")}</span>
                   <span className="font-medium">{member.ltf_licenseid || "-"}</span>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <span className="text-xs text-zinc-500">{t("dobLabel")}</span>
+                  <span className="text-xs text-muted">{t("dobLabel")}</span>
                   <span className="font-medium">{formatDisplayDate(member.date_of_birth)}</span>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <span className="text-xs text-zinc-500">{t("beltRankLabel")}</span>
+                  <span className="text-xs text-muted">{t("beltRankLabel")}</span>
                   <span className="font-medium">{member.belt_rank || "-"}</span>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <span className="text-xs text-zinc-500">{t("primaryLicenseRoleLabel")}</span>
+                  <span className="text-xs text-muted">{t("primaryLicenseRoleLabel")}</span>
                   <span className="font-medium">
                     {member.primary_license_role
                       ? roleLabelByValue[member.primary_license_role]
@@ -656,7 +656,7 @@ export default function ClubMemberDetailPage() {
                   </span>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <span className="text-xs text-zinc-500">{t("secondaryLicenseRoleLabel")}</span>
+                  <span className="text-xs text-muted">{t("secondaryLicenseRoleLabel")}</span>
                   <span className="font-medium">
                     {member.secondary_license_role
                       ? roleLabelByValue[member.secondary_license_role]
@@ -664,7 +664,7 @@ export default function ClubMemberDetailPage() {
                   </span>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <span className="text-xs text-zinc-500">{t("isActiveLabel")}</span>
+                  <span className="text-xs text-muted">{t("isActiveLabel")}</span>
                   <span className="font-medium">
                     {member.is_active ? t("activeLabel") : t("inactiveLabel")}
                   </span>

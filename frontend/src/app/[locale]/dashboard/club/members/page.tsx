@@ -460,7 +460,7 @@ export default function ClubAdminMembersPage() {
 
   return (
     <ClubAdminLayout title={t("membersTitle")} subtitle={t("membersSubtitle")}>
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -558,10 +558,10 @@ export default function ClubAdminMembersPage() {
                 <button
                   key={chip.id}
                   type="button"
-                  className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                  className={`inline-flex items-center rounded-[var(--radius-form)] border px-2.5 py-1 text-xs font-medium transition ${
                     isActive
-                      ? "border-zinc-700 bg-zinc-800 text-white"
-                      : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-card text-foreground hover:bg-secondary"
                   }`}
                   onClick={() => setStatusFilter(chip.id)}
                 >
@@ -571,22 +571,22 @@ export default function ClubAdminMembersPage() {
             })}
           </div>
           {canManageMembers ? (
-            <div className="space-y-1 text-xs text-zinc-500">
+            <div className="space-y-1 text-xs text-muted">
               <p>{t("selectionTip")}</p>
               <p>{t("selectionPersistenceHint")}</p>
               {selectedIds.length > 0 ? (
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium text-zinc-700">
+                  <span className="font-medium text-foreground">
                     {t("selectedMembersCountLabel", { count: selectedIds.length })}
                   </span>
                   {hiddenSelectedCount > 0 ? (
-                    <span className="font-medium text-amber-700">
+                    <span className="font-medium text-warning">
                       {t("hiddenSelectedMembersCountLabel", { count: hiddenSelectedCount })}
                     </span>
                   ) : null}
                   <button
                     type="button"
-                    className="underline underline-offset-2 hover:text-zinc-700"
+                    className="underline underline-offset-2 hover:text-foreground"
                     onClick={clearSelection}
                   >
                     {t("clearSelection")}
@@ -595,7 +595,7 @@ export default function ClubAdminMembersPage() {
               ) : null}
             </div>
           ) : null}
-          <div className="flex items-center gap-2 text-sm text-zinc-500">
+          <div className="flex items-center gap-2 text-sm text-muted">
             {t("pageLabel", { current: currentPage, total: totalPages })}
             <Button
               variant="outline"
@@ -683,10 +683,10 @@ export default function ClubAdminMembersPage() {
                   if (!canManageMembers) {
                     return (
                       <span
-                        className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${
+                        className={`inline-flex rounded-[var(--radius-form)] border px-2.5 py-1 text-xs font-medium ${
                           member.is_active
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                            : "border-zinc-300 bg-zinc-100 text-zinc-700"
+                            ? "badge-success"
+                            : "border-border bg-secondary text-muted"
                         }`}
                       >
                         {member.is_active ? t("activeLabel") : t("inactiveLabel")}
@@ -697,10 +697,10 @@ export default function ClubAdminMembersPage() {
                     <button
                       type="button"
                       disabled={isUpdating}
-                      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                      className={`inline-flex rounded-[var(--radius-form)] border px-2.5 py-1 text-xs font-medium transition ${
                         member.is_active
-                          ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                          : "border-zinc-300 bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                          ? "badge-success hover:opacity-80"
+                          : "border-border bg-secondary text-muted hover:bg-secondary/80"
                       } ${isUpdating ? "cursor-wait opacity-70" : ""}`}
                       onClick={() => toggleMemberStatus(member)}
                     >

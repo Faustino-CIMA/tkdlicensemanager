@@ -111,16 +111,16 @@ export default function LtfMemberDetailPage() {
           </div>
         </div>
 
-        {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+        {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
         {isLoading ? (
           <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
         ) : !member ? (
           <EmptyState title={t("noResultsTitle")} description={t("memberNotFound")} />
         ) : activeTab === "overview" ? (
-          <section className="rounded-3xl bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-zinc-900">{t("memberOverviewTab")}</h2>
-            <p className="mt-1 text-sm text-zinc-500">{t("membersReadOnlyHint")}</p>
+          <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-foreground">{t("memberOverviewTab")}</h2>
+            <p className="mt-1 text-sm text-muted">{t("membersReadOnlyHint")}</p>
             <div className="mt-4">
               <ProfilePhotoManager
                 imageUrl={member.profile_picture_url}
@@ -153,21 +153,21 @@ export default function LtfMemberDetailPage() {
                 onDownload={handlePhotoDownload}
               />
             </div>
-            <div className="mt-4 grid gap-3 text-sm text-zinc-700 md:grid-cols-2">
+            <div className="mt-4 grid gap-3 text-sm text-foreground md:grid-cols-2">
               <div className="flex flex-col gap-1">
-                <span className="text-xs text-zinc-500">{t("firstNameLabel")}</span>
+                <span className="text-xs text-muted">{t("firstNameLabel")}</span>
                 <span className="font-medium">{member.first_name}</span>
               </div>
               <div className="flex flex-col gap-1">
-                <span className="text-xs text-zinc-500">{t("lastNameLabel")}</span>
+                <span className="text-xs text-muted">{t("lastNameLabel")}</span>
                 <span className="font-medium">{member.last_name}</span>
               </div>
               <div className="flex flex-col gap-1">
-                <span className="text-xs text-zinc-500">{t("beltRankLabel")}</span>
+                <span className="text-xs text-muted">{t("beltRankLabel")}</span>
                 <span className="font-medium">{member.belt_rank || "-"}</span>
               </div>
               <div className="flex flex-col gap-1">
-                <span className="text-xs text-zinc-500">{t("ltfLicenseLabel")}</span>
+                <span className="text-xs text-muted">{t("ltfLicenseLabel")}</span>
                 <span className="font-medium">{member.ltf_licenseid || "-"}</span>
               </div>
             </div>

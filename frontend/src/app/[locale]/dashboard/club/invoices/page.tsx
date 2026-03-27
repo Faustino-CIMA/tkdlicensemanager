@@ -264,7 +264,7 @@ export default function ClubAdminInvoicesPage() {
           onChange={(event) => setSearchInput(event.target.value)}
         />
         <div className="flex items-center gap-3">
-          <span className="text-sm text-zinc-600">{common("rowsPerPageLabel")}</span>
+          <span className="text-sm text-muted">{common("rowsPerPageLabel")}</span>
           <Select value={pageSize} onValueChange={setPageSize}>
             <SelectTrigger className="w-[120px]">
               <SelectValue />
@@ -291,18 +291,18 @@ export default function ClubAdminInvoicesPage() {
             rows={invoices}
             onRowClick={(row) => router.push(`/${locale}/dashboard/club/invoices/${row.id}`)}
           />
-          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-600">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
             <span>{t("pageLabel", { current: currentPage, total: totalPages })}</span>
             <div className="flex gap-2">
               <button
-                className="rounded-full border border-zinc-200 px-3 py-1"
+                className="rounded-[var(--radius-form)] border border-border px-3 py-1"
                 onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
               >
                 {t("previousPage")}
               </button>
               <button
-                className="rounded-full border border-zinc-200 px-3 py-1"
+                className="rounded-[var(--radius-form)] border border-border px-3 py-1"
                 onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
                 disabled={currentPage === totalPages}
               >
@@ -313,8 +313,8 @@ export default function ClubAdminInvoicesPage() {
         </>
       )}
 
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
-      {actionError ? <p className="text-sm text-red-600">{actionError}</p> : null}
+      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+      {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
 
     </ClubAdminLayout>
   );

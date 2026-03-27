@@ -31,9 +31,12 @@ type PasswordResetConfirmInput = {
 };
 
 export function login(input: LoginInput) {
+  const body = new FormData();
+  body.append("username", input.username);
+  body.append("password", input.password);
   return apiRequest<AuthResponse>("/api/auth/login/", {
     method: "POST",
-    body: JSON.stringify(input),
+    body,
   });
 }
 

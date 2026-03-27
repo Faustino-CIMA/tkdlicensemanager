@@ -262,14 +262,14 @@ export default function LtfFinanceLicenseTypeDetailPage() {
         </Button>
       </div>
 
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
-      {successMessage ? <p className="text-sm text-emerald-600">{successMessage}</p> : null}
+      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+      {successMessage ? <p className="text-sm text-success">{successMessage}</p> : null}
 
-      <section className="space-y-4 rounded-3xl bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-zinc-900">{t("licenseTypeLabel")}</h2>
+      <section className="space-y-4 rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
+        <h2 className="text-lg font-semibold text-foreground">{t("licenseTypeLabel")}</h2>
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("licenseTypeNameLabel")}</label>
+            <label className="text-sm font-medium text-foreground">{t("licenseTypeNameLabel")}</label>
             <Input
               value={licenseTypeName}
               onChange={(event) => setLicenseTypeName(event.target.value)}
@@ -277,17 +277,17 @@ export default function LtfFinanceLicenseTypeDetailPage() {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("licenseTypeCodeLabel")}</label>
+            <label className="text-sm font-medium text-foreground">{t("licenseTypeCodeLabel")}</label>
             <Input value={licenseType.code} disabled />
           </div>
         </div>
       </section>
 
-      <section className="space-y-5 rounded-3xl bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-zinc-900">{t("editPolicyAction")}</h2>
+      <section className="space-y-5 rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
+        <h2 className="text-lg font-semibold text-foreground">{t("editPolicyAction")}</h2>
 
-        <section className="space-y-3 rounded-xl border border-zinc-200 p-4">
-          <label className="flex items-center gap-2 text-sm font-medium text-zinc-700">
+        <section className="space-y-3 rounded-[var(--radius-card)] border border-border p-4">
+          <label className="flex items-center gap-2 text-sm font-medium text-foreground">
             <input
               type="checkbox"
               checked={policyForm.allow_current_year_order}
@@ -302,7 +302,7 @@ export default function LtfFinanceLicenseTypeDetailPage() {
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-600">{t("windowStartLabel")}</label>
+              <label className="text-xs font-medium text-muted">{t("windowStartLabel")}</label>
               <div className="grid grid-cols-2 gap-2">
                 <Select
                   value={String(policyForm.current_start_month)}
@@ -344,7 +344,7 @@ export default function LtfFinanceLicenseTypeDetailPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-600">{t("windowEndLabel")}</label>
+              <label className="text-xs font-medium text-muted">{t("windowEndLabel")}</label>
               <div className="grid grid-cols-2 gap-2">
                 <Select
                   value={String(policyForm.current_end_month)}
@@ -388,8 +388,8 @@ export default function LtfFinanceLicenseTypeDetailPage() {
           </div>
         </section>
 
-        <section className="space-y-3 rounded-xl border border-zinc-200 p-4">
-          <label className="flex items-center gap-2 text-sm font-medium text-zinc-700">
+        <section className="space-y-3 rounded-[var(--radius-card)] border border-border p-4">
+          <label className="flex items-center gap-2 text-sm font-medium text-foreground">
             <input
               type="checkbox"
               checked={policyForm.allow_next_year_preorder}
@@ -404,7 +404,7 @@ export default function LtfFinanceLicenseTypeDetailPage() {
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-600">{t("windowStartLabel")}</label>
+              <label className="text-xs font-medium text-muted">{t("windowStartLabel")}</label>
               <div className="grid grid-cols-2 gap-2">
                 <Select
                   value={String(policyForm.next_start_month)}
@@ -446,7 +446,7 @@ export default function LtfFinanceLicenseTypeDetailPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-600">{t("windowEndLabel")}</label>
+              <label className="text-xs font-medium text-muted">{t("windowEndLabel")}</label>
               <div className="grid grid-cols-2 gap-2">
                 <Select
                   value={String(policyForm.next_end_month)}

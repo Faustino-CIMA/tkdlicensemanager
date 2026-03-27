@@ -225,7 +225,7 @@ export default function ClubMembersBatchDeletePage() {
 
   return (
     <ClubAdminLayout title={t("batchDeleteMembersTitle")} subtitle={t("batchDeleteMembersSubtitle")}>
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
       {isLoading ? (
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
@@ -262,26 +262,26 @@ export default function ClubMembersBatchDeletePage() {
       ) : (
         <div className="space-y-5">
           <section className="grid gap-4 md:grid-cols-2">
-            <article className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">
-              <p className="text-xs uppercase tracking-wide text-zinc-500">
+            <article className="rounded-[var(--radius-card)] border border-border bg-card p-4 shadow-sm">
+              <p className="text-xs uppercase tracking-wide text-muted">
                 {t("batchDeleteMembersSelectedCountLabel")}
               </p>
-              <p className="mt-2 text-2xl font-semibold text-zinc-900">{selectedMembers.length}</p>
+              <p className="mt-2 text-2xl font-semibold text-foreground">{selectedMembers.length}</p>
             </article>
-            <article className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">
-              <p className="text-xs uppercase tracking-wide text-zinc-500">
+            <article className="rounded-[var(--radius-card)] border border-border bg-card p-4 shadow-sm">
+              <p className="text-xs uppercase tracking-wide text-muted">
                 {t("batchDeleteMembersCascadeLicensesLabel")}
               </p>
-              <p className="mt-2 text-2xl font-semibold text-zinc-900">{cascadeLicensesTotal}</p>
+              <p className="mt-2 text-2xl font-semibold text-foreground">{cascadeLicensesTotal}</p>
             </article>
           </section>
 
-          <section className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
+          <section className="rounded-[var(--radius-card)] border p-4 text-sm banner-danger">
             {t("batchDeleteMembersWarning")}
           </section>
 
           {progress ? (
-            <p className="text-sm text-zinc-600">
+            <p className="text-sm text-muted">
               {t("batchDeleteMembersDeletingProgress", {
                 current: progress.current,
                 total: progress.total,
@@ -290,8 +290,8 @@ export default function ClubMembersBatchDeletePage() {
           ) : null}
 
           {result ? (
-            <section className="space-y-3 rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">
-              <p className="text-sm font-medium text-zinc-900">
+            <section className="space-y-3 rounded-[var(--radius-card)] border border-border bg-card p-4 shadow-sm">
+              <p className="text-sm font-medium text-foreground">
                 {t("batchDeleteMembersResultLabel", {
                   deleted: result.deleted,
                   failed: result.failed,
@@ -299,10 +299,10 @@ export default function ClubMembersBatchDeletePage() {
               </p>
               {result.failedItems.length > 0 ? (
                 <div>
-                  <p className="text-sm font-medium text-zinc-700">
+                  <p className="text-sm font-medium text-foreground">
                     {t("batchDeleteMembersFailedItemsTitle")}
                   </p>
-                  <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-zinc-600">
+                  <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-muted">
                     {result.failedItems.map((item) => (
                       <li key={item}>{item}</li>
                     ))}
@@ -313,7 +313,7 @@ export default function ClubMembersBatchDeletePage() {
           ) : null}
 
           <section className="space-y-3">
-            <h2 className="text-sm font-semibold text-zinc-900">{t("batchDeleteMembersPreviewTitle")}</h2>
+            <h2 className="text-sm font-semibold text-foreground">{t("batchDeleteMembersPreviewTitle")}</h2>
             <EntityTable
               columns={[
                 { key: "memberLabel", header: t("memberLabel") },

@@ -99,10 +99,10 @@ export function TopBar() {
 
   if (pathname?.endsWith("/login")) {
     return (
-      <div className="flex items-center justify-between gap-3 px-6 py-4">
+      <div className="mx-6 mt-4 flex items-center justify-between gap-3 rounded-[var(--radius-card)] border border-border bg-card px-4 py-3 shadow-sm">
         <div className="flex items-center gap-3">
           <Image src="/ltf-logo.svg" alt="LTF Logo" width={120} height={36} className="h-9 w-auto" />
-          <span className="text-base font-semibold text-zinc-900">{t("appTitle")}</span>
+          <span className="text-base font-semibold text-foreground">{t("appTitle")}</span>
         </div>
         <LanguageSwitcher />
       </div>
@@ -110,17 +110,17 @@ export function TopBar() {
   }
 
   return (
-    <div className="flex items-center justify-between gap-3 px-6 py-4">
+    <div className="mx-6 mt-4 flex items-center justify-between gap-3 rounded-[var(--radius-card)] border border-border bg-card px-4 py-3 shadow-sm">
       <div className="flex items-center gap-5">
         <Image src="/ltf-logo.svg" alt="LTF Logo" width={120} height={36} className="h-9 w-auto" />
-        <span className="text-3xl font-semibold text-zinc-900">{t("appTitle")}</span>
+        <span className="text-2xl font-semibold text-foreground">{t("appTitle")}</span>
       </div>
       <div className="flex flex-col items-end gap-2">
         {hasToken && isDashboardRoute && me ? (
-          <div className="flex max-w-full items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-3 py-2 shadow-sm">
+          <div className="flex max-w-full items-center gap-2 rounded-[var(--radius-card)] border border-border bg-card px-3 py-2 shadow-sm">
             <div className="text-right">
-              <p className="text-xs text-zinc-500">{t("welcomeUser", { name: displayName })}</p>
-              <p className="text-xs text-zinc-600">{t("loginAsLabel", { username: me.username })}</p>
+              <p className="text-xs text-muted">{t("welcomeUser", { name: displayName })}</p>
+              <p className="text-xs text-muted">{t("loginAsLabel", { username: me.username })}</p>
             </div>
             <StatusBadge label={roleLabel} tone={roleTone} />
           </div>
@@ -128,12 +128,12 @@ export function TopBar() {
         <div className="flex flex-wrap items-center justify-end gap-4">
           {showClubSelector ? (
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-zinc-500">{t("selectedClubLabel")}</span>
+              <span className="text-sm font-medium text-muted">{t("selectedClubLabel")}</span>
               <Select
                 value={selectedClubId ? String(selectedClubId) : ""}
                 onValueChange={(value) => setSelectedClubId(Number(value))}
               >
-                <SelectTrigger className="min-w-[420px]">
+                <SelectTrigger className="min-w-[220px] sm:min-w-[320px] lg:min-w-[420px]">
                   <SelectValue placeholder={t("selectedClubPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>

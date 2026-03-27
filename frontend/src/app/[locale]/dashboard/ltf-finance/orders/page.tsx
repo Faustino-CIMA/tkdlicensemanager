@@ -423,24 +423,24 @@ export default function LtfFinanceOrdersPage() {
           title={t("ordersCancelledCountLabel")}
           value={String(orderCounts.cancelled ?? 0)}
         />
-        <div className="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
-          <p className="text-sm text-zinc-500">{t("licensePriceLabel")}</p>
+        <div className="rounded-[var(--radius-card)] border border-border bg-card p-5 shadow-sm">
+          <p className="text-sm text-muted">{t("licensePriceLabel")}</p>
           <div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1">
             {priceCardRows.length === 0 ? (
-              <p className="text-sm text-zinc-600">{t("noLicenseTypesSubtitle")}</p>
+              <p className="text-sm text-muted">{t("noLicenseTypesSubtitle")}</p>
             ) : (
               priceCardRows.map((row) => (
                 <div
                   key={row.id}
-                  className="flex items-start justify-between gap-3 rounded-lg border border-zinc-100 px-3 py-2"
+                  className="flex items-start justify-between gap-3 rounded-[var(--radius-form)] border border-border px-3 py-2"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-zinc-900">{row.name}</p>
+                    <p className="truncate text-sm font-medium text-foreground">{row.name}</p>
                     {row.effectiveFrom ? (
-                      <p className="text-xs text-zinc-500">{row.effectiveFrom}</p>
+                      <p className="text-xs text-muted">{row.effectiveFrom}</p>
                     ) : null}
                   </div>
-                  <p className="shrink-0 text-sm font-semibold text-zinc-900">{row.price}</p>
+                  <p className="shrink-0 text-sm font-semibold text-foreground">{row.price}</p>
                 </div>
               ))
             )}
@@ -456,7 +456,7 @@ export default function LtfFinanceOrdersPage() {
           onChange={(event) => setSearchInput(event.target.value)}
         />
         <div className="flex items-center gap-3">
-          <span className="text-sm text-zinc-600">{common("rowsPerPageLabel")}</span>
+          <span className="text-sm text-muted">{common("rowsPerPageLabel")}</span>
           <Select value={pageSize} onValueChange={setPageSize}>
             <SelectTrigger className="w-[120px]">
               <SelectValue />
@@ -478,9 +478,9 @@ export default function LtfFinanceOrdersPage() {
         <EmptyState title={t("noOrdersTitle")} description={t("noOrdersSubtitle")} />
       ) : (
         <div className="space-y-3">
-          <div className="overflow-x-auto rounded-2xl border border-zinc-100 bg-white shadow-sm">
+          <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-card shadow-sm">
             <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+              <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
                 <tr>
                   <th className="w-10 px-4 py-3 font-medium" />
                   <th className="px-4 py-3 font-medium">{t("clubLabel")}</th>
@@ -490,13 +490,13 @@ export default function LtfFinanceOrdersPage() {
                   <th className="px-4 py-3 font-medium">{t("ordersCancelledCountLabel")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-100">
+              <tbody className="divide-y divide-border">
                 {groupedClubRows.map((clubGroup) => {
                   const clubExpanded = expandedClubSet.has(clubGroup.clubId);
                   return (
                     <Fragment key={clubGroup.clubId}>
                       <tr
-                        className="cursor-pointer text-zinc-700 hover:bg-zinc-50"
+                        className="cursor-pointer text-foreground hover:bg-secondary"
                         onClick={() => toggleClubExpanded(clubGroup.clubId)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
@@ -508,7 +508,7 @@ export default function LtfFinanceOrdersPage() {
                         role="button"
                         aria-expanded={clubExpanded}
                       >
-                        <td className="px-4 py-3 text-zinc-500">
+                        <td className="px-4 py-3 text-muted">
                           {clubExpanded ? (
                             <ChevronDown className="h-4 w-4" />
                           ) : (
@@ -522,11 +522,11 @@ export default function LtfFinanceOrdersPage() {
                         <td className="px-4 py-3">{clubGroup.cancelledCount}</td>
                       </tr>
                       {clubExpanded ? (
-                        <tr className="bg-zinc-50/60">
+                        <tr className="bg-secondary/60">
                           <td colSpan={6} className="px-6 py-3">
-                            <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+                            <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-card">
                               <table className="min-w-full text-left text-sm">
-                                <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+                                <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
                                   <tr>
                                     <th className="w-10 px-4 py-2 font-medium" />
                                     <th className="px-4 py-2 font-medium">{t("yearLabel")}</th>
@@ -536,14 +536,14 @@ export default function LtfFinanceOrdersPage() {
                                     <th className="px-4 py-2 font-medium">{t("ordersCancelledCountLabel")}</th>
                                   </tr>
                                 </thead>
-                                <tbody className="divide-y divide-zinc-100">
+                                <tbody className="divide-y divide-border">
                                   {clubGroup.years.map((yearGroup) => {
                                     const yearKey = getYearKey(clubGroup.clubId, yearGroup.year);
                                     const yearExpanded = expandedYearSet.has(yearKey);
                                     return (
                                       <Fragment key={yearKey}>
                                         <tr
-                                          className="cursor-pointer text-zinc-700 hover:bg-zinc-50"
+                                          className="cursor-pointer text-foreground hover:bg-secondary"
                                           onClick={() => toggleYearExpanded(clubGroup.clubId, yearGroup.year)}
                                           onKeyDown={(event) => {
                                             if (event.key === "Enter" || event.key === " ") {
@@ -555,7 +555,7 @@ export default function LtfFinanceOrdersPage() {
                                           role="button"
                                           aria-expanded={yearExpanded}
                                         >
-                                          <td className="px-4 py-2 text-zinc-500">
+                                          <td className="px-4 py-2 text-muted">
                                             {yearExpanded ? (
                                               <ChevronDown className="h-4 w-4" />
                                             ) : (
@@ -571,11 +571,11 @@ export default function LtfFinanceOrdersPage() {
                                           <td className="px-4 py-2">{yearGroup.cancelledCount}</td>
                                         </tr>
                                         {yearExpanded ? (
-                                          <tr className="bg-zinc-50/50">
+                                          <tr className="bg-secondary/50">
                                             <td colSpan={6} className="px-6 py-3">
-                                              <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
+                                              <div className="overflow-x-auto rounded-[var(--radius-form)] border border-border bg-card">
                                                 <table className="min-w-full text-left text-sm">
-                                                  <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+                                                  <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
                                                     <tr>
                                                       <th className="px-4 py-2 font-medium">{t("orderNumberLabel")}</th>
                                                       <th className="px-4 py-2 font-medium">{t("statusLabel")}</th>
@@ -584,13 +584,13 @@ export default function LtfFinanceOrdersPage() {
                                                       <th className="px-4 py-2 font-medium">{t("createdAtLabel")}</th>
                                                     </tr>
                                                   </thead>
-                                                  <tbody className="divide-y divide-zinc-100">
+                                                  <tbody className="divide-y divide-border">
                                                     {yearGroup.orders.map((order) => {
                                                       const meta = getOrderStatusMeta(order.status);
                                                       return (
                                                         <tr
                                                           key={order.id}
-                                                          className="cursor-pointer text-zinc-700 hover:bg-zinc-50"
+                                                          className="cursor-pointer text-foreground hover:bg-secondary"
                                                           onClick={() => {
                                                             router.push(
                                                               `/${locale}/dashboard/ltf-finance/orders/${order.id}`
@@ -634,18 +634,18 @@ export default function LtfFinanceOrdersPage() {
               </tbody>
             </table>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-600">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
             <span>{t("pageLabel", { current: currentPage, total: totalPages })}</span>
             <div className="flex gap-2">
               <button
-                className="rounded-full border border-zinc-200 px-3 py-1"
+                className="rounded-[var(--radius-form)] border border-border px-3 py-1"
                 onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
               >
                 {t("previousPage")}
               </button>
               <button
-                className="rounded-full border border-zinc-200 px-3 py-1"
+                className="rounded-[var(--radius-form)] border border-border px-3 py-1"
                 onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
                 disabled={currentPage === totalPages}
               >
@@ -656,7 +656,7 @@ export default function LtfFinanceOrdersPage() {
         </div>
       )}
 
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
     </LtfFinanceLayout>
   );
 }

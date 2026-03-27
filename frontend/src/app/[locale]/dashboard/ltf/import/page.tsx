@@ -85,9 +85,9 @@ export default function LtfImportPage() {
 
   return (
     <LtfAdminLayout title={t("importWizardTitle")} subtitle={t("wizardSubtitleLtf")}>
-      {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
+      {error ? <p className="mb-4 text-sm text-destructive">{error}</p> : null}
       {isLoading && clubOptions.length === 0 ? (
-        <p className="mb-4 text-sm text-zinc-600">{ltfT("loadingTitle")}</p>
+        <p className="mb-4 text-sm text-muted">{ltfT("loadingTitle")}</p>
       ) : null}
       <ImportWizardPage
         allowedTypes={["clubs", "members"]}

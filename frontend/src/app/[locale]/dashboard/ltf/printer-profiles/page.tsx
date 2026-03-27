@@ -245,8 +245,8 @@ export default function LtfAdminPrinterProfilesPage() {
 
   return (
     <LtfAdminLayout title={t("printerProfilesTitle")} subtitle={t("printerProfilesSubtitle")}>
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
-      {successMessage ? <p className="text-sm text-emerald-700">{successMessage}</p> : null}
+      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+      {successMessage ? <p className="text-sm text-success">{successMessage}</p> : null}
 
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -327,19 +327,19 @@ export default function LtfAdminPrinterProfilesPage() {
       >
         <form className="grid gap-4" onSubmit={handleSubmit(onSubmit)}>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("printerProfilesNameLabel")}</label>
+            <label className="text-sm font-medium text-foreground">{t("printerProfilesNameLabel")}</label>
             <Input
               placeholder={t("printerProfilesNamePlaceholder")}
               {...register("name", {
                 validate: (value) => value.trim().length > 0 || t("printerProfilesNameRequiredError"),
               })}
             />
-            {errors.name ? <p className="text-sm text-red-600">{errors.name.message}</p> : null}
+            {errors.name ? <p className="text-sm text-destructive">{errors.name.message}</p> : null}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-700">
+              <label className="text-sm font-medium text-foreground">
                 {t("printerProfilesXOffsetLabel")}
               </label>
               <Input
@@ -353,12 +353,12 @@ export default function LtfAdminPrinterProfilesPage() {
                 })}
               />
               {errors.x_offset_mm ? (
-                <p className="text-sm text-red-600">{errors.x_offset_mm.message}</p>
+                <p className="text-sm text-destructive">{errors.x_offset_mm.message}</p>
               ) : null}
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-700">
+              <label className="text-sm font-medium text-foreground">
                 {t("printerProfilesYOffsetLabel")}
               </label>
               <Input
@@ -372,19 +372,19 @@ export default function LtfAdminPrinterProfilesPage() {
                 })}
               />
               {errors.y_offset_mm ? (
-                <p className="text-sm text-red-600">{errors.y_offset_mm.message}</p>
+                <p className="text-sm text-destructive">{errors.y_offset_mm.message}</p>
               ) : null}
             </div>
           </div>
 
-          <p className="text-xs text-zinc-500">{t("printerProfilesOffsetHelpText")}</p>
+          <p className="text-xs text-muted">{t("printerProfilesOffsetHelpText")}</p>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">
+            <label className="text-sm font-medium text-foreground">
               {t("printerProfilesDescriptionLabel")}
             </label>
             <textarea
-              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500"
+              className="w-full rounded-md border border-border px-3 py-2 text-sm outline-none focus:border-foreground"
               rows={4}
               placeholder={t("printerProfilesDescriptionPlaceholder")}
               {...register("description")}

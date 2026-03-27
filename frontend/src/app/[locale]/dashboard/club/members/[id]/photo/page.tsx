@@ -58,7 +58,7 @@ export default function ClubMemberPhotoPage() {
           <Link href={backHref}>{t("backToMembers")}</Link>
         </Button>
 
-        {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+        {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
         {isLoading ? (
           <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />

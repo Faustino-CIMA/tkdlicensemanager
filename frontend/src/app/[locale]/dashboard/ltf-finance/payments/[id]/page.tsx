@@ -175,28 +175,28 @@ export default function LtfFinancePaymentDetailPage() {
         </Button>
       </div>
 
-      <section className="rounded-3xl border border-zinc-100 bg-white p-6 shadow-sm">
-        <div className="grid gap-4 text-sm text-zinc-700 md:grid-cols-2">
+      <section className="rounded-[var(--radius-card)] border border-border bg-card p-6 shadow-sm">
+        <div className="grid gap-4 text-sm text-foreground md:grid-cols-2">
           <div className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-500">{t("invoiceNumberLabel")}</span>
+            <span className="text-xs text-muted">{t("invoiceNumberLabel")}</span>
             <span className="font-medium">{invoice.invoice_number}</span>
           </div>
           <div className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-500">{t("statusLabel")}</span>
+            <span className="text-xs text-muted">{t("statusLabel")}</span>
             <StatusBadge label={statusMeta.label} tone={statusMeta.tone} />
           </div>
           <div className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-500">{t("orderNumberLabel")}</span>
+            <span className="text-xs text-muted">{t("orderNumberLabel")}</span>
             <span className="font-medium">{order?.order_number ?? "-"}</span>
           </div>
           <div className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-500">{t("totalLabel")}</span>
+            <span className="text-xs text-muted">{t("totalLabel")}</span>
             <span className="font-medium">
               {invoice.total} {invoice.currency}
             </span>
           </div>
           <div className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-500">{t("paidAtLabel")}</span>
+            <span className="text-xs text-muted">{t("paidAtLabel")}</span>
             <span className="font-medium">
               {formatDisplayDateTime(invoice.paid_at)}
             </span>
@@ -205,7 +205,7 @@ export default function LtfFinancePaymentDetailPage() {
       </section>
 
       <section className="mt-6">
-        <h2 className="mb-3 text-sm font-semibold text-zinc-700">
+        <h2 className="mb-3 text-sm font-semibold text-foreground">
           {t("paymentHistoryTitle")}
         </h2>
         {paymentRows.length === 0 ? (

@@ -458,7 +458,7 @@ export default function LtfAdminLicensesPage() {
 
   return (
     <LtfAdminLayout title={t("licensesTitle")} subtitle={t("licensesSubtitle")}>
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -500,7 +500,7 @@ export default function LtfAdminLicensesPage() {
             </Select>
             <Button onClick={startCreate}>{t("createLicense")}</Button>
           </div>
-          <div className="flex items-center gap-2 text-sm text-zinc-500">
+          <div className="flex items-center gap-2 text-sm text-muted">
             {t("pageLabel", { current: currentPage, total: totalPages })}
             <Button
               variant="outline"
@@ -526,9 +526,9 @@ export default function LtfAdminLicensesPage() {
         ) : groupedClubRows.length === 0 ? (
           <EmptyState title={t("noResultsTitle")} description={t("noLicensesResultsSubtitle")} />
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-zinc-100 bg-white shadow-sm">
+          <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-card shadow-sm">
             <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+              <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
                 <tr>
                   <th className="w-10 px-4 py-3 font-medium" />
                   <th className="px-4 py-3 font-medium">{t("clubLabel")}</th>
@@ -538,13 +538,13 @@ export default function LtfAdminLicensesPage() {
                   <th className="px-4 py-3 font-medium">{t("statusExpired")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-100">
+              <tbody className="divide-y divide-border">
                 {pagedClubRows.map((clubGroup) => {
                   const clubExpanded = expandedClubSet.has(clubGroup.clubId);
                   return (
                     <Fragment key={clubGroup.clubId}>
                       <tr
-                        className="cursor-pointer text-zinc-700 hover:bg-zinc-50"
+                        className="cursor-pointer text-foreground hover:bg-secondary"
                         onClick={() => toggleClubExpanded(clubGroup.clubId)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
@@ -556,7 +556,7 @@ export default function LtfAdminLicensesPage() {
                         role="button"
                         aria-expanded={clubExpanded}
                       >
-                        <td className="px-4 py-3 text-zinc-500">
+                        <td className="px-4 py-3 text-muted">
                           {clubExpanded ? (
                             <ChevronDown className="h-4 w-4" />
                           ) : (
@@ -570,11 +570,11 @@ export default function LtfAdminLicensesPage() {
                         <td className="px-4 py-3">{clubGroup.expiredCount}</td>
                       </tr>
                       {clubExpanded ? (
-                        <tr className="bg-zinc-50/60">
+                        <tr className="bg-secondary/60">
                           <td colSpan={6} className="px-6 py-3">
-                            <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+                            <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-card">
                               <table className="min-w-full text-left text-sm">
-                                <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+                                <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
                                   <tr>
                                     <th className="w-10 px-4 py-2 font-medium" />
                                     <th className="px-4 py-2 font-medium">{t("yearLabel")}</th>
@@ -584,14 +584,14 @@ export default function LtfAdminLicensesPage() {
                                     <th className="px-4 py-2 font-medium">{t("statusExpired")}</th>
                                   </tr>
                                 </thead>
-                                <tbody className="divide-y divide-zinc-100">
+                                <tbody className="divide-y divide-border">
                                   {clubGroup.years.map((yearGroup) => {
                                     const yearKey = getYearKey(clubGroup.clubId, yearGroup.year);
                                     const yearExpanded = expandedYearSet.has(yearKey);
                                     return (
                                       <Fragment key={yearKey}>
                                         <tr
-                                          className="cursor-pointer text-zinc-700 hover:bg-zinc-50"
+                                          className="cursor-pointer text-foreground hover:bg-secondary"
                                           onClick={() => toggleYearExpanded(clubGroup.clubId, yearGroup.year)}
                                           onKeyDown={(event) => {
                                             if (event.key === "Enter" || event.key === " ") {
@@ -603,7 +603,7 @@ export default function LtfAdminLicensesPage() {
                                           role="button"
                                           aria-expanded={yearExpanded}
                                         >
-                                          <td className="px-4 py-2 text-zinc-500">
+                                          <td className="px-4 py-2 text-muted">
                                             {yearExpanded ? (
                                               <ChevronDown className="h-4 w-4" />
                                             ) : (
@@ -617,11 +617,11 @@ export default function LtfAdminLicensesPage() {
                                           <td className="px-4 py-2">{yearGroup.expiredCount}</td>
                                         </tr>
                                         {yearExpanded ? (
-                                          <tr className="bg-zinc-50/50">
+                                          <tr className="bg-secondary/50">
                                             <td colSpan={6} className="px-6 py-3">
-                                              <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
+                                              <div className="overflow-x-auto rounded-[var(--radius-form)] border border-border bg-card">
                                                 <table className="min-w-full text-left text-sm">
-                                                  <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+                                                  <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
                                                     <tr>
                                                       <th className="w-10 px-4 py-2 font-medium">
                                                         <input
@@ -638,14 +638,14 @@ export default function LtfAdminLicensesPage() {
                                                       <th className="px-4 py-2 font-medium">{t("actionsLabel")}</th>
                                                     </tr>
                                                   </thead>
-                                                  <tbody className="divide-y divide-zinc-100">
+                                                  <tbody className="divide-y divide-border">
                                                     {yearGroup.licenses.map((license) => {
                                                       const member = memberById.get(license.member);
                                                       const licenseType = licenseTypeById.get(
                                                         license.license_type
                                                       );
                                                       return (
-                                                        <tr key={license.id} className="text-zinc-700">
+                                                        <tr key={license.id} className="text-foreground">
                                                           <td className="px-4 py-2">
                                                             <input
                                                               type="checkbox"
@@ -731,7 +731,7 @@ export default function LtfAdminLicensesPage() {
       >
         <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
           <div className="space-y-2 md:col-span-2">
-            <label className="text-sm font-medium text-zinc-700">{t("clubLabel")}</label>
+            <label className="text-sm font-medium text-foreground">{t("clubLabel")}</label>
             <Select
               value={watch("club")}
               onValueChange={(value) => setValue("club", value, { shouldValidate: true })}
@@ -747,11 +747,11 @@ export default function LtfAdminLicensesPage() {
                 ))}
               </SelectContent>
             </Select>
-            {errors.club ? <p className="text-sm text-red-600">{errors.club.message}</p> : null}
+            {errors.club ? <p className="text-sm text-destructive">{errors.club.message}</p> : null}
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("memberLabel")}</label>
+            <label className="text-sm font-medium text-foreground">{t("memberLabel")}</label>
             <Select
               value={watch("member")}
               onValueChange={(value) => setValue("member", value, { shouldValidate: true })}
@@ -767,11 +767,11 @@ export default function LtfAdminLicensesPage() {
                 ))}
               </SelectContent>
             </Select>
-            {errors.member ? <p className="text-sm text-red-600">{errors.member.message}</p> : null}
+            {errors.member ? <p className="text-sm text-destructive">{errors.member.message}</p> : null}
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("licenseTypeLabel")}</label>
+            <label className="text-sm font-medium text-foreground">{t("licenseTypeLabel")}</label>
             <Select
               value={watch("license_type")}
               onValueChange={(value) => setValue("license_type", value, { shouldValidate: true })}
@@ -788,18 +788,18 @@ export default function LtfAdminLicensesPage() {
               </SelectContent>
             </Select>
             {errors.license_type ? (
-              <p className="text-sm text-red-600">{errors.license_type.message}</p>
+              <p className="text-sm text-destructive">{errors.license_type.message}</p>
             ) : null}
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("yearLabel")}</label>
+            <label className="text-sm font-medium text-foreground">{t("yearLabel")}</label>
             <Input type="number" min="2000" {...register("year")} />
-            {errors.year ? <p className="text-sm text-red-600">{errors.year.message}</p> : null}
+            {errors.year ? <p className="text-sm text-destructive">{errors.year.message}</p> : null}
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("statusLabel")}</label>
+            <label className="text-sm font-medium text-foreground">{t("statusLabel")}</label>
             <Select
               value={watch("status")}
               onValueChange={(value) =>

@@ -29,8 +29,8 @@ export function DeleteConfirmModal({
   return (
     <Modal isOpen={isOpen} onClose={onCancel} title={title} description={description}>
       {listItems && listItems.length > 0 ? (
-        <div className="rounded-xl border border-zinc-100 bg-zinc-50 p-4 text-sm text-zinc-600">
-          {listTitle ? <p className="font-medium text-zinc-700">{listTitle}</p> : null}
+        <div className="rounded-[var(--radius-card)] border border-border bg-secondary p-4 text-sm text-muted">
+          {listTitle ? <p className="font-medium text-foreground">{listTitle}</p> : null}
           <ol className="mt-2 list-decimal space-y-1 pl-5">
             {listItems.map((item) => (
               <li key={item}>{item}</li>

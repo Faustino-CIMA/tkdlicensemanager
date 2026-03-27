@@ -193,8 +193,8 @@ export default function ClubPrintJobsPage() {
 
   return (
     <ClubAdminLayout title={t("printJobsTitle")} subtitle={t("printJobsSubtitle")}>
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
-      {successMessage ? <p className="text-sm text-emerald-700">{successMessage}</p> : null}
+      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+      {successMessage ? <p className="text-sm text-success">{successMessage}</p> : null}
 
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
@@ -237,9 +237,9 @@ export default function ClubPrintJobsPage() {
         ) : filteredJobs.length === 0 ? (
           <EmptyState title={t("printJobsEmptyTitle")} description={t("printJobsEmptySubtitle")} />
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-zinc-100 bg-white shadow-sm">
+          <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-card shadow-sm">
             <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+              <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
                 <tr>
                   <th className="px-4 py-3 font-medium">{t("printJobLabel")}</th>
                   <th className="px-4 py-3 font-medium">{t("clubLabel")}</th>
@@ -251,12 +251,12 @@ export default function ClubPrintJobsPage() {
                   <th className="px-4 py-3 font-medium">{t("actionsLabel")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-100">
+              <tbody className="divide-y divide-border">
                 {filteredJobs.map((job) => {
                   const statusMeta = getStatusMeta(job.status);
                   const isJobBusy = activeJobId === job.id;
                   return (
-                    <tr key={job.id} className="text-zinc-700">
+                    <tr key={job.id} className="text-foreground">
                       <td className="px-4 py-3 font-medium">{job.job_number}</td>
                       <td className="px-4 py-3">{clubNameById[job.club] || String(job.club)}</td>
                       <td className="px-4 py-3">#{job.template_version}</td>
