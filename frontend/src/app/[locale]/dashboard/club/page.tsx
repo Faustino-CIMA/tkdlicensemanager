@@ -345,24 +345,19 @@ export default function ClubAdminOverviewPage() {
       ) : clubs.length === 0 ? (
         <EmptyState title={t("overviewEmptyTitle")} description={t("overviewEmptySubtitle")} />
       ) : (
-        <div className="space-y-5">
-          <section className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-border bg-card px-4 py-3 shadow-sm">
-            <p className="text-xs text-muted">
+        <div className="space-y-6">
+          <section className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] px-4 py-3 shadow-sm">
+            <p className="text-xs text-[var(--muted)]">
               {lastRefreshAt
                 ? t("lastRefreshLabel", { time: formatDisplayDateTime(lastRefreshAt) })
                 : t("lastRefreshNever")}
             </p>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => loadOverview({ silent: true })}
-              disabled={isRefreshing}
-            >
+            <Button variant="outline" onClick={() => loadOverview({ silent: true })} disabled={isRefreshing}>
               {isRefreshing ? t("refreshingAction") : t("refreshAction")}
             </Button>
           </section>
 
-          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <section className="grid gap-4 md:grid-cols-2 md:gap-5 xl:grid-cols-4">
             <SummaryCard title={t("totalMembers")} value={String(filteredMembers.length)} />
             <SummaryCard title={t("activeMembers")} value={String(activeMembers.length)} />
             <SummaryCard title={t("totalLicenses")} value={String(filteredLicenses.length)} />
@@ -379,8 +374,8 @@ export default function ClubAdminOverviewPage() {
             />
           </section>
 
-          <section className="space-y-3 rounded-[var(--radius-card)] border border-border bg-card p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-foreground">{t("actionQueueTitle")}</h2>
+          <section className="space-y-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-[var(--foreground)]">{t("actionQueueTitle")}</h2>
             {visibleQueueItems.length === 0 ? (
               <p className="text-sm text-muted">{t("actionQueueAllClear")}</p>
             ) : (
@@ -398,7 +393,7 @@ export default function ClubAdminOverviewPage() {
                     </div>
                     <Link
                       href={item.href}
-                      className="rounded-[var(--radius-form)] border border-current px-3 py-1 text-xs font-medium"
+                      className="inline-flex min-h-11 items-center justify-center rounded-[var(--radius-form)] border border-current px-4 text-xs font-semibold"
                     >
                       {t("openAction")}
                     </Link>
@@ -408,9 +403,9 @@ export default function ClubAdminOverviewPage() {
             )}
           </section>
 
-          <section className="grid gap-4 xl:grid-cols-2">
-            <div className="rounded-[var(--radius-card)] border border-border bg-card p-4 shadow-sm">
-              <h2 className="text-sm font-semibold text-foreground">{t("licensesDistributionTitle")}</h2>
+          <section className="grid gap-4 md:gap-5 xl:grid-cols-2">
+            <div className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
+              <h2 className="text-sm font-semibold text-[var(--foreground)]">{t("licensesDistributionTitle")}</h2>
               <div className="mt-3 space-y-2 text-sm text-foreground">
                 <p>
                   {t("activeLicenses")}: <span className="font-semibold">{activeLicenses.length}</span>
@@ -426,8 +421,8 @@ export default function ClubAdminOverviewPage() {
                 </p>
               </div>
             </div>
-            <div className="rounded-[var(--radius-card)] border border-border bg-card p-4 shadow-sm">
-              <h2 className="text-sm font-semibold text-foreground">{t("invoicesDistributionTitle")}</h2>
+            <div className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
+              <h2 className="text-sm font-semibold text-[var(--foreground)]">{t("invoicesDistributionTitle")}</h2>
               <div className="mt-3 space-y-2 text-sm text-foreground">
                 <p>
                   {t("invoiceStatusDraft")}: <span className="font-semibold">{invoicesByStatus.draft}</span>

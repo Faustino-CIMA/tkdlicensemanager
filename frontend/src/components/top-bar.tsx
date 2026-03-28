@@ -97,12 +97,14 @@ export function TopBar() {
     : "";
   const roleTone = me?.role === "ltf_finance" ? "warning" : me?.role === "club_admin" ? "success" : "info";
 
+  const titleClass = "text-xl font-semibold tracking-tight text-[var(--foreground)]";
+
   if (pathname?.endsWith("/login")) {
     return (
-      <div className="mx-6 mt-4 flex items-center justify-between gap-3 rounded-[var(--radius-card)] border border-border bg-card px-4 py-3 shadow-sm">
-        <div className="flex items-center gap-3">
-          <Image src="/ltf-logo.svg" alt="LTF Logo" width={120} height={36} className="h-9 w-auto" />
-          <span className="text-base font-semibold text-foreground">{t("appTitle")}</span>
+      <div className="sticky top-0 z-50 mx-6 mt-4 flex min-h-[3.25rem] items-center justify-between gap-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] px-4 py-2 shadow-sm">
+        <div className="flex min-w-0 items-center gap-3">
+          <Image src="/ltf-logo.svg" alt="LTF" width={120} height={36} className="h-9 w-auto shrink-0" />
+          <span className={titleClass}>{t("appTitle")}</span>
         </div>
         <LanguageSwitcher />
       </div>
@@ -110,47 +112,54 @@ export function TopBar() {
   }
 
   return (
-    <div className="mx-6 mt-4 flex items-center justify-between gap-3 rounded-[var(--radius-card)] border border-border bg-card px-4 py-3 shadow-sm">
-      <div className="flex items-center gap-5">
-        <Image src="/ltf-logo.svg" alt="LTF Logo" width={120} height={36} className="h-9 w-auto" />
-        <span className="text-2xl font-semibold text-foreground">{t("appTitle")}</span>
+    <div className="sticky top-0 z-50 mx-6 mt-4 flex min-h-[3.25rem] flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] px-4 py-3 shadow-sm">
+      <div className="flex min-w-0 items-center gap-4">
+        <Image src="/ltf-logo.svg" alt="LTF" width={120} height={36} className="h-9 w-auto shrink-0" />
+        <span className={titleClass}>{t("appTitle")}</span>
       </div>
-      <div className="flex flex-col items-end gap-2">
+
+      <div className="flex w-full min-w-0 flex-1 basis-full flex-wrap items-center justify-end gap-x-4 gap-y-3 sm:w-auto sm:basis-auto lg:flex-nowrap">
         {hasToken && isDashboardRoute && me ? (
-          <div className="flex max-w-full items-center gap-2 rounded-[var(--radius-card)] border border-border bg-card px-3 py-2 shadow-sm">
-            <div className="text-right">
-              <p className="text-xs text-muted">{t("welcomeUser", { name: displayName })}</p>
-              <p className="text-xs text-muted">{t("loginAsLabel", { username: me.username })}</p>
+          <>
+            <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 sm:gap-3">
+              <div className="min-w-0 text-right">
+                <p className="truncate text-xs text-[var(--muted)]">{t("welcomeUser", { name: displayName })}</p>
+                <p className="truncate text-xs text-[var(--muted)]">{t("loginAsLabel", { username: me.username })}</p>
+              </div>
+              <StatusBadge label={roleLabel} tone={roleTone} />
             </div>
-            <StatusBadge label={roleLabel} tone={roleTone} />
+            <div
+              className="hidden h-9 w-px shrink-0 bg-[var(--border)] sm:block"
+              aria-hidden
+            />
+          </>
+        ) : null}
+
+        {showClubSelector ? (
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="shrink-0 text-sm font-medium text-[var(--muted)]">{t("selectedClubLabel")}</span>
+            <Select
+              value={selectedClubId ? String(selectedClubId) : ""}
+              onValueChange={(value) => setSelectedClubId(Number(value))}
+            >
+              <SelectTrigger className="min-w-[220px] sm:min-w-[280px] lg:min-w-[360px]">
+                <SelectValue placeholder={t("selectedClubPlaceholder")} />
+              </SelectTrigger>
+              <SelectContent>
+                {clubs.map((club) => (
+                  <SelectItem key={club.id} value={String(club.id)}>
+                    {club.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         ) : null}
-        <div className="flex flex-wrap items-center justify-end gap-4">
-          {showClubSelector ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-muted">{t("selectedClubLabel")}</span>
-              <Select
-                value={selectedClubId ? String(selectedClubId) : ""}
-                onValueChange={(value) => setSelectedClubId(Number(value))}
-              >
-                <SelectTrigger className="min-w-[220px] sm:min-w-[320px] lg:min-w-[420px]">
-                  <SelectValue placeholder={t("selectedClubPlaceholder")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {clubs.map((club) => (
-                    <SelectItem key={club.id} value={String(club.id)}>
-                      {club.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : null}
-          <LanguageSwitcher />
-          <Button variant="outline" onClick={handleAuthClick}>
-            {hasToken ? t("signOut") : t("signIn")}
-          </Button>
-        </div>
+
+        <LanguageSwitcher />
+        <Button variant="outline" onClick={handleAuthClick}>
+          {hasToken ? t("signOut") : t("signIn")}
+        </Button>
       </div>
     </div>
   );

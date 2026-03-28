@@ -88,24 +88,19 @@ export default function LtfAdminOverviewPage() {
       ) : !overview ? (
         <EmptyState title={t("overviewEmptyTitle")} description={t("overviewEmptySubtitle")} />
       ) : (
-        <div className="space-y-5">
-          <section className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-border bg-card px-4 py-3 shadow-sm">
-            <p className="text-xs text-muted">
+        <div className="space-y-6">
+          <section className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] px-4 py-3 shadow-sm">
+            <p className="text-xs text-[var(--muted)]">
               {lastRefreshAt
                 ? t("lastRefreshLabel", { time: formatDisplayDateTime(lastRefreshAt) })
                 : t("lastRefreshNever")}
             </p>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => loadOverview({ silent: true })}
-              disabled={isRefreshing}
-            >
+            <Button variant="outline" onClick={() => loadOverview({ silent: true })} disabled={isRefreshing}>
               {isRefreshing ? t("refreshingAction") : t("refreshAction")}
             </Button>
           </section>
 
-          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <section className="grid gap-4 md:grid-cols-2 md:gap-5 xl:grid-cols-4">
             <SummaryCard title={t("totalClubs")} value={String(overview.cards.total_clubs)} />
             <SummaryCard title={t("activeMembers")} value={String(overview.cards.active_members)} />
             <SummaryCard title={t("activeLicenses")} value={String(overview.cards.active_licenses)} />
@@ -119,8 +114,8 @@ export default function LtfAdminOverviewPage() {
             />
           </section>
 
-          <section className="space-y-3 rounded-[var(--radius-card)] border border-border bg-card p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-foreground">{t("actionQueueTitle")}</h2>
+          <section className="space-y-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-[var(--foreground)]">{t("actionQueueTitle")}</h2>
             {queueWithFindings.length === 0 ? (
               <p className="text-sm text-muted">{t("actionQueueAllClear")}</p>
             ) : (
@@ -135,7 +130,7 @@ export default function LtfAdminOverviewPage() {
                       <p className="text-xs opacity-90">{t("actionQueueCountLabel", { count: item.count })}</p>
                     </div>
                     <Link
-                      className="rounded-[var(--radius-form)] border border-current px-3 py-1 text-xs font-medium"
+                      className="inline-flex min-h-11 items-center justify-center rounded-[var(--radius-form)] border border-current px-4 text-xs font-semibold"
                       href={`/${locale}${item.link.path}`}
                     >
                       {t("openAction")}
@@ -146,8 +141,8 @@ export default function LtfAdminOverviewPage() {
             )}
           </section>
 
-          <section className="space-y-3 rounded-[var(--radius-card)] border border-border bg-card p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-foreground">{t("topClubsTitle")}</h2>
+          <section className="space-y-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-[var(--foreground)]">{t("topClubsTitle")}</h2>
             {overview.top_clubs.length === 0 ? (
               <p className="text-sm text-muted">{t("topClubsEmpty")}</p>
             ) : (

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
@@ -63,16 +64,26 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background px-6">
-      <div className="w-full max-w-md rounded-[var(--radius-card)] border border-border bg-card p-8 text-card-foreground shadow-sm">
-        <h1 className="text-2xl font-semibold text-foreground">{t("loginTitle")}</h1>
-        <p className="mt-2 text-sm text-muted">
-          Use your LTF credentials to access the dashboard.
-        </p>
+    <main className="flex min-h-screen items-center justify-center bg-background px-6 py-10">
+      <div className="w-full max-w-md rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-8 text-[var(--surface-foreground)] shadow-sm">
+        <div className="flex flex-col items-center text-center">
+          <Image
+            src="/ltf-logo.svg"
+            alt="LTF"
+            width={160}
+            height={48}
+            className="h-10 w-auto"
+            priority
+          />
+          <h1 className="mt-6 text-2xl font-semibold tracking-tight text-[var(--foreground)]">
+            {t("loginTitle")}
+          </h1>
+          <p className="mt-2 max-w-sm text-sm leading-relaxed text-[var(--muted)]">{t("loginSubtitle")}</p>
+        </div>
 
-        <form className="mt-6 space-y-4" onSubmit={onSubmit} noValidate>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground" htmlFor="login-username">
+        <form className="mt-8 space-y-5" onSubmit={onSubmit} noValidate>
+          <div className="space-y-2 text-left">
+            <label className="text-sm font-medium text-[var(--foreground)]" htmlFor="login-username">
               {t("username")}
             </label>
             <Input
@@ -87,8 +98,8 @@ export default function LoginPage() {
             ) : null}
           </div>
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground" htmlFor="login-password">
+          <div className="space-y-2 text-left">
+            <label className="text-sm font-medium text-[var(--foreground)]" htmlFor="login-password">
               {t("password")}
             </label>
             <Input
@@ -104,17 +115,20 @@ export default function LoginPage() {
             ) : null}
           </div>
 
-          {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+          {errorMessage ? <p className="text-center text-sm text-destructive">{errorMessage}</p> : null}
           {showVerifyLink ? (
-            <p className="text-sm text-muted">
+            <p className="text-center text-sm text-[var(--muted)]">
               {t("verifyPrompt")}{" "}
-              <Link className="font-medium text-foreground" href={`/${locale}/verify-email`}>
+              <Link
+                className="font-medium text-[var(--foreground)] underline-offset-4 hover:underline"
+                href={`/${locale}/verify-email`}
+              >
                 {t("verifyLink")}
               </Link>
             </p>
           ) : null}
 
-          <Button className="w-full" type="submit" disabled={isSubmitting}>
+          <Button className="w-full text-base font-semibold" type="submit" disabled={isSubmitting}>
             {isSubmitting ? t("loading") : t("submit")}
           </Button>
         </form>

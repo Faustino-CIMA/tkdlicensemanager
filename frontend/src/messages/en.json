@@ -19,6 +19,7 @@
     "roleCoach": "Coach",
     "roleMember": "Member",
     "appTitle": "License Manager",
+    "modalClose": "Close",
     "itemClub": "club",
     "itemMember": "member",
     "itemLicense": "license",
@@ -58,6 +59,7 @@
   },
   "Auth": {
     "loginTitle": "Sign in",
+    "loginSubtitle": "Use your LTF credentials to access the dashboard.",
     "username": "Username",
     "email": "Email",
     "password": "Password",

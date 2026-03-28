@@ -19,6 +19,7 @@
     "roleCoach": "Coach",
     "roleMember": "Member",
     "appTitle": "License Manager",
+    "modalClose": "Zoumaachen",
     "itemClub": "Club",
     "itemMember": "Member",
     "itemLicense": "Lizenz",
@@ -58,6 +59,7 @@
   },
   "Auth": {
     "loginTitle": "Aloggen",
+    "loginSubtitle": "Benotzt Är LTF-Zouganksdonnéeën fir an den Dashboard ze kommen.",
     "username": "Benotzernumm",
     "email": "E-Mail",
     "password": "Passwuert",

@@ -42,6 +42,9 @@
   --warning: oklch(78.19% 0.1590 70.00);
   --warning-foreground: oklch(21.03% 0.0059 70.00);
 
+  /* Modal / dialog scrim — derived from theme foreground for light mode */
+  --modal-backdrop: color-mix(in oklab, var(--foreground) 40%, transparent);
+
   /* Border Radius */
   --radius: 0.125rem;
   --field-radius: 0.125rem;
@@ -85,4 +88,7 @@
   --surface-tertiary-foreground: oklch(99.11% 0.0015 234.42);
   --warning: oklch(82.03% 0.1392 74.01);
   --warning-foreground: oklch(21.03% 0.0059 74.01);
+
+  /* Modal scrim — dark mode: translucent background tone */
+  --modal-backdrop: color-mix(in oklab, var(--background) 72%, transparent);
 }
