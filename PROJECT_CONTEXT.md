@@ -1,27 +1,30 @@
 **LTF Taekwondo License Manager — Master Summary (March 2026)**
-
-Last updated: 2026-03-24
+Last updated: 2026-03-28
 
 Current main branch state:
-- Version: v0.3.7 (annotated tag `v0.3.7` on the repository timeline)
-- Printer profiles and prior releases through v0.3.6 remain merged; v0.3.7 is the documented **stable baseline** for ongoing hygiene work.
+- Version: v0.3.8 (annotated tag v0.3.8 created and pushed)
+- Printer Profiles feature fully merged and live (v0.3.6)
+- Docker infrastructure cleanup and stable stack released
+- Full HeroUI v3.0.1 integration with custom ltf_theme + sharp consistent radii completed (v0.3.9)
+- Sticky top bar implemented
+- Navigation tabs stabilized (no more swapping on club dashboard)
+- Club Members page fully cleaned up (RadioGroup filters with total counts, improved Members/Actions Selects, row status confirmation modals, pagination 50/150/300/All)
 
-Current working branch: feature/cleanup-before-heroui
-Status: Pre-HeroUI cleanup: safe frontend dependency patch/minor bumps verified (`npm run lint`, `npm run build`) on this branch; HeroUI / radius work intentionally not started here.
+Current working branch: improvements-clean
+Status: All visual, navigation and Club Members page improvements merged and verified locally
 
-Current Stack (locked) — Updated 2026-03-24:
-- Backend: Django 6.0.3 + DRF 3.17.0 + PostgreSQL 18
-- Frontend: Next.js 16.2.1 (App Router) + React 19.2.4 + TypeScript 5.9.x
-- Runtime: Python 3.13 + Node 20
-- Cache/Queue: Redis 8.4 + Celery 5.6.2
-- Containers: postgres:18-alpine, redis:8-alpine
-- Deployment: Docker + Dokploy
-- Other: next-intl (EN/LU), django-simple-history, drf-spectacular
+Current Stack (locked) — Updated 2026-03-28
+- Backend: python:3.13-slim-bookworm + Django 6.0.3 + DRF 3.17.0 + PostgreSQL 18
+- Frontend: Next.js 16.2.1 (App Router) + React 19.2.4 + TypeScript 5.9.3 + HeroUI v3.0.1 + Tailwind 4.2.2
+- Runtime: Python 3.13 + Node 22
+- Cache / queue: Redis 8.4 + Celery 5.6.2
+- Containers: Docker + Dokploy deployment
 
 Rules we follow:
 - Always work on dedicated feature branches for new work
 - Always test in Docker (`docker compose up -d --build`)
-- Use oh-my-cursor Team Avatar agents (@toph, @iroh, @appa, @sokka, ...)
+- Use oh-my-cursor Team Avatar agents (@toph, @iroh, @appa, @sokka, @escher, ...)
+- Agents must update CHANGELOG.md and README.md after every significant change
 - PROJECT_CONTEXT.md is the single source of truth
 
 ## Major Features & Status (from transcripts)
@@ -53,29 +56,28 @@ Rules we follow:
 - Printer Profile Step 4 (feature/general-improvements): Full regression (licenses.test_cards 99/99), lint/build pass, Docker services healthy; end-to-end verification of Club Admin selection, LTF Admin CRUD, and PDF offset — completed. Step 4 re-run (2026-03-18): licenses.test_cards 99/99 OK, npm lint/build OK, docker compose up -d --build + ps all healthy.
 - Printer Profile Step 5 (feature/general-improvements): Dokploy deploy + smoke tests passed; merged to `main`, tag `v0.3.6` created and pushed (2026-03-19).
 - **Release v0.3.6 (2026-03-19):** Merged `feature/general-improvements` to `main` (fast-forward). Printer profiles (user-owned, Club Admin nav + `/dashboard/club/printer-profiles`, LTF Admin CRUD, quick-print selection, PDF offset in final output) + photo fixes live on `main`. Tag `v0.3.6` created and pushed.
-- **Pre-HeroUI cleanup (feature/cleanup-before-heroui, 2026-03-24):** Safe frontend dependency hygiene — Next.js 16.2.1, `eslint-config-next` 16.2.1, React/React DOM 19.2.4, Tailwind CSS + `@tailwindcss/postcss` 4.2.2, `next-intl` 4.8.x, Jest 30.3.x, and related patch/minor bumps; `onnxruntime-web` kept on the 1.21.x line required by `@imgly/background-removal` peer deps. Removed stray `docker-compose.yml.bak*` artifacts from the working tree. Planned next: fresh HeroUI integration on a dedicated branch (no radius/theme work on this cleanup branch).
+- **v0.3.9 HeroUI Release (2026-03-28):** Full HeroUI v3.0.1 integration with custom ltf_theme.css, sticky top bar, stable tab navigation (no more swapping), Club Members page overhaul (RadioGroup filters with total counts, improved Members/Actions Selects, row status confirmation modals, pagination 50/150/300/All).
 
 ## Key Decisions
 - Club Admin payments do NOT require extra consent prompt
 - Batch orders create ONE Order + ONE Invoice (grouped)
 - Stripe uses invoice_number as reference (not order_number)
 - All history is immutable and audited
-- Docker containers run with host UID/GID + .cursor bind-mount for debugging
+- Docker containers run without .cursor bind-mounts (ownership stability)
 
 ## Current Open / Next Priorities (update after every milestone)
-- Merge `feature/cleanup-before-heroui` when reviewed; then open a **new** branch for HeroUI-only work (do not mix with this cleanup).
-- Post-rollout observation on production/Dokploy (print queue, printer-profile offset correctness).
+- Post-rollout observation on production/Dokploy (print queue, printer-profile offset correctness)
 - Gather real Payconiq sandbox credentials and run first live sandbox verification
 - Any remaining Dokploy stability tweaks
-- Post-rollout production observation window for print queue throughput, simulation refresh latency, asset resolution telemetry, printer-profile offset correctness in live print batches, and artifact retention tuning (v0.3.5 / v0.3.6 / v0.3.7 baseline)
 
-Next phase: HeroUI integration (dedicated branch after cleanup merge), then general improvements or next major feature (e.g. Invoice redesign, full Payconiq integration)
+Next phase: General improvements or next major feature (e.g. Invoice redesign, full Payconiq integration)
 
 Coding & Memory Rules (always follow)
 - Always work on dedicated feature branches for new work
 - Always test in Docker (`docker compose up -d --build`)
-- Use oh-my-cursor Team Avatar agents
-- Update this file after every significant milestone
+- Use oh-my-cursor Team Avatar agents (@toph, @iroh, @appa, @sokka, @escher, ...)
+- Agents must update CHANGELOG.md and README.md after every significant change
+- PROJECT_CONTEXT.md is the single source of truth
 - Read this file FIRST in every session
 
 Ready for your next request. Paste this block into any new Grok chat to continue with full context.
