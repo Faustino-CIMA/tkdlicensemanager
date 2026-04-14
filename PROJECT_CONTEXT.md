@@ -2,16 +2,16 @@
 Last updated: 2026-03-28
 
 Current main branch state:
-- Version: v0.3.8 (annotated tag v0.3.8 created and pushed)
+- Version: v0.3.9 (annotated tag v0.3.9 created and pushed)
 - Printer Profiles feature fully merged and live (v0.3.6)
 - Docker infrastructure cleanup and stable stack released
-- Full HeroUI v3.0.1 integration with custom ltf_theme + sharp consistent radii completed (v0.3.9)
+- Full HeroUI v3.0.1 integration with custom ltf_theme + sharp consistent radii completed
 - Sticky top bar implemented
 - Navigation tabs stabilized (no more swapping on club dashboard)
 - Club Members page fully cleaned up (RadioGroup filters with total counts, improved Members/Actions Selects, row status confirmation modals, pagination 50/150/300/All)
 
-Current working branch: improvements-clean
-Status: All visual, navigation and Club Members page improvements merged and verified locally
+Current working branch: main
+Status: All visual, navigation and Club Members page improvements merged and verified on main
 
 Current Stack (locked) — Updated 2026-03-28
 - Backend: python:3.13-slim-bookworm + Django 6.0.3 + DRF 3.17.0 + PostgreSQL 18
@@ -56,7 +56,7 @@ Rules we follow:
 - Printer Profile Step 4 (feature/general-improvements): Full regression (licenses.test_cards 99/99), lint/build pass, Docker services healthy; end-to-end verification of Club Admin selection, LTF Admin CRUD, and PDF offset — completed. Step 4 re-run (2026-03-18): licenses.test_cards 99/99 OK, npm lint/build OK, docker compose up -d --build + ps all healthy.
 - Printer Profile Step 5 (feature/general-improvements): Dokploy deploy + smoke tests passed; merged to `main`, tag `v0.3.6` created and pushed (2026-03-19).
 - **Release v0.3.6 (2026-03-19):** Merged `feature/general-improvements` to `main` (fast-forward). Printer profiles (user-owned, Club Admin nav + `/dashboard/club/printer-profiles`, LTF Admin CRUD, quick-print selection, PDF offset in final output) + photo fixes live on `main`. Tag `v0.3.6` created and pushed.
-- **v0.3.9 HeroUI Release (2026-03-28):** Full HeroUI v3.0.1 integration with custom ltf_theme.css, sticky top bar, stable tab navigation (no more swapping), Club Members page overhaul (RadioGroup filters with total counts, improved Members/Actions Selects, row status confirmation modals, pagination 50/150/300/All).
+- **v0.3.9 HeroUI Release (2026-03-28):** Full HeroUI v3.0.1 integration with custom ltf_theme.css, sticky top bar, stable tab navigation (no more swapping), Club Members page overhaul (RadioGroup filters with total counts, improved Members/Actions Selects, row status confirmation modals, pagination 50/150/300/All) — completed
 
 ## Key Decisions
 - Club Admin payments do NOT require extra consent prompt
