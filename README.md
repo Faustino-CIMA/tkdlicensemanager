@@ -4,8 +4,10 @@ Modern, secure Taekwondo license management for the Luxembourg Taekwondo Federat
 
 ## Release Notes
 
+This release refreshes the **HeroUI**-based dashboard chrome (v3.0.1) and delivers a focused **Club Members** experience: clearer filters with totals, safer status changes, and more practical pagination—see `CHANGELOG.md` **0.3.9** for the full list.
+
 - See `CHANGELOG.md` for user-facing and technical release notes.
-- Current stable release: `v0.3.6` (Printer profiles user-owned + photo fixes).
+- Current stable release: `v0.3.9` (HeroUI v3 shell + Club Members UX, sticky top bar, stable tabs).
 
 ## CI (GitHub Actions)
 
