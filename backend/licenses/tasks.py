@@ -24,6 +24,13 @@ STRIPE_RECONCILE_BACKOFF_SECONDS = 120
 STRIPE_RECONCILE_ERROR_BACKOFF_SECONDS = 300
 
 
+def _stripe_field(obj, key, default=None):
+    """Access a field on a Stripe API object (attr) or plain dict (.get)."""
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
 def _reconcile_not_before_key(order_id: int) -> str:
     return f"stripe:reconcile:not_before:{order_id}"
 
@@ -199,12 +206,12 @@ def reconcile_pending_stripe_orders(limit: int | None = None) -> int:
                 if session is None:
                     session = stripe.checkout.Session.retrieve(checkout_session_id)
                     checkout_session_cache[checkout_session_id] = session
-                if session.get("payment_status") != "paid":
+                if _stripe_field(session, "payment_status") != "paid":
                     _set_reconcile_backoff(order.id, STRIPE_RECONCILE_BACKOFF_SECONDS)
                     continue
-                stripe_data["stripe_checkout_session_id"] = session.get("id")
-                stripe_data["stripe_customer_id"] = session.get("customer")
-                session_pi = session.get("payment_intent")
+                stripe_data["stripe_checkout_session_id"] = _stripe_field(session, "id")
+                stripe_data["stripe_customer_id"] = _stripe_field(session, "customer")
+                session_pi = _stripe_field(session, "payment_intent")
                 if isinstance(session_pi, str) and session_pi:
                     payment_intent_id = session_pi
                     stripe_data["stripe_payment_intent_id"] = session_pi
@@ -217,21 +224,23 @@ def reconcile_pending_stripe_orders(limit: int | None = None) -> int:
                         expand=["charges.data.payment_method_details"],
                     )
                     payment_intent_cache[payment_intent_id] = payment_intent
-                if payment_intent.get("status") != "succeeded":
+                if _stripe_field(payment_intent, "status") != "succeeded":
                     _set_reconcile_backoff(order.id, STRIPE_RECONCILE_BACKOFF_SECONDS)
                     continue
-                stripe_data["stripe_payment_intent_id"] = payment_intent.get("id")
-                stripe_data["stripe_customer_id"] = payment_intent.get("customer")
-                charges = payment_intent.get("charges", {}).get("data", [])
+                stripe_data["stripe_payment_intent_id"] = _stripe_field(payment_intent, "id")
+                stripe_data["stripe_customer_id"] = _stripe_field(payment_intent, "customer")
+                charges_obj = _stripe_field(payment_intent, "charges", {})
+                charges = _stripe_field(charges_obj, "data", [])
                 if charges:
-                    card = charges[0].get("payment_method_details", {}).get("card", {}) or {}
+                    pm_details = _stripe_field(charges[0], "payment_method_details")
+                    card = _stripe_field(pm_details, "card") or {}
                     payment_details = {
                         "payment_method": "card",
                         "payment_provider": "stripe",
-                        "card_brand": card.get("brand") or "",
-                        "card_last4": card.get("last4") or "",
-                        "card_exp_month": card.get("exp_month"),
-                        "card_exp_year": card.get("exp_year"),
+                        "card_brand": _stripe_field(card, "brand", "") or "",
+                        "card_last4": _stripe_field(card, "last4", "") or "",
+                        "card_exp_month": _stripe_field(card, "exp_month"),
+                        "card_exp_year": _stripe_field(card, "exp_year"),
                     }
             else:
                 # No payment intent available and no paid checkout session.

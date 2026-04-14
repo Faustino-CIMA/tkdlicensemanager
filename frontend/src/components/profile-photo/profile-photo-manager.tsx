@@ -1,7 +1,7 @@
 "use client";
 
 import Cropper, { Area } from "react-easy-crop";
-import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -168,6 +168,10 @@ export function ProfilePhotoManager({
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
+
+  const handleCropComplete = useCallback((_area: Area, pixels: Area) => {
+    setCroppedAreaPixels(pixels);
+  }, []);
 
   const sourceInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
@@ -484,10 +488,10 @@ export function ProfilePhotoManager({
         }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
-        className={`rounded-2xl border-2 border-dashed p-5 text-sm transition ${
+        className={`rounded-[var(--radius-card)] border-2 border-dashed p-5 text-sm transition ${
           isDragging
-            ? "border-zinc-900 bg-zinc-100 text-zinc-800"
-            : "border-zinc-300 text-zinc-600"
+            ? "border-foreground bg-secondary text-foreground"
+            : "border-border text-muted"
         }`}
       >
         <p>{labels.dragDropLabel}</p>
@@ -528,7 +532,8 @@ export function ProfilePhotoManager({
 
       {workingImageUrl ? (
         <>
-          <div className="relative h-72 overflow-hidden rounded-2xl bg-zinc-950">
+          {/* Dark canvas is intentional for image cropping contrast */}
+          <div className="relative h-72 overflow-hidden rounded-[var(--radius-card)] bg-[#0a0a0a]">
             <Cropper
               image={workingImageUrl}
               crop={crop}
@@ -538,12 +543,12 @@ export function ProfilePhotoManager({
               showGrid
               onCropChange={setCrop}
               onZoomChange={setZoom}
-              onCropComplete={(_, croppedPixels) => setCroppedAreaPixels(croppedPixels)}
+              onCropComplete={handleCropComplete}
             />
           </div>
 
           <div className="space-y-3">
-            <label className="block text-xs font-medium text-zinc-600">{labels.zoomLabel}</label>
+            <label className="block text-xs font-medium text-muted">{labels.zoomLabel}</label>
             <Input
               type="range"
               min={1}
@@ -555,7 +560,7 @@ export function ProfilePhotoManager({
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <label className="text-xs font-medium text-zinc-600">
+            <label className="text-xs font-medium text-muted">
               {labels.backgroundColorLabel}
             </label>
             <Input
@@ -577,8 +582,8 @@ export function ProfilePhotoManager({
 
           {previewImageUrl ? (
             <div className="space-y-2">
-              <p className="text-xs font-medium text-zinc-600">{labels.previewTitle}</p>
-              <div className="h-48 w-40 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100">
+              <p className="text-xs font-medium text-muted">{labels.previewTitle}</p>
+              <div className="h-48 w-40 overflow-hidden rounded-[var(--radius-card)] border border-border bg-secondary">
                 {/* eslint-disable-next-line @next/next/no-img-element -- crop preview uses blob URL */}
                 <img
                   src={previewImageUrl}
@@ -591,7 +596,7 @@ export function ProfilePhotoManager({
         </>
       ) : null}
 
-      <label className="flex items-start gap-2 text-sm text-zinc-700">
+      <label className="flex items-start gap-2 text-sm text-foreground">
         <Checkbox
           checked={consentConfirmed}
           onCheckedChange={(checked) => setConsentConfirmed(Boolean(checked))}
@@ -599,7 +604,7 @@ export function ProfilePhotoManager({
         <span>{labels.consentLabel}</span>
       </label>
 
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={handleCancel}>
@@ -619,13 +624,13 @@ export function ProfilePhotoManager({
   return (
     <>
       {isPageEditor ? (
-        <section className="rounded-3xl bg-white p-6 shadow-sm">{editorContent}</section>
+        <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">{editorContent}</section>
       ) : (
         <>
-          <section className="rounded-3xl bg-white p-6 shadow-sm">
+          <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex items-start gap-4">
-                <div className="h-28 w-28 overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-100">
+                <div className="h-28 w-28 overflow-hidden rounded-[var(--radius-card)] border border-border bg-secondary">
                   {storedPhotoPreviewUrl ? (
                     /* eslint-disable-next-line @next/next/no-img-element -- stored photo can be blob or API URL */
                     <img
@@ -634,14 +639,14 @@ export function ProfilePhotoManager({
                       className="h-full w-full object-cover object-[50%_20%]"
                     />
                   ) : (
-                    <div className="flex h-full items-center justify-center px-3 text-center text-xs text-zinc-500">
+                    <div className="flex h-full items-center justify-center px-3 text-center text-xs text-muted">
                       {labels.emptyPhotoLabel}
                     </div>
                   )}
                 </div>
                 <div className="space-y-1">
-                  <h3 className="text-base font-semibold text-zinc-900">{labels.sectionTitle}</h3>
-                  <p className="text-sm text-zinc-500">{labels.sectionSubtitle}</p>
+                  <h3 className="text-base font-semibold text-foreground">{labels.sectionTitle}</h3>
+                  <p className="text-sm text-muted">{labels.sectionSubtitle}</p>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">

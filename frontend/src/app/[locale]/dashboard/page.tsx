@@ -47,25 +47,25 @@ export default function DashboardPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-zinc-50 px-6">
-      <div className="w-full max-w-3xl rounded-3xl bg-white p-10 shadow-sm">
+    <main className="flex min-h-screen items-center justify-center bg-background px-6">
+      <div className="w-full max-w-3xl rounded-[var(--radius-card)] border border-border bg-card p-10 shadow-sm">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold text-zinc-900">{t("title")}</h1>
-            <p className="mt-2 text-sm text-zinc-500">{t("subtitle")}</p>
+            <h1 className="text-2xl font-semibold text-foreground">{t("title")}</h1>
+            <p className="mt-2 text-sm text-muted">{t("subtitle")}</p>
           </div>
           <Button variant="outline" onClick={handleLogout}>
             Logout
           </Button>
         </div>
 
-        {errorMessage ? <p className="mt-6 text-sm text-red-600">{errorMessage}</p> : null}
+        {errorMessage ? <p className="mt-6 text-sm text-destructive">{errorMessage}</p> : null}
 
         {user ? (
-          <div className="mt-6 rounded-2xl border border-zinc-100 bg-zinc-50 p-6">
-            <p className="text-sm text-zinc-500">Signed in as</p>
-            <p className="mt-1 text-lg font-semibold text-zinc-900">{user.username}</p>
-            <p className="mt-2 text-sm text-zinc-600">Role: {user.role}</p>
+          <div className="mt-6 rounded-[var(--radius-card)] border border-border bg-[var(--surface-secondary)] p-6">
+            <p className="text-sm text-muted">Signed in as</p>
+            <p className="mt-1 text-lg font-semibold text-foreground">{user.username}</p>
+            <p className="mt-2 text-sm text-muted">Role: {user.role}</p>
           </div>
         ) : null}
       </div>

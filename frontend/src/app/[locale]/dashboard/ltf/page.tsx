@@ -14,12 +14,12 @@ import { LtfAdminOverviewResponse, getLtfAdminOverview } from "@/lib/ltf-admin-a
 
 function getSeverityClasses(severity: "info" | "warning" | "critical") {
   if (severity === "critical") {
-    return "border-red-200 bg-red-50 text-red-700";
+    return "badge-danger";
   }
   if (severity === "warning") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
+    return "badge-warning";
   }
-  return "border-sky-200 bg-sky-50 text-sky-700";
+  return "badge-info";
 }
 
 export default function LtfAdminOverviewPage() {
@@ -81,31 +81,26 @@ export default function LtfAdminOverviewPage() {
 
   return (
     <LtfAdminLayout title={t("overviewTitle")} subtitle={t("overviewSubtitle")}>
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
       {isLoading ? (
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
       ) : !overview ? (
         <EmptyState title={t("overviewEmptyTitle")} description={t("overviewEmptySubtitle")} />
       ) : (
-        <div className="space-y-5">
-          <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
-            <p className="text-xs text-zinc-500">
+        <div className="space-y-6">
+          <section className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] px-4 py-3 shadow-sm">
+            <p className="text-xs text-[var(--muted)]">
               {lastRefreshAt
                 ? t("lastRefreshLabel", { time: formatDisplayDateTime(lastRefreshAt) })
                 : t("lastRefreshNever")}
             </p>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => loadOverview({ silent: true })}
-              disabled={isRefreshing}
-            >
+            <Button variant="outline" onClick={() => loadOverview({ silent: true })} disabled={isRefreshing}>
               {isRefreshing ? t("refreshingAction") : t("refreshAction")}
             </Button>
           </section>
 
-          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <section className="grid gap-4 md:grid-cols-2 md:gap-5 xl:grid-cols-4">
             <SummaryCard title={t("totalClubs")} value={String(overview.cards.total_clubs)} />
             <SummaryCard title={t("activeMembers")} value={String(overview.cards.active_members)} />
             <SummaryCard title={t("activeLicenses")} value={String(overview.cards.active_licenses)} />
@@ -119,23 +114,23 @@ export default function LtfAdminOverviewPage() {
             />
           </section>
 
-          <section className="space-y-3 rounded-3xl bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-zinc-900">{t("actionQueueTitle")}</h2>
+          <section className="space-y-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-[var(--foreground)]">{t("actionQueueTitle")}</h2>
             {queueWithFindings.length === 0 ? (
-              <p className="text-sm text-zinc-600">{t("actionQueueAllClear")}</p>
+              <p className="text-sm text-muted">{t("actionQueueAllClear")}</p>
             ) : (
               <div className="space-y-2">
                 {queueWithFindings.map((item) => (
                   <div
                     key={item.key}
-                    className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-3 ${getSeverityClasses(item.severity)}`}
+                    className={`flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-form)] border px-3 py-3 ${getSeverityClasses(item.severity)}`}
                   >
                     <div className="min-w-0">
                       <p className="text-sm font-medium">{actionLabelByKey(item.key)}</p>
                       <p className="text-xs opacity-90">{t("actionQueueCountLabel", { count: item.count })}</p>
                     </div>
                     <Link
-                      className="rounded-full border border-current px-3 py-1 text-xs font-medium"
+                      className="inline-flex min-h-11 items-center justify-center rounded-[var(--radius-form)] border border-current px-4 text-xs font-semibold"
                       href={`/${locale}${item.link.path}`}
                     >
                       {t("openAction")}
@@ -146,10 +141,10 @@ export default function LtfAdminOverviewPage() {
             )}
           </section>
 
-          <section className="space-y-3 rounded-3xl bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-zinc-900">{t("topClubsTitle")}</h2>
+          <section className="space-y-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-[var(--foreground)]">{t("topClubsTitle")}</h2>
             {overview.top_clubs.length === 0 ? (
-              <p className="text-sm text-zinc-600">{t("topClubsEmpty")}</p>
+              <p className="text-sm text-muted">{t("topClubsEmpty")}</p>
             ) : (
               <EntityTable
                 columns={[

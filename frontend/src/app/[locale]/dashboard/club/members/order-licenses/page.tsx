@@ -390,26 +390,26 @@ export default function ClubMembersOrderLicensesPage() {
 
   return (
     <ClubAdminLayout title={t("orderLicenseModalTitle")} subtitle={t("orderLicensePageSubtitle")}>
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
-      {successMessage ? <p className="text-sm text-emerald-600">{successMessage}</p> : null}
+      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+      {successMessage ? <p className="text-sm text-success">{successMessage}</p> : null}
 
       <div className="space-y-4">
-        <section className="rounded-2xl border border-zinc-200 bg-white p-4">
+        <section className="rounded-[var(--radius-card)] border border-border bg-card p-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <p className="text-sm text-zinc-600">
-              <span className="font-medium text-zinc-800">{t("clubLabel")}:</span>{" "}
+            <p className="text-sm text-muted">
+              <span className="font-medium text-foreground">{t("clubLabel")}:</span>{" "}
               {selectedClub?.name ?? payload.selectedClubId}
             </p>
-            <p className="text-sm text-zinc-600">
-              <span className="font-medium text-zinc-800">{t("orderLicenseOriginalSelectionLabel")}:</span>{" "}
+            <p className="text-sm text-muted">
+              <span className="font-medium text-foreground">{t("orderLicenseOriginalSelectionLabel")}:</span>{" "}
               {payload.selectedIds.length}
             </p>
-            <p className="text-sm text-zinc-600">
-              <span className="font-medium text-zinc-800">{t("orderLicenseWorkingSelectionLabel")}:</span>{" "}
+            <p className="text-sm text-muted">
+              <span className="font-medium text-foreground">{t("orderLicenseWorkingSelectionLabel")}:</span>{" "}
               {validSelectedIds.length}
             </p>
             <div className="space-y-2">
-              <label className="text-xs font-medium uppercase tracking-wide text-zinc-600">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted">
                 {t("yearLabel")}
               </label>
               <Select value={targetYear} onValueChange={setTargetYear}>
@@ -428,24 +428,24 @@ export default function ClubMembersOrderLicensesPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-zinc-200 bg-white p-4">
-          <p className="text-sm font-medium text-zinc-800">{t("licenseTypeLabel")}</p>
-          <p className="mt-1 text-xs text-zinc-500">{t("orderLicenseTypePickerHelp")}</p>
+        <section className="rounded-[var(--radius-card)] border border-border bg-card p-4">
+          <p className="text-sm font-medium text-foreground">{t("licenseTypeLabel")}</p>
+          <p className="mt-1 text-xs text-muted">{t("orderLicenseTypePickerHelp")}</p>
           <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             {eligibleTypes.map((licenseType) => (
               <button
                 key={`eligible-${licenseType.id}`}
                 type="button"
                 onClick={() => setSelectedLicenseTypeId(String(licenseType.id))}
-                className={`rounded-xl border p-3 text-left transition ${
+                className={`rounded-[var(--radius-form)] border p-3 text-left transition ${
                   selectedLicenseTypeId === String(licenseType.id)
-                    ? "border-emerald-400 bg-emerald-50"
-                    : "border-zinc-200 bg-white hover:bg-zinc-50"
+                    ? "badge-success"
+                    : "border-border bg-card hover:bg-secondary"
                 }`}
               >
-                <p className="text-sm font-medium text-zinc-900">{licenseType.name}</p>
-                <p className="mt-1 text-xs text-emerald-700">{t("orderLicenseStatusReady")}</p>
-                <p className="mt-1 text-xs text-zinc-600">
+                <p className="text-sm font-medium text-foreground">{licenseType.name}</p>
+                <p className="mt-1 text-xs text-success">{t("orderLicenseStatusReady")}</p>
+                <p className="mt-1 text-xs text-muted">
                   {licenseType.active_price.amount} {licenseType.active_price.currency}
                 </p>
               </button>
@@ -455,15 +455,15 @@ export default function ClubMembersOrderLicensesPage() {
                 key={`ineligible-${licenseType.id}`}
                 type="button"
                 onClick={() => setSelectedLicenseTypeId(String(licenseType.id))}
-                className={`rounded-xl border p-3 text-left transition ${
+                className={`rounded-[var(--radius-form)] border p-3 text-left transition ${
                   selectedLicenseTypeId === String(licenseType.id)
-                    ? "border-amber-400 bg-amber-50"
-                    : "border-zinc-200 bg-white hover:bg-zinc-50"
+                    ? "badge-warning"
+                    : "border-border bg-card hover:bg-secondary"
                 }`}
               >
-                <p className="text-sm font-medium text-zinc-900">{licenseType.name}</p>
-                <p className="mt-1 text-xs text-amber-700">{t("orderLicenseStatusBlocked")}</p>
-                <p className="mt-1 text-xs text-zinc-600">
+                <p className="text-sm font-medium text-foreground">{licenseType.name}</p>
+                <p className="mt-1 text-xs text-warning">{t("orderLicenseStatusBlocked")}</p>
+                <p className="mt-1 text-xs text-muted">
                   {licenseType.reason_counts
                     .slice(0, 2)
                     .map((reason) => `${reason.message} (${reason.count})`)
@@ -473,14 +473,14 @@ export default function ClubMembersOrderLicensesPage() {
             ))}
           </div>
           {isCheckingEligibility ? (
-            <p className="mt-3 text-sm text-zinc-600">{t("orderEligibilityLoading")}</p>
+            <p className="mt-3 text-sm text-muted">{t("orderEligibilityLoading")}</p>
           ) : null}
           {!isCheckingEligibility && !hasAnyEligibleType ? (
-            <p className="mt-3 text-sm text-amber-700">{t("orderEligibilityNoOptions")}</p>
+            <p className="mt-3 text-sm text-warning">{t("orderEligibilityNoOptions")}</p>
           ) : null}
         </section>
 
-        <section className="rounded-2xl border border-zinc-200 bg-white p-4">
+        <section className="rounded-[var(--radius-card)] border border-border bg-card p-4">
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
@@ -528,11 +528,11 @@ export default function ClubMembersOrderLicensesPage() {
               />
             </div>
           ) : (
-            <p className="mt-3 text-sm text-zinc-600">{t("orderLicenseNoTypeSelected")}</p>
+            <p className="mt-3 text-sm text-muted">{t("orderLicenseNoTypeSelected")}</p>
           )}
         </section>
 
-        <div className="sticky bottom-4 flex flex-wrap items-center gap-3 rounded-2xl border border-zinc-200 bg-white/95 p-4 backdrop-blur">
+        <div className="sticky bottom-4 flex flex-wrap items-center gap-3 rounded-[var(--radius-card)] border border-border bg-card/95 p-4 backdrop-blur">
           <Button
             onClick={handleCreateOrder}
             disabled={

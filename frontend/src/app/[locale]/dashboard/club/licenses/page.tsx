@@ -413,15 +413,15 @@ export default function ClubAdminLicensesPage() {
 
   const getStatusChipClasses = (status: License["status"]) => {
     if (status === "active") {
-      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+      return "badge-success";
     }
     if (status === "expired") {
-      return "border-zinc-300 bg-zinc-100 text-zinc-700";
+      return "border-border bg-secondary text-foreground";
     }
     if (status === "pending") {
-      return "border-amber-200 bg-amber-50 text-amber-700";
+      return "badge-warning";
     }
-    return "border-rose-200 bg-rose-50 text-rose-700";
+    return "badge-danger";
   };
 
   const formatIssuedAt = (value: string | null) => {
@@ -433,7 +433,7 @@ export default function ClubAdminLicensesPage() {
 
   return (
     <ClubAdminLayout title={t("licensesTitle")} subtitle={t("licensesSubtitle")}>
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -506,19 +506,19 @@ export default function ClubAdminLicensesPage() {
             ) : null}
           </div>
           {canManageLicenses ? (
-            <div className="space-y-1 text-xs text-zinc-500">
-              <span className="font-medium text-zinc-700">
+            <div className="space-y-1 text-xs text-muted">
+              <span className="font-medium text-foreground">
                 {t("quickPrintSelectedLicensesCountLabel", { count: selectedLicenseIds.length })}
               </span>
               {hiddenSelectedCount > 0 ? (
-                <span className="ml-2 font-medium text-amber-700">
+                <span className="ml-2 font-medium text-warning">
                   {t("quickPrintHiddenSelectedLicensesCountLabel", { count: hiddenSelectedCount })}
                 </span>
               ) : null}
               {selectedLicenseIds.length > 0 ? (
                 <button
                   type="button"
-                  className="ml-2 underline underline-offset-2 hover:text-zinc-700"
+                  className="ml-2 underline underline-offset-2 hover:text-foreground"
                   onClick={clearSelectedLicenses}
                 >
                   {t("clearSelection")}
@@ -526,7 +526,7 @@ export default function ClubAdminLicensesPage() {
               ) : null}
             </div>
           ) : null}
-          <div className="flex items-center gap-2 text-sm text-zinc-500">
+          <div className="flex items-center gap-2 text-sm text-muted">
             {t("pageLabel", { current: currentPage, total: totalPages })}
             <Button
               variant="outline"
@@ -552,9 +552,9 @@ export default function ClubAdminLicensesPage() {
         ) : memberRows.length === 0 ? (
           <EmptyState title={t("noResultsTitle")} description={t("noLicensesResultsSubtitle")} />
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-zinc-100 bg-white shadow-sm">
+          <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-card shadow-sm">
             <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+              <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
                 <tr>
                   {canManageLicenses ? (
                     <th className="w-10 px-4 py-3 font-medium">
@@ -574,7 +574,7 @@ export default function ClubAdminLicensesPage() {
                   <th className="px-4 py-3 font-medium">{t("statusExpired")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-100">
+              <tbody className="divide-y divide-border">
                 {memberRows.map((row) => {
                   const isExpanded = expandedMemberSet.has(row.member.id);
                   const memberName = `${row.member.first_name} ${row.member.last_name}`;
@@ -584,7 +584,7 @@ export default function ClubAdminLicensesPage() {
                   return (
                     <Fragment key={row.member.id}>
                       <tr
-                        className="cursor-pointer text-zinc-700 hover:bg-zinc-50"
+                        className="cursor-pointer text-foreground hover:bg-secondary"
                         onClick={() => toggleMemberExpanded(row.member.id)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
@@ -597,11 +597,11 @@ export default function ClubAdminLicensesPage() {
                         aria-expanded={isExpanded}
                       >
                         {canManageLicenses ? (
-                          <td className="px-4 py-3 text-xs text-zinc-500">
+                          <td className="px-4 py-3 text-xs text-muted">
                             {selectedForMember > 0 ? selectedForMember : "—"}
                           </td>
                         ) : null}
-                        <td className="px-4 py-3 text-zinc-500">
+                        <td className="px-4 py-3 text-muted">
                           {isExpanded ? (
                             <ChevronDown className="h-4 w-4" />
                           ) : (
@@ -611,7 +611,7 @@ export default function ClubAdminLicensesPage() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{memberName}</span>
-                            <span className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-700">
+                            <span className="inline-flex items-center rounded-[var(--radius-form)] border border-border bg-secondary px-2 py-0.5 text-[11px] font-medium text-foreground">
                               {row.allLicenses.length}
                             </span>
                           </div>
@@ -622,11 +622,11 @@ export default function ClubAdminLicensesPage() {
                         <td className="px-4 py-3">{row.expiredCount}</td>
                       </tr>
                       {isExpanded ? (
-                        <tr className="bg-zinc-50/60">
+                        <tr className="bg-secondary/60">
                           <td colSpan={canManageLicenses ? 7 : 6} className="px-6 py-3">
-                            <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+                            <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-card">
                               <table className="min-w-full text-left text-sm">
-                                <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
+                                <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
                                   <tr>
                                     {canManageLicenses ? (
                                       <th className="w-10 px-4 py-2 font-medium">
@@ -639,9 +639,9 @@ export default function ClubAdminLicensesPage() {
                                     <th className="px-4 py-2 font-medium">{t("issuedAtLabel")}</th>
                                   </tr>
                                 </thead>
-                                <tbody className="divide-y divide-zinc-100">
+                                <tbody className="divide-y divide-border">
                                   {row.visibleLicenses.map((license) => (
-                                    <tr key={license.id} className="text-zinc-700">
+                                    <tr key={license.id} className="text-foreground">
                                       {canManageLicenses ? (
                                         <td className="px-4 py-2">
                                           <input
@@ -659,7 +659,7 @@ export default function ClubAdminLicensesPage() {
                                       </td>
                                       <td className="px-4 py-2">
                                         <span
-                                          className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${getStatusChipClasses(
+                                          className={`inline-flex rounded-[var(--radius-form)] border px-2 py-0.5 text-xs font-medium ${getStatusChipClasses(
                                             license.status
                                           )}`}
                                         >

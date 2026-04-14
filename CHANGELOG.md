@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-03-28
+
+### User-facing
+- **HeroUI v3.0.1:** The dashboard shell adopts HeroUI v3 with the existing LTF theme tokens, giving a cleaner, more consistent control surface without changing protected print or designer flows.
+- **Sticky top bar:** The main top bar stays visible while scrolling so navigation and context remain at hand on long pages.
+- **Stable tab navigation:** Club / LTF / Finance dashboard tabs no longer reorder or swap labels when switching sections.
+- **Club Members page overhaul:** Status filtering uses a horizontal **RadioGroup** card control with **live total counts** (All / Active / Inactive). **Members** and **Actions** menus are clearer; toggling a member’s active status from the table asks for **confirmation** before applying. **Rows per page** options are **50**, **150**, **300**, and **All** (capped by the API’s maximum page size). Touch targets and card radii follow the sharp theme (`--radius-card`) and ~44px minimum hit areas where this pass touched the UI.
+
+### Technical
+- Frontend: `@heroui/react` v3.0.1 integration with `HeroUIProvider`, theme alignment to `ltf_theme.css`, and incremental UI consistency (radii, spacing, focus rings) on updated surfaces.
+- Club Members: server-backed facet counts for filter subtitles; persisted filter preference in `sessionStorage` with migration from legacy dual-switch storage; pagination helper respects `API_PAGINATION_MAX_PAGE_SIZE` for numeric and “All” page sizes.
+- Navigation: layout/tab state fixes to prevent label flicker or order changes across dashboard variants.
+
 ## [0.3.6] - 2026-03-14
 
 ### User-facing

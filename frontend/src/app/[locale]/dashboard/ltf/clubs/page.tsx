@@ -141,7 +141,7 @@ export default function LtfAdminClubsPage() {
 
   return (
     <LtfAdminLayout title={t("clubsTitle")} subtitle={t("clubsSubtitle")}>
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -197,7 +197,7 @@ export default function LtfAdminClubsPage() {
               {importT("importMembers")}
             </Button>
           </div>
-          <div className="flex items-center gap-2 text-sm text-zinc-500">
+          <div className="flex items-center gap-2 text-sm text-muted">
             {t("pageLabel", { current: currentPage, total: totalPages })}
             <Button
               variant="outline"

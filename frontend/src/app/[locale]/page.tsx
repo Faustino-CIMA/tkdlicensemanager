@@ -10,15 +10,15 @@ export default async function HomePage({ params }: HomePageProps) {
   const t = await getTranslations({ locale, namespace: "Home" });
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-zinc-50 px-6">
-      <div className="max-w-3xl rounded-3xl bg-white p-10 shadow-sm">
-        <h1 className="text-3xl font-semibold text-zinc-900">{t("title")}</h1>
-        <p className="mt-4 text-lg text-zinc-600">{t("subtitle")}</p>
+    <main className="flex min-h-screen items-center justify-center bg-background px-6">
+      <div className="max-w-3xl rounded-[var(--radius-card)] bg-card p-10 shadow-sm">
+        <h1 className="text-3xl font-semibold text-foreground">{t("title")}</h1>
+        <p className="mt-4 text-lg text-muted">{t("subtitle")}</p>
 
         <div className="mt-8 flex flex-wrap gap-4">
           <Link
             href={`/${locale}/login`}
-            className="rounded-full bg-zinc-900 px-5 py-2 text-sm font-medium text-white"
+            className="rounded-[var(--radius-form)] bg-primary px-5 py-2 text-sm font-medium text-primary-foreground"
           >
             {t("signIn")}
           </Link>

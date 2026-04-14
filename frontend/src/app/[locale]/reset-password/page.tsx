@@ -52,16 +52,16 @@ export default function ResetPasswordPage() {
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-6 px-6 py-12">
       <div className="space-y-2 text-center">
-        <h1 className="text-3xl font-semibold text-zinc-900">{t("title")}</h1>
-        <p className="text-sm text-zinc-500">{t("subtitle")}</p>
+        <h1 className="text-3xl font-semibold text-foreground">{t("title")}</h1>
+        <p className="text-sm text-muted">{t("subtitle")}</p>
       </div>
 
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
-      {successMessage ? <p className="text-sm text-green-600">{successMessage}</p> : null}
+      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+      {successMessage ? <p className="text-sm text-success">{successMessage}</p> : null}
 
       <form className="space-y-4" onSubmit={handleSubmit}>
         <div className="space-y-2">
-          <label className="text-sm font-medium text-zinc-700">{t("passwordLabel")}</label>
+          <label className="text-sm font-medium text-foreground">{t("passwordLabel")}</label>
           <Input
             type="password"
             value={password}
@@ -69,7 +69,7 @@ export default function ResetPasswordPage() {
           />
         </div>
         <div className="space-y-2">
-          <label className="text-sm font-medium text-zinc-700">{t("confirmPasswordLabel")}</label>
+          <label className="text-sm font-medium text-foreground">{t("confirmPasswordLabel")}</label>
           <Input
             type="password"
             value={confirmPassword}
@@ -81,8 +81,8 @@ export default function ResetPasswordPage() {
         </Button>
       </form>
 
-      <div className="text-center text-sm text-zinc-500">
-        <Link className="text-zinc-900 hover:underline" href={`/${locale}/login`}>
+      <div className="text-center text-sm text-muted">
+        <Link className="text-foreground hover:underline" href={`/${locale}/login`}>
           {t("backToLogin")}
         </Link>
       </div>

@@ -66,7 +66,9 @@ describe("MemberHistoryTimeline", () => {
       />
     );
     expect(screen.getByText("2026 - Issued")).toBeInTheDocument();
-    expect(screen.getByText(/From:/)).toBeInTheDocument();
+    expect(screen.getByText(/8th Kup/)).toBeInTheDocument();
+    expect(screen.getByText(/7th Kup/)).toBeInTheDocument();
+    expect(screen.getByText(/pending/)).toBeInTheDocument();
   });
 
   it("submits promotion form", async () => {

@@ -185,10 +185,10 @@ export default function LtfFinanceLicenseSettingsPage() {
 
   return (
     <LtfFinanceLayout title={t("licenseSettingsTitle")} subtitle={t("licenseSettingsSubtitle")}>
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
-      {successMessage ? <p className="text-sm text-emerald-600">{successMessage}</p> : null}
+      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+      {successMessage ? <p className="text-sm text-success">{successMessage}</p> : null}
 
-      <section className="space-y-4 rounded-3xl bg-white p-6 shadow-sm">
+      <section className="space-y-4 rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <Input
@@ -265,11 +265,11 @@ export default function LtfFinanceLicenseSettingsPage() {
         )}
       </section>
 
-      <section className="space-y-4 rounded-3xl bg-white p-6 shadow-sm">
+      <section className="space-y-4 rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-zinc-900">{t("priceHistoryTitle")}</h2>
-            <p className="mt-1 text-sm text-zinc-600">{t("priceModalSubtitle")}</p>
+            <h2 className="text-lg font-semibold text-foreground">{t("priceHistoryTitle")}</h2>
+            <p className="mt-1 text-sm text-muted">{t("priceModalSubtitle")}</p>
           </div>
         </div>
 
@@ -283,17 +283,17 @@ export default function LtfFinanceLicenseSettingsPage() {
               const currentPrice = rows[0] ?? null;
               const isSavingPrice = Boolean(savingPriceByType[licenseType.id]);
               return (
-                <article key={licenseType.id} className="overflow-hidden rounded-2xl border border-zinc-200">
-                  <div className="space-y-1 border-b border-zinc-200 bg-zinc-50 px-4 py-3">
-                    <h3 className="text-sm font-semibold text-zinc-900">{licenseType.name}</h3>
-                    <p className="text-xs text-zinc-600">
+                <article key={licenseType.id} className="overflow-hidden rounded-[var(--radius-card)] border border-border">
+                  <div className="space-y-1 border-b border-border bg-secondary px-4 py-3">
+                    <h3 className="text-sm font-semibold text-foreground">{licenseType.name}</h3>
+                    <p className="text-xs text-muted">
                       {currentPrice
                         ? `${t("licensePriceLabel")}: ${currentPrice.amount} ${currentPrice.currency}`
                         : t("noPriceLabel")}
                     </p>
                   </div>
                   {rows.length === 0 ? (
-                    <p className="px-4 py-4 text-sm text-zinc-600">{t("priceHistoryEmptySubtitle")}</p>
+                    <p className="px-4 py-4 text-sm text-muted">{t("priceHistoryEmptySubtitle")}</p>
                   ) : (
                     <EntityTable
                       columns={[
@@ -316,10 +316,10 @@ export default function LtfFinanceLicenseSettingsPage() {
                       rows={rows}
                     />
                   )}
-                  <div className="border-t border-zinc-200 bg-zinc-50 px-4 py-4">
+                  <div className="border-t border-border bg-secondary px-4 py-4">
                     <div className="grid gap-3 md:grid-cols-3">
                       <div className="space-y-2">
-                        <label className="text-xs font-medium text-zinc-700">{t("priceAmountLabel")}</label>
+                        <label className="text-xs font-medium text-foreground">{t("priceAmountLabel")}</label>
                         <Input
                           value={draft.amount}
                           onChange={(event) =>
@@ -330,7 +330,7 @@ export default function LtfFinanceLicenseSettingsPage() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-xs font-medium text-zinc-700">
+                        <label className="text-xs font-medium text-foreground">
                           {t("priceEffectiveFromLabel")}
                         </label>
                         <Input
@@ -340,7 +340,7 @@ export default function LtfFinanceLicenseSettingsPage() {
                             updatePriceDraft(licenseType.id, { effectiveFrom: event.target.value })
                           }
                         />
-                        <p className="text-xs text-zinc-500">{t("priceEffectiveFromHint")}</p>
+                        <p className="text-xs text-muted">{t("priceEffectiveFromHint")}</p>
                       </div>
                       <div className="flex items-end">
                         <Button onClick={() => savePrice(licenseType.id)} disabled={isSavingPrice}>

@@ -274,24 +274,24 @@ export default function ClubAdminSettingsPage() {
         <EmptyState title={t("clubProfileTitle")} description={t("selectClubPlaceholder")} />
       ) : (
         <div className="space-y-4">
-          <section className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-zinc-900">{t("clubFormTitle")}</h2>
-            <p className="mt-2 text-sm text-zinc-500">{t("clubFormSubtitle")}</p>
+          <section className="rounded-[var(--radius-card)] border border-border bg-card p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-foreground">{t("clubFormTitle")}</h2>
+            <p className="mt-2 text-sm text-muted">{t("clubFormSubtitle")}</p>
 
             <form className="mt-6 grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
               <div className="space-y-2 md:col-span-2">
-                <label className="text-sm font-medium text-zinc-700">{t("clubNameLabel")}</label>
+                <label className="text-sm font-medium text-foreground">{t("clubNameLabel")}</label>
                 <Input placeholder="LTF Central Club" {...register("name")} />
-                {errors.name ? <p className="text-sm text-red-600">{errors.name.message}</p> : null}
+                {errors.name ? <p className="text-sm text-destructive">{errors.name.message}</p> : null}
               </div>
 
               <div className="space-y-2 md:col-span-2">
-                <label className="text-sm font-medium text-zinc-700">{t("addressLine1Label")}</label>
+                <label className="text-sm font-medium text-foreground">{t("addressLine1Label")}</label>
                 <Input placeholder="12 Rue de la Gare" {...register("address_line1")} />
               </div>
 
               <div className="space-y-2 md:col-span-2">
-                <label className="text-sm font-medium text-zinc-700">{t("addressLine2Label")}</label>
+                <label className="text-sm font-medium text-foreground">{t("addressLine2Label")}</label>
                 <Input
                   placeholder="Building, floor, unit (optional)"
                   {...register("address_line2")}
@@ -299,22 +299,22 @@ export default function ClubAdminSettingsPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-zinc-700">{t("postalCodeLabel")}</label>
+                <label className="text-sm font-medium text-foreground">{t("postalCodeLabel")}</label>
                 <Input placeholder="1234" {...register("postal_code")} />
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-zinc-700">{t("localityLabel")}</label>
+                <label className="text-sm font-medium text-foreground">{t("localityLabel")}</label>
                 <Input placeholder="Luxembourg" {...register("locality")} />
               </div>
 
               <div className="space-y-2 md:col-span-2">
-                <label className="text-sm font-medium text-zinc-700">{t("ibanLabel")}</label>
+                <label className="text-sm font-medium text-foreground">{t("ibanLabel")}</label>
                 <Input placeholder="LU00 0000 0000 0000" {...register("iban")} />
               </div>
 
               <div className="space-y-2 md:col-span-2">
-                <label className="text-sm font-medium text-zinc-700">{t("bankNameLabel")}</label>
+                <label className="text-sm font-medium text-foreground">{t("bankNameLabel")}</label>
                 <Input value={derivedBankName || "-"} readOnly disabled />
               </div>
 
@@ -326,13 +326,13 @@ export default function ClubAdminSettingsPage() {
             </form>
           </section>
 
-          <section className="rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-zinc-900">{t("logoSectionTitle")}</h2>
-            <p className="mt-1 text-sm text-zinc-500">{t("logoSectionSubtitle")}</p>
+          <section className="rounded-[var(--radius-card)] border border-border bg-card p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-foreground">{t("logoSectionTitle")}</h2>
+            <p className="mt-1 text-sm text-muted">{t("logoSectionSubtitle")}</p>
 
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <div className="space-y-2 md:col-span-2">
-                <label className="text-sm font-medium text-zinc-700">{t("logoLabelInputLabel")}</label>
+                <label className="text-sm font-medium text-foreground">{t("logoLabelInputLabel")}</label>
                 <Input
                   value={logoLabel}
                   onChange={(event) => setLogoLabel(event.target.value)}
@@ -341,7 +341,7 @@ export default function ClubAdminSettingsPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-zinc-700">{t("logoUsageLabel")}</label>
+                <label className="text-sm font-medium text-foreground">{t("logoUsageLabel")}</label>
                 <Select value={logoUsage} onValueChange={(value) => setLogoUsage(value as LogoUsageType)}>
                   <SelectTrigger>
                     <SelectValue />
@@ -356,8 +356,8 @@ export default function ClubAdminSettingsPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-zinc-700">{t("markLogoSelectedLabel")}</label>
-                <label className="inline-flex items-center gap-2 text-sm text-zinc-700">
+                <label className="text-sm font-medium text-foreground">{t("markLogoSelectedLabel")}</label>
+                <label className="inline-flex items-center gap-2 text-sm text-foreground">
                   <input
                     type="checkbox"
                     checked={markUploadedAsSelected}
@@ -386,19 +386,19 @@ export default function ClubAdminSettingsPage() {
             </div>
 
             {logoFile ? (
-              <p className="mt-2 text-xs text-zinc-500">
+              <p className="mt-2 text-xs text-muted">
                 {t("selectedFileLabel")}: {logoFile.name} ({formatFileSize(logoFile.size)})
               </p>
             ) : null}
 
             {isLoadingLogos ? (
-              <p className="mt-4 text-sm text-zinc-600">{t("loadingSubtitle")}</p>
+              <p className="mt-4 text-sm text-muted">{t("loadingSubtitle")}</p>
             ) : clubLogos.length === 0 ? (
-              <p className="mt-4 text-sm text-zinc-600">{t("logoEmptyState")}</p>
+              <p className="mt-4 text-sm text-muted">{t("logoEmptyState")}</p>
             ) : (
               <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {clubLogos.map((logo) => (
-                  <article key={logo.id} className="rounded-xl border border-zinc-200 p-3">
+                  <article key={logo.id} className="rounded-[var(--radius-card)] border border-border p-3">
                     <div className="flex items-start gap-3">
                       {logo.content_url ? (
                         <Image
@@ -409,12 +409,12 @@ export default function ClubAdminSettingsPage() {
                           className="h-16 w-16 rounded object-contain"
                         />
                       ) : (
-                        <div className="flex h-16 w-16 items-center justify-center rounded bg-zinc-100 text-xs text-zinc-500">
+                        <div className="flex h-16 w-16 items-center justify-center rounded bg-secondary text-xs text-muted">
                           {t("noPreviewAvailable")}
                         </div>
                       )}
-                      <div className="min-w-0 flex-1 text-xs text-zinc-600">
-                        <p className="truncate font-medium text-zinc-800">
+                      <div className="min-w-0 flex-1 text-xs text-muted">
+                        <p className="truncate font-medium text-foreground">
                           {logo.label || logo.file_name}
                         </p>
                         <p>
@@ -422,7 +422,7 @@ export default function ClubAdminSettingsPage() {
                         </p>
                         <p>{formatFileSize(logo.file_size)}</p>
                         {logo.is_selected ? (
-                          <p className="font-medium text-emerald-700">{t("logoSelectedBadge")}</p>
+                          <p className="font-medium text-success">{t("logoSelectedBadge")}</p>
                         ) : null}
                       </div>
                     </div>
@@ -452,8 +452,8 @@ export default function ClubAdminSettingsPage() {
             )}
           </section>
 
-          {successMessage ? <p className="text-sm text-emerald-600">{successMessage}</p> : null}
-          {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+          {successMessage ? <p className="text-sm text-success">{successMessage}</p> : null}
+          {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
         </div>
       )}
     </ClubAdminLayout>

@@ -77,44 +77,44 @@ export default function LtfAdminCreateClubPage() {
           <Link href={`/${locale}/dashboard/ltf/clubs`}>{t("backToClubs")}</Link>
         </Button>
 
-        {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+        {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
-        <section className="rounded-3xl bg-white p-6 shadow-sm">
+        <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
           <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
             <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-medium text-zinc-700">{t("clubNameLabel")}</label>
+              <label className="text-sm font-medium text-foreground">{t("clubNameLabel")}</label>
               <Input placeholder="LTF Central Club" {...register("name")} />
-              {errors.name ? <p className="text-sm text-red-600">{errors.name.message}</p> : null}
+              {errors.name ? <p className="text-sm text-destructive">{errors.name.message}</p> : null}
             </div>
 
             <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-medium text-zinc-700">{t("addressLine1Label")}</label>
+              <label className="text-sm font-medium text-foreground">{t("addressLine1Label")}</label>
               <Input placeholder="12 Rue de la Gare" {...register("address_line1")} />
             </div>
 
             <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-medium text-zinc-700">{t("addressLine2Label")}</label>
+              <label className="text-sm font-medium text-foreground">{t("addressLine2Label")}</label>
               <Input placeholder="Building, floor, unit (optional)" {...register("address_line2")} />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-700">{t("postalCodeLabel")}</label>
+              <label className="text-sm font-medium text-foreground">{t("postalCodeLabel")}</label>
               <Input placeholder="1234" {...register("postal_code")} />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-700">{t("localityLabel")}</label>
+              <label className="text-sm font-medium text-foreground">{t("localityLabel")}</label>
               <Input placeholder="Luxembourg" {...register("locality")} />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-700">{t("ibanLabel")}</label>
+              <label className="text-sm font-medium text-foreground">{t("ibanLabel")}</label>
               <Input placeholder="LU28 0019 4006 4475 0000" {...register("iban")} />
-              {errors.iban ? <p className="text-sm text-red-600">{errors.iban.message}</p> : null}
+              {errors.iban ? <p className="text-sm text-destructive">{errors.iban.message}</p> : null}
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-700">{t("bankNameLabel")}</label>
+              <label className="text-sm font-medium text-foreground">{t("bankNameLabel")}</label>
               <Input value={derivedBankName || "-"} readOnly />
             </div>
 

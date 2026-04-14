@@ -242,9 +242,9 @@ export default function ClubAdminMemberCreatePage() {
           <Link href={`/${locale}/dashboard/club/members`}>{t("backToMembers")}</Link>
         </Button>
 
-        {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+        {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
-        <section className="rounded-3xl bg-white p-6 shadow-sm">
+        <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
           <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
             <div className="space-y-2 md:col-span-2">
               <Label>{t("clubLabel")}</Label>
@@ -266,19 +266,19 @@ export default function ClubAdminMemberCreatePage() {
                   ))}
                 </SelectContent>
               </Select>
-              {errors.club ? <p className="text-sm text-red-600">{errors.club.message}</p> : null}
+              {errors.club ? <p className="text-sm text-destructive">{errors.club.message}</p> : null}
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="member-first-name">{t("firstNameLabel")}</Label>
               <Input id="member-first-name" placeholder="Jane" {...register("first_name")} />
-              {errors.first_name ? <p className="text-sm text-red-600">{errors.first_name.message}</p> : null}
+              {errors.first_name ? <p className="text-sm text-destructive">{errors.first_name.message}</p> : null}
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="member-last-name">{t("lastNameLabel")}</Label>
               <Input id="member-last-name" placeholder="Doe" {...register("last_name")} />
-              {errors.last_name ? <p className="text-sm text-red-600">{errors.last_name.message}</p> : null}
+              {errors.last_name ? <p className="text-sm text-destructive">{errors.last_name.message}</p> : null}
             </div>
 
             <div className="space-y-2">
@@ -301,7 +301,7 @@ export default function ClubAdminMemberCreatePage() {
               <Label htmlFor="member-wt-license">{importT("wtLicenseLabel")}</Label>
               <Input id="member-wt-license" placeholder="LUX-12345" {...register("wt_licenseid")} />
               {errors.wt_licenseid ? (
-                <p className="text-sm text-red-600">{errors.wt_licenseid.message}</p>
+                <p className="text-sm text-destructive">{errors.wt_licenseid.message}</p>
               ) : null}
             </div>
 
@@ -321,14 +321,14 @@ export default function ClubAdminMemberCreatePage() {
                   <SelectItem value="LUX">{t("ltfLicensePrefixLux")}</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-zinc-500">{t("ltfLicensePrefixHint")}</p>
+              <p className="text-xs text-muted">{t("ltfLicensePrefixHint")}</p>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="member-dob">{t("dobLabel")}</Label>
               <Input id="member-dob" placeholder="29 Nov 2026" {...register("date_of_birth")} />
               {errors.date_of_birth ? (
-                <p className="text-sm text-red-600">{errors.date_of_birth.message}</p>
+                <p className="text-sm text-destructive">{errors.date_of_birth.message}</p>
               ) : null}
             </div>
 
@@ -393,7 +393,7 @@ export default function ClubAdminMemberCreatePage() {
                 </SelectContent>
               </Select>
               {errors.secondary_license_role ? (
-                <p className="text-sm text-red-600">{errors.secondary_license_role.message}</p>
+                <p className="text-sm text-destructive">{errors.secondary_license_role.message}</p>
               ) : null}
             </div>
 

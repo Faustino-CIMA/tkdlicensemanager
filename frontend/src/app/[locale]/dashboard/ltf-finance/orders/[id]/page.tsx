@@ -159,41 +159,41 @@ export default function LtfFinanceOrderDetailPage() {
         </Button>
       </div>
 
-      <section className="rounded-3xl border border-zinc-100 bg-white p-6 shadow-sm">
-        <div className="grid gap-4 text-sm text-zinc-700 md:grid-cols-2">
+      <section className="rounded-[var(--radius-card)] border border-border bg-card p-6 shadow-sm">
+        <div className="grid gap-4 text-sm text-foreground md:grid-cols-2">
           <div className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-500">{t("orderNumberLabel")}</span>
+            <span className="text-xs text-muted">{t("orderNumberLabel")}</span>
             <span className="font-medium">{order.order_number}</span>
           </div>
           <div className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-500">{t("statusLabel")}</span>
+            <span className="text-xs text-muted">{t("statusLabel")}</span>
             <StatusBadge label={statusMeta.label} tone={statusMeta.tone} />
           </div>
           <div className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-500">{t("clubLabel")}</span>
+            <span className="text-xs text-muted">{t("clubLabel")}</span>
             <span className="font-medium">
               {clubNameById[order.club] ?? String(order.club)}
             </span>
           </div>
           <div className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-500">{t("totalLabel")}</span>
+            <span className="text-xs text-muted">{t("totalLabel")}</span>
             <span className="font-medium">
               {order.total} {order.currency}
             </span>
           </div>
           <div className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-500">{t("createdAtLabel")}</span>
+            <span className="text-xs text-muted">{t("createdAtLabel")}</span>
             <span className="font-medium">{formatDisplayDateTime(order.created_at)}</span>
           </div>
           <div className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-500">{t("totalLicensesLabel")}</span>
+            <span className="text-xs text-muted">{t("totalLicensesLabel")}</span>
             <span className="font-medium">{totalQuantity}</span>
           </div>
         </div>
       </section>
 
       <section className="mt-6">
-        <h2 className="mb-3 text-sm font-semibold text-zinc-700">{t("orderItemsTitle")}</h2>
+        <h2 className="mb-3 text-sm font-semibold text-foreground">{t("orderItemsTitle")}</h2>
         <EntityTable columns={columns} rows={items} />
       </section>
     </LtfFinanceLayout>

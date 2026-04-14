@@ -29,16 +29,16 @@ export function DeleteConfirmModal({
   return (
     <Modal isOpen={isOpen} onClose={onCancel} title={title} description={description}>
       {listItems && listItems.length > 0 ? (
-        <div className="rounded-xl border border-zinc-100 bg-zinc-50 p-4 text-sm text-zinc-600">
-          {listTitle ? <p className="font-medium text-zinc-700">{listTitle}</p> : null}
-          <ol className="mt-2 list-decimal space-y-1 pl-5">
+        <div className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface-secondary)] p-4 text-sm text-[var(--muted)]">
+          {listTitle ? <p className="font-medium text-[var(--foreground)]">{listTitle}</p> : null}
+          <ol className="mt-3 list-decimal space-y-2 pl-5">
             {listItems.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ol>
         </div>
       ) : null}
-      <div className="mt-6 flex flex-wrap justify-end gap-2">
+      <div className="mt-8 flex flex-wrap justify-end gap-3">
         <Button variant="outline" onClick={onCancel}>
           {cancelLabel}
         </Button>

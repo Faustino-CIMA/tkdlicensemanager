@@ -1,21 +1,31 @@
-# LTF License Manager - Permanent Project Memory
-Last updated: 2026-03-19
+**LTF Taekwondo License Manager — Master Summary (March 2026)**
+Last updated: 2026-03-28
 
-## Current Active Branch
-**Branch:** `main`
-**Purpose:** Production line; printer profiles (v0.3.6) merged from `feature/general-improvements`.
-**Visual overhaul postponed** to a later dedicated branch.
-**Status:** v0.3.6 released on main; Dokploy smoke test passed before merge/tag (2026-03-19).
+Current main branch state:
+- Version: v0.3.8 (annotated tag v0.3.8 created and pushed)
+- Printer Profiles feature fully merged and live (v0.3.6)
+- Docker infrastructure cleanup and stable stack released
+- Full HeroUI v3.0.1 integration with custom ltf_theme + sharp consistent radii completed (v0.3.9)
+- Sticky top bar implemented
+- Navigation tabs stabilized (no more swapping on club dashboard)
+- Club Members page fully cleaned up (RadioGroup filters with total counts, improved Members/Actions Selects, row status confirmation modals, pagination 50/150/300/All)
 
-## Current Stack (locked)
-- Backend: Django 6+ + DRF + PostgreSQL 18+
-- Frontend: Next.js 16+ (App Router) + React + TypeScript + **Material Design 3 (@mui/material)**
-- Database: PostgreSQL 18+
-- Other: Redis + Celery (staggered schedules), Docker + docker-compose + Dokploy deployment
-- i18n: next-intl (EN/LU)
-- Security: GDPR-first (consent, minimization, rights, export/delete), OWASP, django-simple-history
-- Documentation: Comprehensive README + code comments + drf-spectacular API docs
-- CI/CD: GitHub Actions CI active (backend migrate/check/test + frontend lint/build)
+Current working branch: improvements-clean
+Status: All visual, navigation and Club Members page improvements merged and verified locally
+
+Current Stack (locked) — Updated 2026-03-28
+- Backend: python:3.13-slim-bookworm + Django 6.0.3 + DRF 3.17.0 + PostgreSQL 18
+- Frontend: Next.js 16.2.1 (App Router) + React 19.2.4 + TypeScript 5.9.3 + HeroUI v3.0.1 + Tailwind 4.2.2
+- Runtime: Python 3.13 + Node 22
+- Cache / queue: Redis 8.4 + Celery 5.6.2
+- Containers: Docker + Dokploy deployment
+
+Rules we follow:
+- Always work on dedicated feature branches for new work
+- Always test in Docker (`docker compose up -d --build`)
+- Use oh-my-cursor Team Avatar agents (@toph, @iroh, @appa, @sokka, @escher, ...)
+- Agents must update CHANGELOG.md and README.md after every significant change
+- PROJECT_CONTEXT.md is the single source of truth
 
 ## Major Features & Status (from transcripts)
 - Multi-role system (LTF Admin, LTF Finance (strict), Club Admin, Coach, Member) — completed
@@ -46,27 +56,28 @@ Last updated: 2026-03-19
 - Printer Profile Step 4 (feature/general-improvements): Full regression (licenses.test_cards 99/99), lint/build pass, Docker services healthy; end-to-end verification of Club Admin selection, LTF Admin CRUD, and PDF offset — completed. Step 4 re-run (2026-03-18): licenses.test_cards 99/99 OK, npm lint/build OK, docker compose up -d --build + ps all healthy.
 - Printer Profile Step 5 (feature/general-improvements): Dokploy deploy + smoke tests passed; merged to `main`, tag `v0.3.6` created and pushed (2026-03-19).
 - **Release v0.3.6 (2026-03-19):** Merged `feature/general-improvements` to `main` (fast-forward). Printer profiles (user-owned, Club Admin nav + `/dashboard/club/printer-profiles`, LTF Admin CRUD, quick-print selection, PDF offset in final output) + photo fixes live on `main`. Tag `v0.3.6` created and pushed.
+- **v0.3.9 HeroUI Release (2026-03-28):** Full HeroUI v3.0.1 integration with custom ltf_theme.css, sticky top bar, stable tab navigation (no more swapping), Club Members page overhaul (RadioGroup filters with total counts, improved Members/Actions Selects, row status confirmation modals, pagination 50/150/300/All).
 
 ## Key Decisions
-- Material Design 3 is the only UI framework
 - Club Admin payments do NOT require extra consent prompt
 - Batch orders create ONE Order + ONE Invoice (grouped)
 - Stripe uses invoice_number as reference (not order_number)
 - All history is immutable and audited
-- Docker containers run with host UID/GID + .cursor bind-mount for debugging
+- Docker containers run without .cursor bind-mounts (ownership stability)
 
 ## Current Open / Next Priorities (update after every milestone)
-- Post-rollout observation on production/Dokploy (print queue, printer-profile offset correctness).
+- Post-rollout observation on production/Dokploy (print queue, printer-profile offset correctness)
 - Gather real Payconiq sandbox credentials and run first live sandbox verification
 - Any remaining Dokploy stability tweaks
-- Post-rollout production observation window for print queue throughput, simulation refresh latency, asset resolution telemetry, printer-profile offset correctness in live print batches, and artifact retention tuning (v0.3.5 / v0.3.6)
 
-## Coding & Memory Rules (always follow)
-- Explain ALL JS/TS in extreme beginner detail
-- Small, testable steps with tests at every stage
-- Conventional commits
-- Update this file after every major feature
+Next phase: General improvements or next major feature (e.g. Invoice redesign, full Payconiq integration)
+
+Coding & Memory Rules (always follow)
+- Always work on dedicated feature branches for new work
+- Always test in Docker (`docker compose up -d --build`)
+- Use oh-my-cursor Team Avatar agents (@toph, @iroh, @appa, @sokka, @escher, ...)
+- Agents must update CHANGELOG.md and README.md after every significant change
+- PROJECT_CONTEXT.md is the single source of truth
 - Read this file FIRST in every session
 
----
-Update this file after every significant milestone.
+Ready for your next request. Paste this block into any new Grok chat to continue with full context.

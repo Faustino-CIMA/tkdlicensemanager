@@ -157,7 +157,7 @@ export default function LtfAdminLicenseTypesPage() {
 
   return (
     <LtfAdminLayout title={t("licenseTypesTitle")} subtitle={t("licenseTypesSubtitle")}>
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -170,7 +170,7 @@ export default function LtfAdminLicenseTypesPage() {
           {canManageLicenseTypes ? <Button onClick={startCreate}>{t("createLicenseType")}</Button> : null}
         </div>
         {!canManageLicenseTypes ? (
-          <p className="text-sm text-zinc-500">{t("licenseTypesReadOnlyHint")}</p>
+          <p className="text-sm text-muted">{t("licenseTypesReadOnlyHint")}</p>
         ) : null}
 
         {isLoading ? (
@@ -224,9 +224,9 @@ export default function LtfAdminLicenseTypesPage() {
       >
         <form className="grid gap-4" onSubmit={handleSubmit(onSubmit)}>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">{t("licenseTypeNameLabel")}</label>
+            <label className="text-sm font-medium text-foreground">{t("licenseTypeNameLabel")}</label>
             <Input placeholder={t("licenseTypeNamePlaceholder")} {...register("name")} />
-            {errors.name ? <p className="text-sm text-red-600">{errors.name.message}</p> : null}
+            {errors.name ? <p className="text-sm text-destructive">{errors.name.message}</p> : null}
           </div>
           <div className="flex items-center gap-3">
             <Button type="submit" disabled={isSubmitting}>

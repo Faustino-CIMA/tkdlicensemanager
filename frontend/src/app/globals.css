@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "@heroui/styles";
+@import "../themes/ltf_theme.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -37,82 +39,46 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
-  --radius-4xl: calc(var(--radius) + 16px);
+  /* Semantic status colors mapped from ltf_theme.css variables */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  /* Keep radius theme-driven and non-negative for sharp but tasteful corners. */
+  --radius-sm: var(--radius);
+  --radius-md: calc(var(--radius) + 0.125rem);
+  --radius-lg: calc(var(--radius) + 0.25rem);
+  --radius-xl: calc(var(--radius) + 0.375rem);
+  --radius-2xl: calc(var(--radius) + 0.5rem);
+  --radius-3xl: calc(var(--radius) + 0.75rem);
+  --radius-4xl: calc(var(--radius) + 1rem);
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /* Theme radius comes from src/themes/ltf_theme.css; keep aliases centralized here. */
+  --radius-form: var(--radius-sm);
+  --radius-card: var(--radius-form);
+  --radius-modal: var(--radius-md);
+  /* Compatibility aliases for existing Tailwind semantic classes. */
+  --card: var(--surface);
+  --card-foreground: var(--surface-foreground);
+  --popover: var(--overlay);
+  --popover-foreground: var(--overlay-foreground);
+  --primary: var(--accent);
+  --primary-foreground: var(--accent-foreground);
+  --secondary: var(--surface-secondary);
+  --secondary-foreground: var(--surface-secondary-foreground);
+  --destructive: var(--danger);
+  --input: var(--field-background);
+  --ring: var(--focus);
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--surface-foreground);
+  --sidebar-primary: var(--accent);
+  --sidebar-primary-foreground: var(--accent-foreground);
+  --sidebar-accent: var(--surface-secondary);
+  --sidebar-accent-foreground: var(--surface-secondary-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--focus);
 }
 
 @layer base {
@@ -121,5 +87,50 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  /* Semantic status badge/chip utilities — align to ltf_theme CSS variables */
+  .badge-success {
+    border-color: color-mix(in oklab, var(--success) 30%, white);
+    background-color: color-mix(in oklab, var(--success) 12%, white);
+    color: color-mix(in oklab, var(--success) 70%, black);
+  }
+  .badge-warning {
+    border-color: color-mix(in oklab, var(--warning) 30%, white);
+    background-color: color-mix(in oklab, var(--warning) 12%, white);
+    color: color-mix(in oklab, var(--warning) 70%, black);
+  }
+  .badge-danger {
+    border-color: color-mix(in oklab, var(--danger) 30%, white);
+    background-color: color-mix(in oklab, var(--danger) 12%, white);
+    color: color-mix(in oklab, var(--danger) 70%, black);
+  }
+  .badge-info {
+    border-color: color-mix(in oklab, var(--accent) 30%, white);
+    background-color: color-mix(in oklab, var(--accent) 12%, white);
+    color: color-mix(in oklab, var(--accent) 70%, black);
+  }
+  /* Semantic banner/alert section utilities */
+  .banner-success {
+    border-color: color-mix(in oklab, var(--success) 25%, white);
+    background-color: color-mix(in oklab, var(--success) 8%, white);
+    color: color-mix(in oklab, var(--success) 72%, black);
+  }
+  .banner-warning {
+    border-color: color-mix(in oklab, var(--warning) 25%, white);
+    background-color: color-mix(in oklab, var(--warning) 8%, white);
+    color: color-mix(in oklab, var(--warning) 72%, black);
+  }
+  .banner-danger {
+    border-color: color-mix(in oklab, var(--danger) 25%, white);
+    background-color: color-mix(in oklab, var(--danger) 8%, white);
+    color: color-mix(in oklab, var(--danger) 72%, black);
+  }
+  .banner-info {
+    border-color: color-mix(in oklab, var(--accent) 25%, white);
+    background-color: color-mix(in oklab, var(--accent) 8%, white);
+    color: color-mix(in oklab, var(--accent) 70%, black);
   }
 }

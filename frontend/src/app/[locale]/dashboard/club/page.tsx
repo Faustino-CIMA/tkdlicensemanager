@@ -46,12 +46,12 @@ type RecentActivityRow = {
 
 function getSeverityClasses(severity: QueueSeverity) {
   if (severity === "critical") {
-    return "border-red-200 bg-red-50 text-red-700";
+    return "badge-danger";
   }
   if (severity === "warning") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
+    return "badge-warning";
   }
-  return "border-sky-200 bg-sky-50 text-sky-700";
+  return "badge-info";
 }
 
 function toTimestamp(value: string | null) {
@@ -338,31 +338,26 @@ export default function ClubAdminOverviewPage() {
 
   return (
     <ClubAdminLayout title={t("overviewTitle")} subtitle={t("overviewSubtitle")}>
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
       {isLoading ? (
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
       ) : clubs.length === 0 ? (
         <EmptyState title={t("overviewEmptyTitle")} description={t("overviewEmptySubtitle")} />
       ) : (
-        <div className="space-y-5">
-          <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
-            <p className="text-xs text-zinc-500">
+        <div className="space-y-6">
+          <section className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] px-4 py-3 shadow-sm">
+            <p className="text-xs text-[var(--muted)]">
               {lastRefreshAt
                 ? t("lastRefreshLabel", { time: formatDisplayDateTime(lastRefreshAt) })
                 : t("lastRefreshNever")}
             </p>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => loadOverview({ silent: true })}
-              disabled={isRefreshing}
-            >
+            <Button variant="outline" onClick={() => loadOverview({ silent: true })} disabled={isRefreshing}>
               {isRefreshing ? t("refreshingAction") : t("refreshAction")}
             </Button>
           </section>
 
-          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <section className="grid gap-4 md:grid-cols-2 md:gap-5 xl:grid-cols-4">
             <SummaryCard title={t("totalMembers")} value={String(filteredMembers.length)} />
             <SummaryCard title={t("activeMembers")} value={String(activeMembers.length)} />
             <SummaryCard title={t("totalLicenses")} value={String(filteredLicenses.length)} />
@@ -379,16 +374,16 @@ export default function ClubAdminOverviewPage() {
             />
           </section>
 
-          <section className="space-y-3 rounded-3xl bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-zinc-900">{t("actionQueueTitle")}</h2>
+          <section className="space-y-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-[var(--foreground)]">{t("actionQueueTitle")}</h2>
             {visibleQueueItems.length === 0 ? (
-              <p className="text-sm text-zinc-600">{t("actionQueueAllClear")}</p>
+              <p className="text-sm text-muted">{t("actionQueueAllClear")}</p>
             ) : (
               <div className="space-y-2">
                 {visibleQueueItems.map((item) => (
                   <div
                     key={item.id}
-                    className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-3 ${getSeverityClasses(item.severity)}`}
+                    className={`flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-form)] border px-3 py-3 ${getSeverityClasses(item.severity)}`}
                   >
                     <div className="min-w-0">
                       <p className="text-sm font-medium">{item.label}</p>
@@ -398,7 +393,7 @@ export default function ClubAdminOverviewPage() {
                     </div>
                     <Link
                       href={item.href}
-                      className="rounded-full border border-current px-3 py-1 text-xs font-medium"
+                      className="inline-flex min-h-11 items-center justify-center rounded-[var(--radius-form)] border border-current px-4 text-xs font-semibold"
                     >
                       {t("openAction")}
                     </Link>
@@ -408,10 +403,10 @@ export default function ClubAdminOverviewPage() {
             )}
           </section>
 
-          <section className="grid gap-4 xl:grid-cols-2">
-            <div className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">
-              <h2 className="text-sm font-semibold text-zinc-900">{t("licensesDistributionTitle")}</h2>
-              <div className="mt-3 space-y-2 text-sm text-zinc-700">
+          <section className="grid gap-4 md:gap-5 xl:grid-cols-2">
+            <div className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
+              <h2 className="text-sm font-semibold text-[var(--foreground)]">{t("licensesDistributionTitle")}</h2>
+              <div className="mt-3 space-y-2 text-sm text-foreground">
                 <p>
                   {t("activeLicenses")}: <span className="font-semibold">{activeLicenses.length}</span>
                 </p>
@@ -426,9 +421,9 @@ export default function ClubAdminOverviewPage() {
                 </p>
               </div>
             </div>
-            <div className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">
-              <h2 className="text-sm font-semibold text-zinc-900">{t("invoicesDistributionTitle")}</h2>
-              <div className="mt-3 space-y-2 text-sm text-zinc-700">
+            <div className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
+              <h2 className="text-sm font-semibold text-[var(--foreground)]">{t("invoicesDistributionTitle")}</h2>
+              <div className="mt-3 space-y-2 text-sm text-foreground">
                 <p>
                   {t("invoiceStatusDraft")}: <span className="font-semibold">{invoicesByStatus.draft}</span>
                 </p>
@@ -446,7 +441,7 @@ export default function ClubAdminOverviewPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-sm font-semibold text-zinc-900">{t("recentActivityTitle")}</h2>
+            <h2 className="text-sm font-semibold text-foreground">{t("recentActivityTitle")}</h2>
             {recentActivityRows.length === 0 ? (
               <EmptyState title={t("recentActivityTitle")} description={t("recentActivityEmpty")} />
             ) : (
