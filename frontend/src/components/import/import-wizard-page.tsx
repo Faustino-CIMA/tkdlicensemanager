@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import {
   Select,
   SelectContent,
@@ -24,6 +25,31 @@ type WizardStep = "source" | "mapping" | "preview" | "confirm" | "result";
 type RowAction = "create" | "skip";
 type PreviewFilter = "all" | "ready" | "duplicate" | "invalid" | "skipped";
 type DateFormat = "YYYY-MM-DD" | "DD/MM/YYYY" | "DD-MM-YYYY" | "DD.MM.YYYY";
+
+// License role values matching backend
+const LICENSE_ROLE_VALUES = [
+  "athlete",
+  "coach",
+  "referee",
+  "official",
+  "doctor",
+  "physiotherapist",
+  "volunteer",
+  "staff",
+  "media",
+  "fan",
+] as const;
+
+type LicenseRoleValue = (typeof LICENSE_ROLE_VALUES)[number];
+
+// Role override for a single row
+type RowRoleOverride = {
+  primary_license_role?: string;
+  secondary_license_role?: string;
+};
+
+// Display status includes "review" for role-related issues
+type RowDisplayStatus = "ready" | "duplicate" | "invalid" | "skipped" | "review";
 
 type FieldOption = {
   key: string;
@@ -83,11 +109,274 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function getRowStatus(row: ImportRow, action: RowAction): PreviewFilter {
+// Normalize role input like backend: lowercase, trim, replace _ and - with spaces
+function normalizeRoleInput(value: string | null | undefined): string {
+  if (!value) return "";
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/_/g, " ")
+    .replace(/-/g, " ");
+}
+
+// Check if a normalized role value is a valid enum value
+function isValidLicenseRole(value: string): value is LicenseRoleValue {
+  if (!value) return false;
+  const normalized = normalizeRoleInput(value);
+  // Collapse multiple spaces to single space for matching
+  const collapsed = normalized.replace(/\s+/g, " ").trim();
+  return LICENSE_ROLE_VALUES.includes(collapsed as LicenseRoleValue);
+}
+
+// Check if an error message is role-related
+function isRoleRelatedError(error: string): boolean {
+  const lower = error.toLowerCase();
+  return (
+    lower.includes("primary_license_role") ||
+    lower.includes("secondary_license_role") ||
+    lower.includes("must be one of:")
+  );
+}
+
+// Values treated as "no secondary role provided" — never trigger Review.
+const SECONDARY_MISSING_VALUES = new Set([
+  "",
+  "-",
+  "*",
+  "/",
+  "none",
+  "null",
+  "n/a",
+]);
+
+function isEmptyRoleValue(value: string | null | undefined): boolean {
+  if (value === null || value === undefined) {
+    return true;
+  }
+  const trimmed = String(value).trim().toLowerCase();
+  return SECONDARY_MISSING_VALUES.has(trimmed);
+}
+
+function getTrimmedRoleValue(
+  row: ImportRow,
+  field: "primary_license_role" | "secondary_license_role"
+): string {
+  const value = row.data[field];
+  if (isEmptyRoleValue(value)) {
+    return "";
+  }
+  return String(value).trim();
+}
+
+// Check if a row has a license-role issue that should show as Review.
+//
+// Secondary: the backend normalizes invalid values to "" before storing in
+// preview data. Both truly-empty and invalid-normalised secondaries arrive as
+// "" in row.data. We treat all values in SECONDARY_MISSING_VALUES (plus the
+// backend-normalised "") as "no secondary provided" and skip the secondary
+// block entirely — they never trigger Review.
+// Secondary constraint violations (requires primary / must differ) are caught
+// by the error check inside the block, but only when secondary is a real
+// non-missing value in row.data (e.g. a valid role like "athlete").
+function hasRoleIssue(row: ImportRow): boolean {
+  const primary = getTrimmedRoleValue(row, "primary_license_role");
+  const secondary = getTrimmedRoleValue(row, "secondary_license_role");
+
+  // Primary: invalid non-empty value OR any backend error mentioning primary role.
+  if (primary && !isValidLicenseRole(primary)) {
+    return true;
+  }
+  if (row.errors.some((e) => e.toLowerCase().includes("primary_license_role"))) {
+    return true;
+  }
+
+  // Secondary: skipped entirely when value is empty / missing / placeholder.
+  // Values like "-", "None", "n/a", " " all resolve to "" via getTrimmedRoleValue.
+  if (secondary) {
+    if (!isValidLicenseRole(secondary)) {
+      return true;
+    }
+    // Valid secondary but constraint violation (e.g. "requires primary", "must differ").
+    if (row.errors.some((e) => e.toLowerCase().includes("secondary_license_role"))) {
+      return true;
+    }
+    // Both roles valid but identical — flag as a role issue regardless of backend errors.
+    if (
+      primary &&
+      isValidLicenseRole(primary) &&
+      normalizeRoleInput(primary) === normalizeRoleInput(secondary)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Apply role overrides to a row's errors, returning new errors array
+function applyRoleOverrides(
+  row: ImportRow,
+  override: RowRoleOverride | undefined
+): string[] {
+  if (!override) return row.errors;
+
+  const newErrors: string[] = [];
+  const primary = override.primary_license_role;
+  const secondary = override.secondary_license_role;
+
+  for (const error of row.errors) {
+    // If this is a role-related error, check if override resolves it
+    if (isRoleRelatedError(error)) {
+      // Skip role errors that are resolved by valid override values
+      const isPrimaryError = error.toLowerCase().includes("primary_license_role");
+      const isSecondaryError = error.toLowerCase().includes("secondary_license_role");
+
+      if (isPrimaryError && primary && isValidLicenseRole(primary)) {
+        continue; // Skip this error, primary role is now valid
+      }
+      if (isSecondaryError && secondary && isValidLicenseRole(secondary)) {
+        // Also check secondary constraints
+        if (primary && isValidLicenseRole(primary)) {
+          if (normalizeRoleInput(secondary) !== normalizeRoleInput(primary)) {
+            continue; // Skip this error, secondary role is valid and different from primary
+          } else {
+            newErrors.push("secondary_license_role must differ from primary_license_role");
+            continue;
+          }
+        }
+        continue;
+      }
+      // Keep unresolved role errors
+      newErrors.push(error);
+    } else {
+      // Non-role errors always kept
+      newErrors.push(error);
+    }
+  }
+
+  // Effective role values for constraint checks below.
+  // When the user only overrides one role field, fall back to the row's current
+  // data value for the other — this ensures constraint violations are detected
+  // immediately even when only one side of the pair has been changed.
+  const effPrimary =
+    primary !== undefined ? primary : getTrimmedRoleValue(row, "primary_license_role");
+  const effSecondary =
+    secondary !== undefined ? secondary : getTrimmedRoleValue(row, "secondary_license_role");
+
+  // If the effective roles are now different, strip any stale "must differ" errors
+  // that the loop may have carried over from before the override was applied.
+  const effectivelyDiffer =
+    !effPrimary ||
+    !effSecondary ||
+    !isValidLicenseRole(effPrimary) ||
+    !isValidLicenseRole(effSecondary) ||
+    normalizeRoleInput(effPrimary) !== normalizeRoleInput(effSecondary);
+
+  if (effectivelyDiffer) {
+    for (let i = newErrors.length - 1; i >= 0; i--) {
+      if (newErrors[i].toLowerCase().includes("must differ from primary")) {
+        newErrors.splice(i, 1);
+      }
+    }
+  }
+
+  // Secondary requires primary
+  if (effSecondary && isValidLicenseRole(effSecondary)) {
+    if (!effPrimary || !isValidLicenseRole(effPrimary)) {
+      const hasSecondaryRequiresPrimary = newErrors.some(
+        (e) => e.toLowerCase().includes("secondary_license_role requires primary_license_role")
+      );
+      if (!hasSecondaryRequiresPrimary) {
+        newErrors.push("secondary_license_role requires primary_license_role");
+      }
+    }
+  }
+
+  // Primary must not equal secondary
+  if (
+    effPrimary &&
+    isValidLicenseRole(effPrimary) &&
+    effSecondary &&
+    isValidLicenseRole(effSecondary) &&
+    normalizeRoleInput(effPrimary) === normalizeRoleInput(effSecondary)
+  ) {
+    const hasSameError = newErrors.some(
+      (e) => e.toLowerCase().includes("must differ from primary")
+    );
+    if (!hasSameError) {
+      newErrors.push("secondary_license_role must differ from primary_license_role");
+    }
+  }
+
+  return newErrors;
+}
+
+// Remove secondary_license_role errors from a row when the secondary value is
+// a missing/placeholder value (empty, "-", "None", etc.). This prevents those
+// rows from showing as Invalid solely because of a harmless placeholder in the
+// secondary column — they should show as Ready if no other errors exist.
+function suppressMissingSecondaryErrors(row: ImportRow): ImportRow {
+  if (!isEmptyRoleValue(row.data.secondary_license_role)) {
+    return row;
+  }
+  const filteredErrors = row.errors.filter(
+    (e) => !e.toLowerCase().includes("secondary_license_role")
+  );
+  if (filteredErrors.length === row.errors.length) {
+    return row;
+  }
+  return { ...row, errors: filteredErrors };
+}
+
+// Returns true if the row has errors that count toward Invalid status.
+// For members import: secondary_license_role errors on rows with a missing/
+// placeholder secondary value are ignored — those rows should be Ready.
+function hasRealErrors(row: ImportRow, isMembersImport: boolean): boolean {
+  if (row.errors.length === 0) {
+    return false;
+  }
+  if (!isMembersImport) {
+    return true;
+  }
+  // If secondary is a missing/placeholder value, strip secondary errors before
+  // deciding. This is a belt-and-suspenders check alongside the suppression
+  // that already runs in effectivePreviewRows.
+  if (isEmptyRoleValue(row.data["secondary_license_role"])) {
+    return row.errors.some(
+      (e) => !e.toLowerCase().includes("secondary_license_role")
+    );
+  }
+  return true;
+}
+
+// Get display status for a row, considering role overrides
+function getRowDisplayStatus(
+  row: ImportRow,
+  action: RowAction,
+  isMembersImport: boolean
+): RowDisplayStatus {
   if (action === "skip") {
     return "skipped";
   }
-  if (row.errors.length > 0) {
+  if (isMembersImport) {
+    // Primary role-issue check (invalid values, constraint violations)
+    if (hasRoleIssue(row)) {
+      return "review";
+    }
+    // Belt-and-suspenders: catch same-role conflict even if hasRoleIssue misses it
+    const p = getTrimmedRoleValue(row, "primary_license_role");
+    const s = getTrimmedRoleValue(row, "secondary_license_role");
+    if (
+      p &&
+      s &&
+      isValidLicenseRole(p) &&
+      isValidLicenseRole(s) &&
+      normalizeRoleInput(p) === normalizeRoleInput(s)
+    ) {
+      return "review";
+    }
+  }
+  if (hasRealErrors(row, isMembersImport)) {
     return "invalid";
   }
   if (row.duplicate) {
@@ -96,7 +385,18 @@ function getRowStatus(row: ImportRow, action: RowAction): PreviewFilter {
   return "ready";
 }
 
-function buildSummary(rows: ImportRow[], actions: Record<number, RowAction>): SummaryCounts {
+// Map display status to filter category for counts/buttons
+function getFilterCategory(status: RowDisplayStatus): PreviewFilter {
+  // Review rows are counted as invalid for filter buttons
+  if (status === "review") return "invalid";
+  return status;
+}
+
+function buildSummary(
+  rows: ImportRow[],
+  actions: Record<number, RowAction>,
+  isMembersImport: boolean
+): SummaryCounts {
   const summary: SummaryCounts = {
     total: rows.length,
     ready: 0,
@@ -106,8 +406,9 @@ function buildSummary(rows: ImportRow[], actions: Record<number, RowAction>): Su
   };
   for (const row of rows) {
     const action = actions[row.row_index] ?? "create";
-    const status = getRowStatus(row, action);
-    summary[status] += 1;
+    const status = getRowDisplayStatus(row, action, isMembersImport);
+    const filterCategory = getFilterCategory(status);
+    summary[filterCategory] += 1;
   }
   return summary;
 }
@@ -124,6 +425,7 @@ export function ImportWizardPage({
 }: ImportWizardPageProps) {
   const t = useTranslations("Import");
   const common = useTranslations("Common");
+  const clubT = useTranslations("ClubAdmin");
 
   const [step, setStep] = useState<WizardStep>("source");
   const [importType, setImportType] = useState<ImportType>(defaultType);
@@ -133,6 +435,15 @@ export function ImportWizardPage({
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [previewRows, setPreviewRows] = useState<ImportRow[]>([]);
   const [actions, setActions] = useState<Record<number, RowAction>>({});
+  const [roleOverrides, setRoleOverrides] = useState<Record<number, RowRoleOverride>>({});
+  const [roleConfirm, setRoleConfirm] = useState<{
+    rowIndex: number;
+    field: "primary_license_role" | "secondary_license_role";
+    newValue: string;
+    memberName: string;
+    fieldLabel: string;
+    roleLabel: string;
+  } | null>(null);
   const [selectedClubId, setSelectedClubId] = useState<number | null>(
     fixedClubId ?? (clubOptions[0]?.id ?? null)
   );
@@ -164,20 +475,86 @@ export function ImportWizardPage({
     return clubOptions.find((club) => club.id === selectedClubId)?.name ?? null;
   }, [clubOptions, selectedClubId]);
 
+  // Compute effective preview rows: suppress placeholder secondary errors,
+  // then apply any user-provided role overrides, then guarantee the
+  // "must differ" error is present whenever both roles are identical valid values.
+  const effectivePreviewRows = useMemo(() => {
+    if (!isMembersImport) {
+      return previewRows;
+    }
+    return previewRows.map((row) => {
+      // Always suppress secondary errors for missing/placeholder secondary values
+      // so those rows show as Ready (not Invalid) when no other errors exist.
+      const suppressed = suppressMissingSecondaryErrors(row);
+      const override = roleOverrides[suppressed.row_index];
+
+      let processed: typeof suppressed;
+      if (!override) {
+        processed = suppressed;
+      } else {
+        const newErrors = applyRoleOverrides(suppressed, override);
+        processed = {
+          ...suppressed,
+          errors: newErrors,
+          data: {
+            ...suppressed.data,
+            ...(override.primary_license_role !== undefined && {
+              primary_license_role: override.primary_license_role,
+            }),
+            ...(override.secondary_license_role !== undefined && {
+              secondary_license_role: override.secondary_license_role,
+            }),
+          },
+        };
+      }
+
+      // Always guarantee a "must differ" error when both effective role values
+      // are the same non-empty valid role — independent of the backend and of
+      // whether any override was applied. This is the single authoritative
+      // source of truth for same-role conflict detection.
+      const effP = getTrimmedRoleValue(processed, "primary_license_role");
+      const effS = getTrimmedRoleValue(processed, "secondary_license_role");
+      if (
+        effP &&
+        effS &&
+        isValidLicenseRole(effP) &&
+        isValidLicenseRole(effS) &&
+        normalizeRoleInput(effP) === normalizeRoleInput(effS)
+      ) {
+        const alreadyFlagged = processed.errors.some((e) =>
+          e.toLowerCase().includes("must differ from primary")
+        );
+        if (!alreadyFlagged) {
+          processed = {
+            ...processed,
+            errors: [
+              ...processed.errors,
+              "secondary_license_role must differ from primary_license_role",
+            ],
+          };
+        }
+      }
+
+      return processed;
+    });
+  }, [previewRows, roleOverrides, isMembersImport]);
+
   const summary = useMemo(
-    () => buildSummary(previewRows, actions),
-    [actions, previewRows]
+    () => buildSummary(effectivePreviewRows, actions, isMembersImport),
+    [actions, effectivePreviewRows, isMembersImport]
   );
 
   const filteredPreviewRows = useMemo(() => {
     if (previewFilter === "all") {
-      return previewRows;
+      return effectivePreviewRows;
     }
-    return previewRows.filter((row) => {
+    return effectivePreviewRows.filter((row) => {
       const action = actions[row.row_index] ?? "create";
-      return getRowStatus(row, action) === previewFilter;
+      const status = getRowDisplayStatus(row, action, isMembersImport);
+      const filterCategory = getFilterCategory(status);
+      return filterCategory === previewFilter;
     });
-  }, [actions, previewFilter, previewRows]);
+  }, [actions, previewFilter, effectivePreviewRows, isMembersImport]);
 
   useEffect(() => {
     if (fixedClubId && fixedClubId !== selectedClubId) {
@@ -221,6 +598,7 @@ export function ImportWizardPage({
     setMapping({});
     setPreviewRows([]);
     setActions({});
+    setRoleOverrides({});
     setPreviewFilter("all");
     setIsPreviewDirty(false);
     setHasPreviewRun(false);
@@ -238,6 +616,7 @@ export function ImportWizardPage({
     setMapping({});
     setPreviewRows([]);
     setActions({});
+    setRoleOverrides({});
     setPreviewFilter("all");
     setIsPreviewDirty(false);
     setHasPreviewRun(false);
@@ -397,6 +776,7 @@ export function ImportWizardPage({
       }, {});
       setPreviewRows(rows);
       setActions(defaultActions);
+      setRoleOverrides({}); // Clear role overrides on new preview
       setPreviewFilter("all");
       setHasPreviewRun(true);
       setIsPreviewDirty(false);
@@ -427,13 +807,30 @@ export function ImportWizardPage({
         row_index: row.row_index,
         action: actions[row.row_index] ?? "create",
       }));
+      // Build row_overrides from roleOverrides for members import
+      const rowOverrides = isMembersImport
+        ? Object.entries(roleOverrides).reduce<Record<number, RowRoleOverride>>(
+            (accumulator, [rowIndex, override]) => {
+              const index = Number(rowIndex);
+              if (
+                override.primary_license_role !== undefined ||
+                override.secondary_license_role !== undefined
+              ) {
+                accumulator[index] = override;
+              }
+              return accumulator;
+            },
+            {}
+          )
+        : undefined;
       const importResult = await confirmImport(
         importType,
         file,
         mapping,
         actionList,
         selectedClubId ?? undefined,
-        isMembersImport ? dateFormat : undefined
+        isMembersImport ? dateFormat : undefined,
+        rowOverrides && Object.keys(rowOverrides).length > 0 ? rowOverrides : undefined
       );
       setResult(importResult);
       setStep("result");
@@ -451,11 +848,29 @@ export function ImportWizardPage({
     setActions((previous) => ({ ...previous, [rowIndex]: value }));
   };
 
+  // Apply a confirmed role override (called after user confirms the modal)
+  const applyRoleOverride = (
+    rowIndex: number,
+    field: "primary_license_role" | "secondary_license_role",
+    value: string
+  ) => {
+    setRoleOverrides((previous) => ({
+      ...previous,
+      [rowIndex]: {
+        ...previous[rowIndex],
+        [field]: value === "__none__" ? "" : value,
+      },
+    }));
+  };
+
   const runBulkSkipInvalid = () => {
     setActions((previous) => {
       const next = { ...previous };
-      for (const row of previewRows) {
-        if (row.errors.length > 0) {
+      for (const row of effectivePreviewRows) {
+        const action = next[row.row_index] ?? "create";
+        const status = getRowDisplayStatus(row, action, isMembersImport);
+        // Skip rows that are invalid (including review status mapped to invalid)
+        if (status === "invalid" || status === "review") {
           next[row.row_index] = "skip";
         }
       }
@@ -466,9 +881,9 @@ export function ImportWizardPage({
   const runBulkCreateReady = () => {
     setActions((previous) => {
       const next = { ...previous };
-      for (const row of previewRows) {
+      for (const row of effectivePreviewRows) {
         const currentAction = next[row.row_index] ?? "create";
-        const status = getRowStatus(row, currentAction);
+        const status = getRowDisplayStatus(row, currentAction, isMembersImport);
         if (status === "ready") {
           next[row.row_index] = "create";
         }
@@ -885,7 +1300,55 @@ export function ImportWizardPage({
                   <tbody>
                     {filteredPreviewRows.map((row) => {
                       const action = actions[row.row_index] ?? "create";
-                      const status = getRowStatus(row, action);
+                      const status = getRowDisplayStatus(row, action, isMembersImport);
+                      const isReview = status === "review";
+                      const override = roleOverrides[row.row_index];
+
+                      // Get current CSV value for a role field
+                      const getCsvRoleValue = (field: "primary_license_role" | "secondary_license_role"): string => {
+                        const rawValue = row.data[field];
+                        return rawValue ?? "";
+                      };
+
+                      // Get default value for dropdown: CSV value if normalizable to enum, else empty
+                      const getDefaultRoleValue = (field: "primary_license_role" | "secondary_license_role"): string => {
+                        const csvValue = getCsvRoleValue(field);
+                        if (!csvValue) return "__none__";
+                        const normalized = normalizeRoleInput(csvValue);
+                        const collapsed = normalized.replace(/\s+/g, " ").trim();
+                        return LICENSE_ROLE_VALUES.includes(collapsed as LicenseRoleValue) ? collapsed : "__none__";
+                      };
+
+                      // Current values (override takes precedence, then CSV, then empty)
+                      const primaryValue = override?.primary_license_role !== undefined
+                        ? (override.primary_license_role || "__none__")
+                        : getDefaultRoleValue("primary_license_role");
+                      const secondaryValue = override?.secondary_license_role !== undefined
+                        ? (override.secondary_license_role || "__none__")
+                        : getDefaultRoleValue("secondary_license_role");
+
+                      // Secondary is disabled until primary is set
+                      const primarySelected = primaryValue !== "__none__" && primaryValue !== "";
+
+                      // Detect same-role conflict directly from effective row data.
+                      // row.data already has overrides baked in (via effectivePreviewRows), so
+                      // this check is 100% reliable regardless of display values or isReview.
+                      const hasSameRoles = isMembersImport && (() => {
+                        const p = getTrimmedRoleValue(row, "primary_license_role");
+                        const s = getTrimmedRoleValue(row, "secondary_license_role");
+                        return Boolean(
+                          p && s &&
+                          isValidLicenseRole(p) &&
+                          isValidLicenseRole(s) &&
+                          normalizeRoleInput(p) === normalizeRoleInput(s)
+                        );
+                      })();
+
+                      // Available secondary options exclude the selected primary
+                      const secondaryOptions = LICENSE_ROLE_VALUES.filter(
+                        (role) => role !== primaryValue
+                      );
+
                       return (
                         <tr key={row.row_index} className="border-t border-border text-foreground">
                           <td className="px-2 py-2">{row.row_index}</td>
@@ -898,6 +1361,8 @@ export function ImportWizardPage({
                                   ? "badge-warning"
                                   : status === "invalid"
                                   ? "badge-danger"
+                                  : status === "review"
+                                  ? "badge-warning"
                                   : "border-border bg-secondary text-foreground"
                               }`}
                             >
@@ -907,25 +1372,120 @@ export function ImportWizardPage({
                                 ? t("statusDuplicate")
                                 : status === "invalid"
                                 ? t("statusInvalid")
+                                : status === "review"
+                                ? t("statusReview")
                                 : t("statusSkipped")}
                             </span>
                           </td>
                           <td className="px-2 py-2 text-xs">
-                            {Object.entries(row.data)
-                              .filter(([, value]) => value !== null && value !== "")
-                              .map(([key, value]) => `${key}: ${value}`)
-                              .join(", ")}
+                            {isReview && isMembersImport ? (
+                              <div className="space-y-2">
+                                {/* Primary role dropdown */}
+                                <div className="flex items-center gap-2">
+                                  <span className="text-muted text-xs">{t("primaryLicenseRoleLabel")}:</span>
+                                  <Select
+                                    value={primaryValue}
+                                    onValueChange={(value) => {
+                                      const name = [row.data.first_name, row.data.last_name].filter(Boolean).join(" ") || `#${row.row_index}`;
+                                      const rLabel = value === "__none__" ? clubT("roleNoneOption") : clubT(`licenseRole${value.charAt(0).toUpperCase() + value.slice(1)}` as const);
+                                      setRoleConfirm({
+                                        rowIndex: row.row_index,
+                                        field: "primary_license_role",
+                                        newValue: value,
+                                        memberName: name,
+                                        fieldLabel: t("primaryLicenseRoleLabel"),
+                                        roleLabel: rLabel,
+                                      });
+                                    }}
+                                  >
+                                    <SelectTrigger className="w-32 rounded-[var(--radius-form)] h-7 text-xs">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="__none__">{clubT("roleNoneOption")}</SelectItem>
+                                      {LICENSE_ROLE_VALUES.map((role) => (
+                                        <SelectItem key={role} value={role}>
+                                          {clubT(`licenseRole${role.charAt(0).toUpperCase() + role.slice(1)}` as const)}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                {/* Secondary role dropdown */}
+                                <div className="flex items-center gap-2">
+                                  <span className="text-muted text-xs">{t("secondaryLicenseRoleLabel")}:</span>
+                                  <Select
+                                    value={secondaryValue}
+                                    onValueChange={(value) => {
+                                      const name = [row.data.first_name, row.data.last_name].filter(Boolean).join(" ") || `#${row.row_index}`;
+                                      const rLabel = value === "__none__" ? clubT("roleNoneOption") : clubT(`licenseRole${value.charAt(0).toUpperCase() + value.slice(1)}` as const);
+                                      setRoleConfirm({
+                                        rowIndex: row.row_index,
+                                        field: "secondary_license_role",
+                                        newValue: value,
+                                        memberName: name,
+                                        fieldLabel: t("secondaryLicenseRoleLabel"),
+                                        roleLabel: rLabel,
+                                      });
+                                    }}
+                                    disabled={!primarySelected}
+                                  >
+                                    <SelectTrigger className={`w-32 rounded-[var(--radius-form)] h-7 text-xs ${!primarySelected ? "opacity-50" : ""}`}>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="__none__">{clubT("roleNoneOption")}</SelectItem>
+                                      {secondaryOptions.map((role) => (
+                                        <SelectItem key={role} value={role}>
+                                          {clubT(`licenseRole${role.charAt(0).toUpperCase() + role.slice(1)}` as const)}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                {/* Same-role conflict error */}
+                                {hasSameRoles && (
+                                  <p className="text-xs text-destructive font-medium">
+                                    {t("roleConflictError")}
+                                  </p>
+                                )}
+                                {/* Show other data */}
+                                {Object.entries(row.data)
+                                  .filter(([key, value]) =>
+                                    value !== null &&
+                                    value !== "" &&
+                                    key !== "primary_license_role" &&
+                                    key !== "secondary_license_role"
+                                  )
+                                  .map(([key, value]) => `${key}: ${value}`)
+                                  .join(", ")}
+                              </div>
+                            ) : (
+                              Object.entries(row.data)
+                                .filter(([, value]) => value !== null && value !== "")
+                                .map(([key, value]) => `${key}: ${value}`)
+                                .join(", ")
+                            )}
                           </td>
                           <td className="px-2 py-2 text-xs text-destructive">
                             {row.errors.join(", ")}
                             {row.duplicate ? ` ${t("duplicateHint")}` : ""}
+                            {hasSameRoles && (
+                              <span>
+                                {row.errors.length > 0 || row.duplicate ? " — " : ""}
+                                {t("roleConflictError")}
+                              </span>
+                            )}
                           </td>
                           <td className="px-2 py-2">
                             <Select
-                              value={action}
-                              onValueChange={(value) => setRowAction(row.row_index, value)}
+                              value={hasSameRoles ? "skip" : action}
+                              onValueChange={(value) => {
+                                if (!hasSameRoles) setRowAction(row.row_index, value);
+                              }}
+                              disabled={hasSameRoles}
                             >
-                              <SelectTrigger className="w-32">
+                              <SelectTrigger className={`w-32 ${hasSameRoles ? "opacity-50" : ""}`}>
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -942,6 +1502,39 @@ export function ImportWizardPage({
               </div>
             </div>
           ) : null}
+
+          {/* Role change confirmation modal */}
+          {roleConfirm && (
+            <Modal
+              isOpen={true}
+              onClose={() => setRoleConfirm(null)}
+              title={t("roleChangeConfirmTitle")}
+            >
+              <p className="text-sm text-muted">
+                {t.rich("roleChangeConfirmBody", {
+                  field: roleConfirm.fieldLabel,
+                  name: roleConfirm.memberName,
+                  role: roleConfirm.roleLabel,
+                  b: (chunks) => (
+                    <strong className="font-semibold text-foreground">{chunks}</strong>
+                  ),
+                })}
+              </p>
+              <div className="mt-6 flex flex-wrap justify-end gap-3">
+                <Button variant="outline" onClick={() => setRoleConfirm(null)}>
+                  {t("cancelAndBack")}
+                </Button>
+                <Button
+                  onClick={() => {
+                    applyRoleOverride(roleConfirm.rowIndex, roleConfirm.field, roleConfirm.newValue);
+                    setRoleConfirm(null);
+                  }}
+                >
+                  {t("roleChangeApply")}
+                </Button>
+              </div>
+            </Modal>
+          )}
 
           {step === "confirm" ? (
             <div className="space-y-5">

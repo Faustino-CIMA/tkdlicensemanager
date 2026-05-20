@@ -54,7 +54,8 @@ export async function confirmImport(
   mapping: Record<string, string>,
   actions: Array<{ row_index: number; action: "create" | "skip" }>,
   clubId?: number,
-  dateFormat?: string
+  dateFormat?: string,
+  rowOverrides?: Record<number, { primary_license_role?: string; secondary_license_role?: string }>
 ) {
   const formData = new FormData();
   formData.append("file", file);
@@ -65,6 +66,9 @@ export async function confirmImport(
   }
   if (dateFormat) {
     formData.append("date_format", dateFormat);
+  }
+  if (rowOverrides && Object.keys(rowOverrides).length > 0) {
+    formData.append("row_overrides", JSON.stringify(rowOverrides));
   }
 
   return upload<ConfirmResponse>(`/api/imports/${type}/confirm/`, formData);

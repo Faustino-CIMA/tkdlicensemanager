@@ -36,6 +36,14 @@ def parse_actions(raw_actions):
     return {int(item["row_index"]): item["action"] for item in actions_list}
 
 
+def parse_row_overrides(raw_overrides):
+    if not raw_overrides:
+        return {}
+    overrides = json.loads(raw_overrides) if isinstance(raw_overrides, str) else raw_overrides
+    # Convert keys to integers (row indices)
+    return {int(k): v for k, v in overrides.items()}
+
+
 def parse_date(value, errors, field_name, date_format):
     if not value:
         return None
@@ -475,6 +483,7 @@ class MemberImportConfirmView(views.APIView):
         file_obj = request.data.get("file")
         mapping = parse_mapping(request.data.get("mapping"))
         actions = parse_actions(request.data.get("actions"))
+        row_overrides = parse_row_overrides(request.data.get("row_overrides"))
         if not file_obj or not mapping:
             return response.Response(
                 {"detail": "file and mapping are required."}, status=400
@@ -545,16 +554,32 @@ class MemberImportConfirmView(views.APIView):
                     errors,
                     "is_active",
                 )
-                primary_license_role = normalize_license_role(
-                    row_data.get(mapping.get("primary_license_role", ""), "").strip(),
-                    errors,
-                    "primary_license_role",
-                )
-                secondary_license_role = normalize_license_role(
-                    row_data.get(mapping.get("secondary_license_role", ""), "").strip(),
-                    errors,
-                    "secondary_license_role",
-                )
+
+                # Get row overrides if present
+                override = row_overrides.get(index, {})
+
+                # Primary license role: prefer override, then CSV, then empty
+                primary_override = override.get("primary_license_role")
+                if primary_override is not None:
+                    primary_license_role = normalize_license_role(primary_override, errors, "primary_license_role")
+                else:
+                    primary_license_role = normalize_license_role(
+                        row_data.get(mapping.get("primary_license_role", ""), "").strip(),
+                        errors,
+                        "primary_license_role",
+                    )
+
+                # Secondary license role: prefer override, then CSV, then empty
+                secondary_override = override.get("secondary_license_role")
+                if secondary_override is not None:
+                    secondary_license_role = normalize_license_role(secondary_override, errors, "secondary_license_role")
+                else:
+                    secondary_license_role = normalize_license_role(
+                        row_data.get(mapping.get("secondary_license_role", ""), "").strip(),
+                        errors,
+                        "secondary_license_role",
+                    )
+
                 if secondary_license_role and not primary_license_role:
                     errors.append("secondary_license_role requires primary_license_role")
                 if (
