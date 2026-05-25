@@ -3,6 +3,7 @@ Last updated: 2026-03-28
 
 Current main branch state:
 - Version: v0.3.8 (annotated tag v0.3.8 created and pushed)
+- Version: v0.3.9 on improvements-clean — Member Import Step 3 UX improvement merged
 - Printer Profiles feature fully merged and live (v0.3.6)
 - Docker infrastructure cleanup and stable stack released
 - Full HeroUI v3.0.1 integration with custom ltf_theme + sharp consistent radii completed (v0.3.9)
@@ -12,6 +13,7 @@ Current main branch state:
 
 Current working branch: improvements-clean
 Status: All visual, navigation and Club Members page improvements merged and verified locally
+Status: Member Import Step 3 UX improvement merged on improvements-clean (v0.3.9)
 
 Current Stack (locked) — Updated 2026-03-28
 - Backend: python:3.13-slim-bookworm + Django 6.0.3 + DRF 3.17.0 + PostgreSQL 18
@@ -57,6 +59,7 @@ Rules we follow:
 - Printer Profile Step 5 (feature/general-improvements): Dokploy deploy + smoke tests passed; merged to `main`, tag `v0.3.6` created and pushed (2026-03-19).
 - **Release v0.3.6 (2026-03-19):** Merged `feature/general-improvements` to `main` (fast-forward). Printer profiles (user-owned, Club Admin nav + `/dashboard/club/printer-profiles`, LTF Admin CRUD, quick-print selection, PDF offset in final output) + photo fixes live on `main`. Tag `v0.3.6` created and pushed.
 - **v0.3.9 HeroUI Release (2026-03-28):** Full HeroUI v3.0.1 integration with custom ltf_theme.css, sticky top bar, stable tab navigation (no more swapping), Club Members page overhaul (RadioGroup filters with total counts, improved Members/Actions Selects, row status confirmation modals, pagination 50/150/300/All).
+- **Member Import Step 3 UX improvement (v0.3.9)**: Orange "Review" status for invalid/non-matching license roles, inline dropdowns to fix primary_license_role and secondary_license_role, empty secondary_license_role is valid, same-role validation with clear error message, role change confirmation dialogue — completed
 
 ## Key Decisions
 - Club Admin payments do NOT require extra consent prompt
