@@ -36,6 +36,54 @@ def parse_actions(raw_actions):
     return {int(item["row_index"]): item["action"] for item in actions_list}
 
 
+def parse_row_overrides(raw_overrides):
+    if not raw_overrides:
+        return {}
+    if isinstance(raw_overrides, (bytes, bytearray)):
+        raw_overrides = raw_overrides.decode("utf-8")
+    if isinstance(raw_overrides, str):
+        raw_overrides = raw_overrides.strip()
+        if not raw_overrides:
+            return {}
+        overrides = json.loads(raw_overrides)
+    else:
+        overrides = raw_overrides
+
+    parsed: dict[int, dict] = {}
+
+    if isinstance(overrides, list):
+        for item in overrides:
+            if not isinstance(item, dict):
+                continue
+            row_index = item.get("row_index")
+            if row_index is None:
+                continue
+            parsed[int(row_index)] = {
+                "primary_license_role": item.get("primary_license_role", ""),
+                "secondary_license_role": item.get("secondary_license_role", ""),
+            }
+        return parsed
+
+    if isinstance(overrides, dict):
+        for row_index, override in overrides.items():
+            if not isinstance(override, dict):
+                continue
+            parsed[int(row_index)] = {
+                "primary_license_role": override.get("primary_license_role", ""),
+                "secondary_license_role": override.get("secondary_license_role", ""),
+            }
+        return parsed
+
+    return {}
+
+
+def resolve_license_role_value(has_row_override, override, field_name, csv_value, errors):
+    """Prefer Step 3 row overrides for rows included in row_overrides payload."""
+    if has_row_override:
+        return normalize_license_role(override.get(field_name, ""), errors, field_name)
+    return normalize_license_role(csv_value, errors, field_name)
+
+
 def parse_date(value, errors, field_name, date_format):
     if not value:
         return None
@@ -475,6 +523,7 @@ class MemberImportConfirmView(views.APIView):
         file_obj = request.data.get("file")
         mapping = parse_mapping(request.data.get("mapping"))
         actions = parse_actions(request.data.get("actions"))
+        row_overrides = parse_row_overrides(request.data.get("row_overrides"))
         if not file_obj or not mapping:
             return response.Response(
                 {"detail": "file and mapping are required."}, status=400
@@ -545,16 +594,25 @@ class MemberImportConfirmView(views.APIView):
                     errors,
                     "is_active",
                 )
-                primary_license_role = normalize_license_role(
+
+                # Get row overrides if present (Step 3 role corrections from frontend)
+                has_row_override = index in row_overrides
+                override = row_overrides.get(index, {})
+                primary_license_role = resolve_license_role_value(
+                    has_row_override,
+                    override,
+                    "primary_license_role",
                     row_data.get(mapping.get("primary_license_role", ""), "").strip(),
                     errors,
-                    "primary_license_role",
                 )
-                secondary_license_role = normalize_license_role(
+                secondary_license_role = resolve_license_role_value(
+                    has_row_override,
+                    override,
+                    "secondary_license_role",
                     row_data.get(mapping.get("secondary_license_role", ""), "").strip(),
                     errors,
-                    "secondary_license_role",
                 )
+
                 if secondary_license_role and not primary_license_role:
                     errors.append("secondary_license_role requires primary_license_role")
                 if (

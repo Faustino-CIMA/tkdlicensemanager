@@ -5,6 +5,7 @@ class ImportBaseSerializer(serializers.Serializer):
     file = serializers.FileField()
     mapping = serializers.JSONField(required=False)
     actions = serializers.JSONField(required=False)
+    row_overrides = serializers.JSONField(required=False)
     club_id = serializers.IntegerField(required=False)
     date_format = serializers.CharField(required=False)
 
