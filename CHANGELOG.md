@@ -11,11 +11,13 @@ All notable changes to this project are documented in this file.
 - **Sticky top bar:** The main top bar stays visible while scrolling so navigation and context remain at hand on long pages.
 - **Stable tab navigation:** Club / LTF / Finance dashboard tabs no longer reorder or swap labels when switching sections.
 - **Club Members page overhaul:** Status filtering uses a horizontal **RadioGroup** card control with **live total counts** (All / Active / Inactive). **Members** and **Actions** menus are clearer; toggling a member’s active status from the table asks for **confirmation** before applying. **Rows per page** options are **50**, **150**, **300**, and **All** (capped by the API’s maximum page size). Touch targets and card radii follow the sharp theme (`--radius-card`) and ~44px minimum hit areas where this pass touched the UI.
+- **Member Import Step 3 UX improvement:** Orange **Review** status for invalid or non-matching license roles, inline dropdowns to fix **primary** and **secondary** roles, empty `secondary_license_role` treated as valid, same-role validation with a clear error message, and a confirmation dialogue before applying role changes.
 
 ### Technical
 - Frontend: `@heroui/react` v3.0.1 integration with `HeroUIProvider`, theme alignment to `ltf_theme.css`, and incremental UI consistency (radii, spacing, focus rings) on updated surfaces.
 - Club Members: server-backed facet counts for filter subtitles; persisted filter preference in `sessionStorage` with migration from legacy dual-switch storage; pagination helper respects `API_PAGINATION_MAX_PAGE_SIZE` for numeric and “All” page sizes.
 - Navigation: layout/tab state fixes to prevent label flicker or order changes across dashboard variants.
+- Import: `row_overrides` support in the member import confirm flow so Step 3 role corrections are applied on final import.
 
 ## [0.3.6] - 2026-03-14
 

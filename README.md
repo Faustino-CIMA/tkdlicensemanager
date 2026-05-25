@@ -4,10 +4,10 @@ Modern, secure Taekwondo license management for the Luxembourg Taekwondo Federat
 
 ## Release Notes
 
-This release refreshes the **HeroUI**-based dashboard chrome (v3.0.1) and delivers a focused **Club Members** experience: clearer filters with totals, safer status changes, and more practical pagination—see `CHANGELOG.md` **0.3.9** for the full list.
+This release refreshes the **HeroUI**-based dashboard chrome (v3.0.1) and delivers a focused **Club Members** experience: clearer filters with totals, safer status changes, and more practical pagination. It also improves **Member Import Step 3**: an orange **Review** status for role issues, inline dropdowns to fix primary/secondary license roles, same-role validation, and a confirmation dialogue before applying changes—see `CHANGELOG.md` **0.3.9** for the full list.
 
 - See `CHANGELOG.md` for user-facing and technical release notes.
-- Current stable release: `v0.3.9` (HeroUI v3 shell + Club Members UX, sticky top bar, stable tabs).
+- Current stable release: `v0.3.9` (HeroUI v3 shell + Club Members UX + Member Import Step 3 role review, sticky top bar, stable tabs).
 
 ## CI (GitHub Actions)
 
