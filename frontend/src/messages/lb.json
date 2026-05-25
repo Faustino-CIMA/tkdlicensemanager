@@ -1506,6 +1506,7 @@
     "ltfLicenseLabel": "LTF Lizenz-ID",
     "primaryLicenseRoleLabel": "Primär Lizenzroll",
     "secondaryLicenseRoleLabel": "Sekundär Lizenzroll",
+    "roleCorrectionLabel": "Rollkorrektur",
     "roleConflictError": "Primär a sekundär Lizenzrollen däerfen net identesch sinn. Wielt w.e.g. verschidde Rollen.",
     "roleChangeConfirmTitle": "Rollwiessel bestätegen",
     "roleChangeConfirmBody": "Dir sidd am Gaang d' <b>{field}</b> fir <b>{name}</b> op <b>{role}</b> ze setzen.",

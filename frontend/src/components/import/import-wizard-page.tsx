@@ -48,6 +48,48 @@ type RowRoleOverride = {
   secondary_license_role?: string;
 };
 
+type ConfirmRowOverridePayload = {
+  row_index: number;
+  primary_license_role: string;
+  secondary_license_role: string;
+};
+
+// Build row_overrides payload for confirm import from effective preview rows
+// and explicit Step 3 role corrections. Sends sanitized primary/secondary pairs
+// for every create row so confirm never re-applies invalid raw CSV role strings.
+function buildConfirmRowOverrides(
+  rows: ImportRow[],
+  overrides: Record<number, RowRoleOverride>,
+  rowActions: Record<number, RowAction>
+): ConfirmRowOverridePayload[] | undefined {
+  const result: ConfirmRowOverridePayload[] = [];
+
+  for (const row of rows) {
+    const action = rowActions[row.row_index] ?? "create";
+    if (action !== "create") {
+      continue;
+    }
+
+    const explicit = overrides[row.row_index];
+    const primaryRaw =
+      explicit?.primary_license_role !== undefined
+        ? explicit.primary_license_role
+        : getTrimmedRoleValue(row, "primary_license_role");
+    const secondaryRaw =
+      explicit?.secondary_license_role !== undefined
+        ? explicit.secondary_license_role
+        : getTrimmedRoleValue(row, "secondary_license_role");
+
+    result.push({
+      row_index: row.row_index,
+      primary_license_role: sanitizeRoleForOverride(primaryRaw),
+      secondary_license_role: sanitizeRoleForOverride(secondaryRaw),
+    });
+  }
+
+  return result.length > 0 ? result : undefined;
+}
+
 // Display status includes "review" for role-related issues
 type RowDisplayStatus = "ready" | "duplicate" | "invalid" | "skipped" | "review";
 
@@ -166,6 +208,18 @@ function getTrimmedRoleValue(
     return "";
   }
   return String(value).trim();
+}
+
+// Normalize a role for the confirm payload: valid enum value or empty string.
+function sanitizeRoleForOverride(value: string): string {
+  if (!value || isEmptyRoleValue(value)) {
+    return "";
+  }
+  const trimmed = String(value).trim();
+  if (!isValidLicenseRole(trimmed)) {
+    return "";
+  }
+  return normalizeRoleInput(trimmed).replace(/\s+/g, " ").trim();
 }
 
 // Check if a row has a license-role issue that should show as Review.
@@ -807,21 +861,8 @@ export function ImportWizardPage({
         row_index: row.row_index,
         action: actions[row.row_index] ?? "create",
       }));
-      // Build row_overrides from roleOverrides for members import
       const rowOverrides = isMembersImport
-        ? Object.entries(roleOverrides).reduce<Record<number, RowRoleOverride>>(
-            (accumulator, [rowIndex, override]) => {
-              const index = Number(rowIndex);
-              if (
-                override.primary_license_role !== undefined ||
-                override.secondary_license_role !== undefined
-              ) {
-                accumulator[index] = override;
-              }
-              return accumulator;
-            },
-            {}
-          )
+        ? buildConfirmRowOverrides(effectivePreviewRows, roleOverrides, actions)
         : undefined;
       const importResult = await confirmImport(
         importType,
@@ -830,7 +871,7 @@ export function ImportWizardPage({
         actionList,
         selectedClubId ?? undefined,
         isMembersImport ? dateFormat : undefined,
-        rowOverrides && Object.keys(rowOverrides).length > 0 ? rowOverrides : undefined
+        rowOverrides
       );
       setResult(importResult);
       setStep("result");
@@ -1378,94 +1419,10 @@ export function ImportWizardPage({
                             </span>
                           </td>
                           <td className="px-2 py-2 text-xs">
-                            {isReview && isMembersImport ? (
-                              <div className="space-y-2">
-                                {/* Primary role dropdown */}
-                                <div className="flex items-center gap-2">
-                                  <span className="text-muted text-xs">{t("primaryLicenseRoleLabel")}:</span>
-                                  <Select
-                                    value={primaryValue}
-                                    onValueChange={(value) => {
-                                      const name = [row.data.first_name, row.data.last_name].filter(Boolean).join(" ") || `#${row.row_index}`;
-                                      const rLabel = value === "__none__" ? clubT("roleNoneOption") : clubT(`licenseRole${value.charAt(0).toUpperCase() + value.slice(1)}` as const);
-                                      setRoleConfirm({
-                                        rowIndex: row.row_index,
-                                        field: "primary_license_role",
-                                        newValue: value,
-                                        memberName: name,
-                                        fieldLabel: t("primaryLicenseRoleLabel"),
-                                        roleLabel: rLabel,
-                                      });
-                                    }}
-                                  >
-                                    <SelectTrigger className="w-32 rounded-[var(--radius-form)] h-7 text-xs">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="__none__">{clubT("roleNoneOption")}</SelectItem>
-                                      {LICENSE_ROLE_VALUES.map((role) => (
-                                        <SelectItem key={role} value={role}>
-                                          {clubT(`licenseRole${role.charAt(0).toUpperCase() + role.slice(1)}` as const)}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                {/* Secondary role dropdown */}
-                                <div className="flex items-center gap-2">
-                                  <span className="text-muted text-xs">{t("secondaryLicenseRoleLabel")}:</span>
-                                  <Select
-                                    value={secondaryValue}
-                                    onValueChange={(value) => {
-                                      const name = [row.data.first_name, row.data.last_name].filter(Boolean).join(" ") || `#${row.row_index}`;
-                                      const rLabel = value === "__none__" ? clubT("roleNoneOption") : clubT(`licenseRole${value.charAt(0).toUpperCase() + value.slice(1)}` as const);
-                                      setRoleConfirm({
-                                        rowIndex: row.row_index,
-                                        field: "secondary_license_role",
-                                        newValue: value,
-                                        memberName: name,
-                                        fieldLabel: t("secondaryLicenseRoleLabel"),
-                                        roleLabel: rLabel,
-                                      });
-                                    }}
-                                    disabled={!primarySelected}
-                                  >
-                                    <SelectTrigger className={`w-32 rounded-[var(--radius-form)] h-7 text-xs ${!primarySelected ? "opacity-50" : ""}`}>
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="__none__">{clubT("roleNoneOption")}</SelectItem>
-                                      {secondaryOptions.map((role) => (
-                                        <SelectItem key={role} value={role}>
-                                          {clubT(`licenseRole${role.charAt(0).toUpperCase() + role.slice(1)}` as const)}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                {/* Same-role conflict error */}
-                                {hasSameRoles && (
-                                  <p className="text-xs text-destructive font-medium">
-                                    {t("roleConflictError")}
-                                  </p>
-                                )}
-                                {/* Show other data */}
-                                {Object.entries(row.data)
-                                  .filter(([key, value]) =>
-                                    value !== null &&
-                                    value !== "" &&
-                                    key !== "primary_license_role" &&
-                                    key !== "secondary_license_role"
-                                  )
-                                  .map(([key, value]) => `${key}: ${value}`)
-                                  .join(", ")}
-                              </div>
-                            ) : (
-                              Object.entries(row.data)
-                                .filter(([, value]) => value !== null && value !== "")
-                                .map(([key, value]) => `${key}: ${value}`)
-                                .join(", ")
-                            )}
+                            {Object.entries(row.data)
+                              .filter(([, value]) => value !== null && value !== "")
+                              .map(([key, value]) => `${key}: ${value}`)
+                              .join(", ")}
                           </td>
                           <td className="px-2 py-2 text-xs text-destructive">
                             {row.errors.join(", ")}
@@ -1477,22 +1434,125 @@ export function ImportWizardPage({
                               </span>
                             )}
                           </td>
-                          <td className="px-2 py-2">
-                            <Select
-                              value={hasSameRoles ? "skip" : action}
-                              onValueChange={(value) => {
-                                if (!hasSameRoles) setRowAction(row.row_index, value);
-                              }}
-                              disabled={hasSameRoles}
-                            >
-                              <SelectTrigger className={`w-32 ${hasSameRoles ? "opacity-50" : ""}`}>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="create">{t("createAction")}</SelectItem>
-                                <SelectItem value="skip">{t("skipAction")}</SelectItem>
-                              </SelectContent>
-                            </Select>
+                          <td className="px-2 py-2 align-top">
+                            <div className="flex min-w-[11rem] flex-col gap-2">
+                              {isReview && isMembersImport ? (
+                                <div className="rounded-[var(--radius-form)] border border-border bg-secondary p-2">
+                                  <p className="mb-2 text-xs font-medium text-foreground">
+                                    {t("roleCorrectionLabel")}
+                                  </p>
+                                  <div className="space-y-2">
+                                    <div className="space-y-1">
+                                      <label className="block text-xs text-muted">
+                                        {t("primaryLicenseRoleLabel")}:
+                                      </label>
+                                      <Select
+                                        value={primaryValue}
+                                        onValueChange={(value) => {
+                                          const name =
+                                            [row.data.first_name, row.data.last_name]
+                                              .filter(Boolean)
+                                              .join(" ") || `#${row.row_index}`;
+                                          const rLabel =
+                                            value === "__none__"
+                                              ? clubT("roleNoneOption")
+                                              : clubT(
+                                                  `licenseRole${value.charAt(0).toUpperCase() + value.slice(1)}` as const
+                                                );
+                                          setRoleConfirm({
+                                            rowIndex: row.row_index,
+                                            field: "primary_license_role",
+                                            newValue: value,
+                                            memberName: name,
+                                            fieldLabel: t("primaryLicenseRoleLabel"),
+                                            roleLabel: rLabel,
+                                          });
+                                        }}
+                                      >
+                                        <SelectTrigger className="h-8 w-full rounded-[var(--radius-form)] text-xs">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="__none__">{clubT("roleNoneOption")}</SelectItem>
+                                          {LICENSE_ROLE_VALUES.map((role) => (
+                                            <SelectItem key={role} value={role}>
+                                              {clubT(
+                                                `licenseRole${role.charAt(0).toUpperCase() + role.slice(1)}` as const
+                                              )}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <label className="block text-xs text-muted">
+                                        {t("secondaryLicenseRoleLabel")}:
+                                      </label>
+                                      <Select
+                                        value={secondaryValue}
+                                        onValueChange={(value) => {
+                                          const name =
+                                            [row.data.first_name, row.data.last_name]
+                                              .filter(Boolean)
+                                              .join(" ") || `#${row.row_index}`;
+                                          const rLabel =
+                                            value === "__none__"
+                                              ? clubT("roleNoneOption")
+                                              : clubT(
+                                                  `licenseRole${value.charAt(0).toUpperCase() + value.slice(1)}` as const
+                                                );
+                                          setRoleConfirm({
+                                            rowIndex: row.row_index,
+                                            field: "secondary_license_role",
+                                            newValue: value,
+                                            memberName: name,
+                                            fieldLabel: t("secondaryLicenseRoleLabel"),
+                                            roleLabel: rLabel,
+                                          });
+                                        }}
+                                        disabled={!primarySelected}
+                                      >
+                                        <SelectTrigger
+                                          className={`h-8 w-full rounded-[var(--radius-form)] text-xs ${!primarySelected ? "opacity-50" : ""}`}
+                                        >
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="__none__">{clubT("roleNoneOption")}</SelectItem>
+                                          {secondaryOptions.map((role) => (
+                                            <SelectItem key={role} value={role}>
+                                              {clubT(
+                                                `licenseRole${role.charAt(0).toUpperCase() + role.slice(1)}` as const
+                                              )}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    {hasSameRoles ? (
+                                      <p className="text-xs font-medium text-destructive">
+                                        {t("roleConflictError")}
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ) : null}
+                              <Select
+                                value={hasSameRoles ? "skip" : action}
+                                onValueChange={(value) => {
+                                  if (!hasSameRoles) setRowAction(row.row_index, value);
+                                }}
+                                disabled={hasSameRoles}
+                              >
+                                <SelectTrigger className={`w-full ${hasSameRoles ? "opacity-50" : ""}`}>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="create">{t("createAction")}</SelectItem>
+                                  <SelectItem value="skip">{t("skipAction")}</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
                           </td>
                         </tr>
                       );

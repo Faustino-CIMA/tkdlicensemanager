@@ -890,3 +890,74 @@ class MemberImportTests(TestCase):
         created = Member.objects.get(first_name="Ben", last_name="KAY")
         self.assertEqual(created.primary_license_role, "volunteer")
         self.assertEqual(created.secondary_license_role, "media")
+
+    def test_confirm_applies_row_overrides_for_invalid_csv_roles(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        csv_data = "first_name,last_name,primary_role,secondary_role\nAna,Ng,BadRole,AlsoBad\n"
+        file_obj = BytesIO(csv_data.encode("utf-8"))
+        file_obj.name = "members_invalid_roles_override.csv"
+        mapping = {
+            "first_name": "first_name",
+            "last_name": "last_name",
+            "primary_license_role": "primary_role",
+            "secondary_license_role": "secondary_role",
+        }
+        row_overrides = {
+            "1": {
+                "primary_license_role": "athlete",
+                "secondary_license_role": "coach",
+            }
+        }
+        response = self.client.post(
+            "/api/imports/members/confirm/",
+            {
+                "file": file_obj,
+                "mapping": json.dumps(mapping),
+                "club_id": self.club.id,
+                "actions": json.dumps([{"row_index": 1, "action": "create"}]),
+                "row_overrides": json.dumps(row_overrides),
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["created"], 1)
+        self.assertEqual(response.data["errors"], [])
+        created = Member.objects.get(first_name="Ana", last_name="NG")
+        self.assertEqual(created.primary_license_role, "athlete")
+        self.assertEqual(created.secondary_license_role, "coach")
+
+    def test_confirm_applies_row_overrides_array_payload(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        csv_data = "first_name,last_name,primary_role,secondary_role\nBen,Kay,Athlete,BadSecondary\n"
+        file_obj = BytesIO(csv_data.encode("utf-8"))
+        file_obj.name = "members_invalid_secondary_override.csv"
+        mapping = {
+            "first_name": "first_name",
+            "last_name": "last_name",
+            "primary_license_role": "primary_role",
+            "secondary_license_role": "secondary_role",
+        }
+        row_overrides = [
+            {
+                "row_index": 1,
+                "primary_license_role": "athlete",
+                "secondary_license_role": "",
+            }
+        ]
+        response = self.client.post(
+            "/api/imports/members/confirm/",
+            {
+                "file": file_obj,
+                "mapping": json.dumps(mapping),
+                "club_id": self.club.id,
+                "actions": json.dumps([{"row_index": 1, "action": "create"}]),
+                "row_overrides": json.dumps(row_overrides),
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["created"], 1)
+        self.assertEqual(response.data["errors"], [])
+        created = Member.objects.get(first_name="Ben", last_name="KAY")
+        self.assertEqual(created.primary_license_role, "athlete")
+        self.assertEqual(created.secondary_license_role, "")

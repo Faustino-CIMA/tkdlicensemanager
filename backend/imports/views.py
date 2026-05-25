@@ -39,9 +39,49 @@ def parse_actions(raw_actions):
 def parse_row_overrides(raw_overrides):
     if not raw_overrides:
         return {}
-    overrides = json.loads(raw_overrides) if isinstance(raw_overrides, str) else raw_overrides
-    # Convert keys to integers (row indices)
-    return {int(k): v for k, v in overrides.items()}
+    if isinstance(raw_overrides, (bytes, bytearray)):
+        raw_overrides = raw_overrides.decode("utf-8")
+    if isinstance(raw_overrides, str):
+        raw_overrides = raw_overrides.strip()
+        if not raw_overrides:
+            return {}
+        overrides = json.loads(raw_overrides)
+    else:
+        overrides = raw_overrides
+
+    parsed: dict[int, dict] = {}
+
+    if isinstance(overrides, list):
+        for item in overrides:
+            if not isinstance(item, dict):
+                continue
+            row_index = item.get("row_index")
+            if row_index is None:
+                continue
+            parsed[int(row_index)] = {
+                "primary_license_role": item.get("primary_license_role", ""),
+                "secondary_license_role": item.get("secondary_license_role", ""),
+            }
+        return parsed
+
+    if isinstance(overrides, dict):
+        for row_index, override in overrides.items():
+            if not isinstance(override, dict):
+                continue
+            parsed[int(row_index)] = {
+                "primary_license_role": override.get("primary_license_role", ""),
+                "secondary_license_role": override.get("secondary_license_role", ""),
+            }
+        return parsed
+
+    return {}
+
+
+def resolve_license_role_value(has_row_override, override, field_name, csv_value, errors):
+    """Prefer Step 3 row overrides for rows included in row_overrides payload."""
+    if has_row_override:
+        return normalize_license_role(override.get(field_name, ""), errors, field_name)
+    return normalize_license_role(csv_value, errors, field_name)
 
 
 def parse_date(value, errors, field_name, date_format):
@@ -555,30 +595,23 @@ class MemberImportConfirmView(views.APIView):
                     "is_active",
                 )
 
-                # Get row overrides if present
+                # Get row overrides if present (Step 3 role corrections from frontend)
+                has_row_override = index in row_overrides
                 override = row_overrides.get(index, {})
-
-                # Primary license role: prefer override, then CSV, then empty
-                primary_override = override.get("primary_license_role")
-                if primary_override is not None:
-                    primary_license_role = normalize_license_role(primary_override, errors, "primary_license_role")
-                else:
-                    primary_license_role = normalize_license_role(
-                        row_data.get(mapping.get("primary_license_role", ""), "").strip(),
-                        errors,
-                        "primary_license_role",
-                    )
-
-                # Secondary license role: prefer override, then CSV, then empty
-                secondary_override = override.get("secondary_license_role")
-                if secondary_override is not None:
-                    secondary_license_role = normalize_license_role(secondary_override, errors, "secondary_license_role")
-                else:
-                    secondary_license_role = normalize_license_role(
-                        row_data.get(mapping.get("secondary_license_role", ""), "").strip(),
-                        errors,
-                        "secondary_license_role",
-                    )
+                primary_license_role = resolve_license_role_value(
+                    has_row_override,
+                    override,
+                    "primary_license_role",
+                    row_data.get(mapping.get("primary_license_role", ""), "").strip(),
+                    errors,
+                )
+                secondary_license_role = resolve_license_role_value(
+                    has_row_override,
+                    override,
+                    "secondary_license_role",
+                    row_data.get(mapping.get("secondary_license_role", ""), "").strip(),
+                    errors,
+                )
 
                 if secondary_license_role and not primary_license_role:
                     errors.append("secondary_license_role requires primary_license_role")
