@@ -6,6 +6,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { useTranslations } from "next-intl";
+import { Pencil, X } from "lucide-react";
 import { z } from "zod";
 
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
@@ -362,15 +363,29 @@ export default function ClubMemberDetailPage() {
           <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-lg font-semibold text-foreground">{t("memberOverviewTab")}</h2>
-              {isEditing ? (
-                <Button variant="outline" size="sm" onClick={onCancelEdit}>
-                  {t("cancelEdit")}
-                </Button>
-              ) : canEditMember ? (
-                <Button variant="outline" size="sm" onClick={onEdit}>
-                  {t("editAction")}
-                </Button>
-              ) : null}
+              <div className="flex size-10 shrink-0 items-center justify-center">
+                {isEditing ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={onCancelEdit}
+                    aria-label={t("cancelEdit")}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                ) : canEditMember ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={onEdit}
+                    aria-label={t("editAction")}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                ) : null}
+              </div>
             </div>
             <div className="mt-4">
               <ProfilePhotoManager

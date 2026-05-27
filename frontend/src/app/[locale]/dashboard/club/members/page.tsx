@@ -849,7 +849,7 @@ export default function ClubAdminMembersPage() {
                     ) : null}
                     <button
                       type="button"
-                      className="min-h-11 rounded-[var(--radius-form)] px-2 text-sm font-medium text-[var(--accent)] underline-offset-4 hover:underline"
+                      className="min-h-10 rounded-[var(--radius-form)] px-2 text-sm font-medium text-[var(--accent)] underline-offset-4 hover:underline"
                       onClick={clearSelection}
                     >
                       {t("clearSelection")}
@@ -936,7 +936,7 @@ export default function ClubAdminMembersPage() {
                 header: t("sexLabel"),
                 render: (member) => (
                   <span
-                    className="inline-flex h-11 w-11 items-center justify-center text-2xl font-semibold leading-none"
+                    className="inline-flex size-10 items-center justify-center text-2xl font-semibold leading-none"
                     aria-label={member.sex === "F" ? "Female" : "Male"}
                     title={member.sex === "F" ? "Female" : "Male"}
                   >
@@ -959,7 +959,7 @@ export default function ClubAdminMembersPage() {
                   if (!canManageMembers) {
                     return (
                       <span
-                        className={`inline-flex min-h-11 items-center rounded-[var(--radius-form)] border px-3 text-xs font-medium ${
+                        className={`inline-flex h-10 min-h-10 items-center rounded-[var(--radius-form)] border px-3 text-xs font-medium ${
                           member.is_active
                             ? "badge-success"
                             : "border-border bg-secondary text-muted"
@@ -973,7 +973,7 @@ export default function ClubAdminMembersPage() {
                     <button
                       type="button"
                       disabled={isUpdating}
-                      className={`inline-flex min-h-11 min-w-[5.5rem] items-center justify-center rounded-[var(--radius-form)] border px-3 text-xs font-semibold transition ${
+                      className={`inline-flex h-10 min-h-10 min-w-[5.5rem] items-center justify-center rounded-[var(--radius-form)] border px-3 text-xs font-semibold transition ${
                         member.is_active
                           ? "badge-success hover:opacity-80"
                           : "border-border bg-secondary text-muted hover:bg-secondary/80"
@@ -995,7 +995,7 @@ export default function ClubAdminMembersPage() {
                   <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
                     <Button
                       variant="outline"
-                      className="min-h-11 min-w-11 shrink-0 p-0"
+                      size="icon"
                       aria-label={t("editAction")}
                       onClick={() =>
                         router.push(
@@ -1008,7 +1008,7 @@ export default function ClubAdminMembersPage() {
                     {canManageMembers ? (
                       <Button
                         variant="destructive"
-                        className="min-h-11 min-w-11 shrink-0 p-0"
+                        size="icon"
                         aria-label={t("deleteAction")}
                         onClick={() => handleDelete(member)}
                       >

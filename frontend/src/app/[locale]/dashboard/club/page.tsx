@@ -393,7 +393,7 @@ export default function ClubAdminOverviewPage() {
                     </div>
                     <Link
                       href={item.href}
-                      className="inline-flex min-h-11 items-center justify-center rounded-[var(--radius-form)] border border-current px-4 text-xs font-semibold"
+                      className="inline-flex h-10 min-h-10 items-center justify-center rounded-[var(--radius-form)] border border-current px-4 text-xs font-semibold"
                     >
                       {t("openAction")}
                     </Link>

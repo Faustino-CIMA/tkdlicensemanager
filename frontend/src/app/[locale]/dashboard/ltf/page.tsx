@@ -130,7 +130,7 @@ export default function LtfAdminOverviewPage() {
                       <p className="text-xs opacity-90">{t("actionQueueCountLabel", { count: item.count })}</p>
                     </div>
                     <Link
-                      className="inline-flex min-h-11 items-center justify-center rounded-[var(--radius-form)] border border-current px-4 text-xs font-semibold"
+                      className="inline-flex h-10 min-h-10 items-center justify-center rounded-[var(--radius-form)] border border-current px-4 text-xs font-semibold"
                       href={`/${locale}${item.link.path}`}
                     >
                       {t("openAction")}

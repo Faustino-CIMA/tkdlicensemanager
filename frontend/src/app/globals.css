@@ -56,8 +56,8 @@
 
 :root {
   /* Theme radius comes from src/themes/ltf_theme.css; keep aliases centralized here. */
-  --radius-form: var(--radius-sm);
-  --radius-card: var(--radius-form);
+  --radius-form: var(--radius-md);
+  --radius-card: var(--radius-sm);
   --radius-modal: var(--radius-md);
   /* Compatibility aliases for existing Tailwind semantic classes. */
   --card: var(--surface);

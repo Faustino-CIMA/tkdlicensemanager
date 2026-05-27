@@ -123,7 +123,7 @@ export function LtfAdminLayout({ title, subtitle, children }: LtfAdminLayoutProp
                   key={item.id}
                   href={item.href}
                   aria-current={isActive ? "page" : undefined}
-                  className={`inline-flex h-11 items-center justify-center rounded-[var(--radius-form)] px-4 text-sm font-medium ${
+                  className={`inline-flex h-10 min-h-10 items-center justify-center rounded-[var(--radius-form)] px-4 text-sm font-medium ${
                     isActive
                       ? "bg-primary text-primary-foreground"
                       : "border border-border bg-card text-muted"

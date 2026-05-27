@@ -26,7 +26,7 @@ export function Modal({ title, description, isOpen, onClose, children }: ModalPr
             {description ? <p className="mt-2 text-sm text-[var(--muted)]">{description}</p> : null}
           </div>
           <button
-            className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-[var(--radius-form)] text-sm font-medium text-[var(--muted)] transition-colors hover:bg-[var(--surface-secondary)] hover:text-[var(--foreground)]"
+            className="inline-flex size-10 shrink-0 items-center justify-center rounded-[var(--radius-form)] text-sm font-medium text-[var(--muted)] transition-colors hover:bg-[var(--surface-secondary)] hover:text-[var(--foreground)]"
             type="button"
             onClick={onClose}
           >
