@@ -16,12 +16,18 @@ from .models import GradePromotionHistory, Member
 from .serializers import (
     GradePromotionCreateSerializer,
     GradePromotionHistorySerializer,
+    GradePromotionUpdateSerializer,
     LicenseHistoryEventSerializer,
     MemberProfilePictureSerializer,
     MemberProfilePictureUploadSerializer,
     MemberSerializer,
 )
-from .services import add_grade_promotion, clear_member_profile_picture, process_member_profile_picture
+from .services import (
+    add_grade_promotion,
+    clear_member_profile_picture,
+    process_member_profile_picture,
+    update_grade_promotion,
+)
 from licenses.models import LicenseHistoryEvent
 
 
@@ -159,6 +165,7 @@ class MemberViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
         queryset = (
             LicenseHistoryEvent.objects.select_related(
                 "license",
+                "license__license_type",
                 "club",
                 "order",
                 "payment",
@@ -191,6 +198,7 @@ class MemberViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
         license_queryset = (
             LicenseHistoryEvent.objects.select_related(
                 "license",
+                "license__license_type",
                 "club",
                 "order",
                 "payment",
@@ -234,6 +242,7 @@ class MemberViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
         to_grade = serializer.validated_data["to_grade"]
         notes = serializer.validated_data.get("notes", "")
         proof_ref = serializer.validated_data.get("proof_ref", "")
+        created_by = serializer.validated_data.get("created_by", "")
         metadata = serializer.validated_data.get("metadata", {}) or {}
         promotion_date = serializer.validated_data.get("promotion_date")
         exam_date = serializer.validated_data.get("exam_date")
@@ -245,25 +254,90 @@ class MemberViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        history_entry = add_grade_promotion(
-            member,
-            actor=request.user if request.user.is_authenticated else None,
-            to_grade=to_grade,
-            notes=notes,
-            proof_ref=proof_ref,
-            promotion_date=promotion_date,
-            exam_date=exam_date,
-            metadata={
-                **metadata,
-                "consent_required": bool(notes or proof_ref),
-                "consent_confirmed": bool(consent_user and consent_user.consent_given),
-                "source": "member.promote_grade",
-            },
-        )
+        try:
+            history_entry = add_grade_promotion(
+                member,
+                actor=request.user if request.user.is_authenticated else None,
+                to_grade=to_grade,
+                notes=notes,
+                proof_ref=proof_ref,
+                created_by=created_by,
+                promotion_date=promotion_date,
+                exam_date=exam_date,
+                metadata={
+                    **metadata,
+                    "consent_required": bool(notes or proof_ref),
+                    "consent_confirmed": bool(consent_user and consent_user.consent_given),
+                    "source": "member.promote_grade",
+                },
+            )
+        except DjangoValidationError as exc:
+            detail = (
+                exc.message_dict
+                if hasattr(exc, "message_dict")
+                else exc.messages
+                if hasattr(exc, "messages")
+                else str(exc)
+            )
+            raise DRFValidationError(detail) from exc
+
         return Response(
             GradePromotionHistorySerializer(history_entry).data,
             status=status.HTTP_201_CREATED,
         )
+
+    @action(
+        detail=True,
+        methods=["patch"],
+        url_path=r"grade-history/(?P<history_id>[^/.]+)",
+    )
+    def update_grade_history(self, request, history_id=None, *args, **kwargs):
+        if not self._is_grade_manager(request.user):
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        member = self.get_object()
+        history_entry = (
+            GradePromotionHistory.objects.select_related("member")
+            .filter(member=member, id=history_id)
+            .first()
+        )
+        if not history_entry:
+            return Response({"detail": "Grade history entry not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = GradePromotionUpdateSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+
+        notes = serializer.validated_data.get("notes")
+        proof_ref = serializer.validated_data.get("proof_ref")
+        consent_user = member.user
+        if (notes or proof_ref) and consent_user and not consent_user.consent_given:
+            return Response(
+                {"detail": "Member consent is required for storing grade notes/proof."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            updated_entry = update_grade_promotion(
+                history_entry,
+                to_grade=serializer.validated_data.get("to_grade"),
+                promotion_date=serializer.validated_data.get("promotion_date"),
+                exam_date=serializer.validated_data.get("exam_date"),
+                proof_ref=proof_ref,
+                notes=notes,
+                created_by=serializer.validated_data.get("created_by"),
+                metadata=serializer.validated_data.get("metadata"),
+            )
+        except DjangoValidationError as exc:
+            detail = (
+                exc.message_dict
+                if hasattr(exc, "message_dict")
+                else exc.messages
+                if hasattr(exc, "messages")
+                else str(exc)
+            )
+            raise DRFValidationError(detail) from exc
+
+        return Response(GradePromotionHistorySerializer(updated_entry).data)
 
     @action(
         detail=True,

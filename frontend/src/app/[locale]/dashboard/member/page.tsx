@@ -25,6 +25,7 @@ type MeResponse = {
 
 export default function MemberDashboardPage() {
   const t = useTranslations("Member");
+  const commonT = useTranslations("Common");
   const router = useRouter();
   const params = useParams();
   const rawLocale = params?.locale;
@@ -131,16 +132,19 @@ export default function MemberDashboardPage() {
             />
 
             <MemberHistoryTimeline
-              title={t("historyTitle")}
-              subtitle={t("historySubtitle")}
               licenseTitle={t("licenseHistoryTitle")}
               gradeTitle={t("gradeHistoryTitle")}
               emptyLabel={t("historyEmpty")}
-              eventLabel={t("historyEventLabel")}
-              reasonLabel={t("historyReasonLabel")}
-              notesLabel={t("historyNotesLabel")}
-              fromLabel={t("historyFromLabel")}
-              toLabel={t("historyToLabel")}
+              licenseYearLabel={t("historyLicenseYearColumn")}
+              licenseTypeLabel={t("historyLicenseTypeColumn")}
+              licenseStatusLabel={t("historyLicenseStatusColumn")}
+              licenseIssuedLabel={t("historyLicenseIssuedColumn")}
+              gradeDateLabel={t("historyGradeDateColumn")}
+              gradeLabel={t("historyGradeColumn")}
+              gradeIssuedByLabel={t("historyGradeIssuedByColumn")}
+              previousPageLabel={commonT("paginationPrevious")}
+              nextPageLabel={commonT("paginationNext")}
+              pageLabel={commonT("paginationPage")}
               licenseHistory={history?.license_history ?? []}
               gradeHistory={history?.grade_history ?? []}
             />

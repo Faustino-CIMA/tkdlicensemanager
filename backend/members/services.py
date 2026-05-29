@@ -41,6 +41,7 @@ def add_grade_promotion(
     exam_date=None,
     proof_ref: str = "",
     notes: str = "",
+    created_by: str = "",
     metadata: dict[str, Any] | None = None,
     from_grade: str | None = None,
     sync_member: bool = True,
@@ -65,12 +66,64 @@ def add_grade_promotion(
             exam_date=exam_date,
             proof_ref=proof_ref,
             notes=notes,
+            created_by=str(created_by or "").strip(),
             metadata=metadata or {},
         )
 
         if sync_member and member.belt_rank != normalized_grade:
             member.belt_rank = normalized_grade
             member.save(update_fields=["belt_rank", "updated_at"])
+
+    return history_record
+
+
+def update_grade_promotion(
+    history_record: GradePromotionHistory,
+    *,
+    to_grade: str | None = None,
+    promotion_date=None,
+    exam_date=None,
+    proof_ref: str | None = None,
+    notes: str | None = None,
+    created_by: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    sync_member: bool = True,
+) -> GradePromotionHistory:
+    normalized_grade = (
+        str(to_grade).strip() if to_grade is not None else str(history_record.to_grade or "").strip()
+    )
+    if not normalized_grade:
+        raise ValidationError("to_grade is required.")
+
+    with transaction.atomic():
+        if to_grade is not None:
+            history_record.to_grade = normalized_grade
+        if promotion_date is not None:
+            history_record.promotion_date = promotion_date
+        if exam_date is not None:
+            history_record.exam_date = exam_date
+        if proof_ref is not None:
+            history_record.proof_ref = proof_ref
+        if notes is not None:
+            history_record.notes = notes
+        if created_by is not None:
+            history_record.created_by = str(created_by).strip()
+        if metadata is not None:
+            history_record.metadata = metadata
+
+        history_record.full_clean()
+        history_record.save()
+
+        if sync_member:
+            member = history_record.member
+            latest = (
+                GradePromotionHistory.objects.filter(member=member)
+                .order_by("-promotion_date", "-created_at")
+                .first()
+            )
+            if latest and latest.id == history_record.id and member.belt_rank != normalized_grade:
+                member.belt_rank = normalized_grade
+                member.save(update_fields=["belt_rank", "updated_at"])
 
     return history_record
 

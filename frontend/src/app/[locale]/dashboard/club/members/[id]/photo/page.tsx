@@ -19,7 +19,7 @@ export default function ClubMemberPhotoPage() {
   const rawId = params?.id;
   const locale = typeof rawLocale === "string" ? rawLocale : "en";
   const memberId = typeof rawId === "string" ? Number(rawId) : Number(rawId?.[0]);
-  const backHref = `/${locale}/dashboard/club/members/${memberId}?tab=overview`;
+  const backHref = `/${locale}/dashboard/club/members/${memberId}`;
 
   const [member, setMember] = useState<Member | null>(null);
   const [isLoading, setIsLoading] = useState(true);

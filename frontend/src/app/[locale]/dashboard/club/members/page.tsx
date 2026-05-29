@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2, X } from "lucide-react";
 import { Radio, RadioGroup } from "@heroui/react";
 
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
 import { useClubSelection } from "@/components/club-selection-provider";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
@@ -83,11 +84,17 @@ export default function ClubAdminMembersPage() {
   const common = useTranslations("Common");
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const locale = pathname?.split("/")[1] || "en";
   const { selectedClubId, setSelectedClubId } = useClubSelection();
   const [members, setMembers] = useState<Member[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const lastSelectedMemberIdRef = useRef<number | null>(null);
+  const rowSelectModifierRef = useRef({
+    shiftKey: false,
+    ctrlKey: false,
+    metaKey: false,
+  });
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [memberStatusFilter, setMemberStatusFilter] = useState<MemberStatusFilter>("active");
@@ -103,6 +110,8 @@ export default function ClubAdminMembersPage() {
   const [pendingRowStatusMember, setPendingRowStatusMember] = useState<Member | null>(null);
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
   const [bulkStatusBusy, setBulkStatusBusy] = useState(false);
+  const [licenseGapFilterIds, setLicenseGapFilterIds] = useState<number[] | null>(null);
+  const [showLicenseGapMessage, setShowLicenseGapMessage] = useState(false);
 
   const pageSizeOptions = ["50", "150", "300", "all"];
 
@@ -148,6 +157,7 @@ export default function ClubAdminMembersPage() {
             q,
             clubId,
             isActive: isActiveFilter,
+            ids: licenseGapFilterIds ?? undefined,
           }),
           getMembersPage({
             page: 1,
@@ -187,7 +197,15 @@ export default function ClubAdminMembersPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, membersListPageSize, searchQuery, selectedClubId, setSelectedClubId, isActiveFilter]);
+  }, [
+    currentPage,
+    membersListPageSize,
+    searchQuery,
+    selectedClubId,
+    setSelectedClubId,
+    isActiveFilter,
+    licenseGapFilterIds,
+  ]);
 
   useEffect(() => {
     loadData();
@@ -242,7 +260,34 @@ export default function ClubAdminMembersPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedClubId, pageSize, isActiveFilter]);
+  }, [searchQuery, selectedClubId, pageSize, isActiveFilter, licenseGapFilterIds]);
+
+  useEffect(() => {
+    const filter = searchParams.get("filter");
+    const idsParam = searchParams.get("ids");
+    if (filter === "without_valid_license" && idsParam) {
+      const ids = idsParam
+        .split(",")
+        .map((value) => Number(value.trim()))
+        .filter((value) => Number.isInteger(value) && value > 0);
+      if (ids.length > 0) {
+        setLicenseGapFilterIds(ids);
+        setShowLicenseGapMessage(true);
+        setMemberStatusFilter("active");
+        return;
+      }
+    }
+    setLicenseGapFilterIds(null);
+    setShowLicenseGapMessage(false);
+  }, [searchParams]);
+
+  const dismissLicenseGapMessage = () => {
+    setShowLicenseGapMessage(false);
+    setLicenseGapFilterIds(null);
+    if (searchParams.get("filter") === "without_valid_license") {
+      router.replace(`/${locale}/dashboard/club/members`);
+    }
+  };
 
   useEffect(() => {
     setSelectionHydrated(false);
@@ -279,6 +324,11 @@ export default function ClubAdminMembersPage() {
   useEffect(() => {
     setStatusFilterHydrated(false);
     if (typeof window === "undefined") {
+      setStatusFilterHydrated(true);
+      return;
+    }
+    if (searchParams.get("filter") === "without_valid_license") {
+      setMemberStatusFilter("active");
       setStatusFilterHydrated(true);
       return;
     }
@@ -319,7 +369,7 @@ export default function ClubAdminMembersPage() {
     } finally {
       setStatusFilterHydrated(true);
     }
-  }, [statusSwitchesStorageKey]);
+  }, [searchParams, statusSwitchesStorageKey]);
 
   useEffect(() => {
     if (!selectionHydrated || typeof window === "undefined") {
@@ -772,6 +822,20 @@ export default function ClubAdminMembersPage() {
             </div>
           </div>
 
+          {showLicenseGapMessage ? (
+            <div className="flex items-start justify-between gap-3 rounded-[var(--radius-form)] border px-4 py-3 text-sm banner-info">
+              <p className="min-w-0 flex-1">{t("membersWithoutValidLicenseFilterMessage")}</p>
+              <button
+                type="button"
+                className="inline-flex h-10 min-h-10 size-10 shrink-0 items-center justify-center rounded-[var(--radius-form)]"
+                aria-label={common("modalClose")}
+                onClick={dismissLicenseGapMessage}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ) : null}
+
           {canManageMembers ? (
             <div className="flex flex-wrap items-center gap-3">
               <Select
@@ -895,12 +959,10 @@ export default function ClubAdminMembersPage() {
                       key: "select",
                       header: (
                         <span className="inline-flex min-h-11 min-w-11 items-center justify-center">
-                          <input
-                            type="checkbox"
-                            className="h-5 w-5 rounded-[var(--radius-form)] border-[var(--border)]"
+                          <Checkbox
                             aria-label={common("selectAllLabel")}
                             checked={allSelected}
-                            onChange={toggleSelectAll}
+                            onCheckedChange={() => toggleSelectAll()}
                           />
                         </span>
                       ),
@@ -910,18 +972,18 @@ export default function ClubAdminMembersPage() {
                           onClick={(e) => e.stopPropagation()}
                           onKeyDown={(e) => e.stopPropagation()}
                         >
-                          <input
-                            type="checkbox"
-                            className="h-5 w-5 rounded-[var(--radius-form)] border-[var(--border)]"
+                          <Checkbox
                             aria-label={common("selectRowLabel")}
                             checked={selectedIds.includes(member.id)}
-                            readOnly
-                            onClick={(event) =>
-                              toggleSelectRow(member.id, {
+                            onPointerDown={(event) => {
+                              rowSelectModifierRef.current = {
                                 shiftKey: event.shiftKey,
                                 ctrlKey: event.ctrlKey,
                                 metaKey: event.metaKey,
-                              })
+                              };
+                            }}
+                            onCheckedChange={() =>
+                              toggleSelectRow(member.id, rowSelectModifierRef.current)
                             }
                           />
                         </span>
@@ -999,7 +1061,7 @@ export default function ClubAdminMembersPage() {
                       aria-label={t("editAction")}
                       onClick={() =>
                         router.push(
-                          `/${locale}/dashboard/club/members/${member.id}?tab=overview&edit=1`
+                          `/${locale}/dashboard/club/members/${member.id}?edit=1`
                         )
                       }
                     >

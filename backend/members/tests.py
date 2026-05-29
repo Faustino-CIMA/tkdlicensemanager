@@ -419,6 +419,40 @@ class MemberApiTests(TestCase):
         self.assertEqual(self.member.belt_rank, "2nd Dan")
         self.assertEqual(GradePromotionHistory.objects.filter(member=self.member).count(), 1)
 
+    def test_promote_grade_stores_created_by(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            f"/api/members/{self.member.id}/promote-grade/",
+            {
+                "to_grade": "3rd Dan",
+                "promotion_date": "2026-07-01",
+                "created_by": "LTF",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["created_by"], "LTF")
+
+    def test_update_grade_history(self):
+        self.client.force_authenticate(user=self.club_admin)
+        create_response = self.client.post(
+            f"/api/members/{self.member.id}/promote-grade/",
+            {"to_grade": "2nd Dan", "created_by": "Club"},
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        history_id = create_response.data["id"]
+        update_response = self.client.patch(
+            f"/api/members/{self.member.id}/grade-history/{history_id}/",
+            {"to_grade": "3rd Dan", "created_by": "Other Federation"},
+            format="json",
+        )
+        self.assertEqual(update_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(update_response.data["to_grade"], "3rd Dan")
+        self.assertEqual(update_response.data["created_by"], "Other Federation")
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.belt_rank, "3rd Dan")
+
     def test_member_can_view_own_history(self):
         license_record = License.objects.create(
             member=self.member,
@@ -703,11 +737,19 @@ class GradePromotionModelTests(TestCase):
             belt_rank="8th Kup",
         )
 
-    def test_grade_history_is_append_only(self):
+    def test_grade_history_allows_updates(self):
         history = add_grade_promotion(self.member, to_grade="7th Kup", actor=self.admin)
         history.to_grade = "6th Kup"
+        history.created_by = "Club"
+        history.save()
+        history.refresh_from_db()
+        self.assertEqual(history.to_grade, "6th Kup")
+        self.assertEqual(history.created_by, "Club")
+
+    def test_grade_history_still_blocks_delete(self):
+        history = add_grade_promotion(self.member, to_grade="7th Kup", actor=self.admin)
         with self.assertRaises(ValidationError):
-            history.save()
+            history.delete()
 
     def test_grade_history_must_be_chronological(self):
         add_grade_promotion(self.member, to_grade="7th Kup", actor=self.admin)

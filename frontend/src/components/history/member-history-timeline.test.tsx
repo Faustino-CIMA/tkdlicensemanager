@@ -4,16 +4,16 @@ import { MemberHistoryTimeline } from "./member-history-timeline";
 
 describe("MemberHistoryTimeline", () => {
   const baseProps = {
-    title: "History",
-    subtitle: "Timeline",
-    licenseTitle: "License history",
-    gradeTitle: "Grade history",
+    licenseTitle: "Licenses",
+    gradeTitle: "Grades",
     emptyLabel: "No history entries yet.",
-    eventLabel: "Event",
-    reasonLabel: "Reason",
-    notesLabel: "Notes",
-    fromLabel: "From",
-    toLabel: "To",
+    licenseYearLabel: "Year",
+    licenseTypeLabel: "License type",
+    licenseStatusLabel: "Status",
+    licenseIssuedLabel: "Issued",
+    gradeDateLabel: "Date",
+    gradeLabel: "Grade",
+    gradeIssuedByLabel: "Issued by",
     licenseHistory: [],
     gradeHistory: [],
   };
@@ -23,7 +23,7 @@ describe("MemberHistoryTimeline", () => {
     expect(screen.getAllByText("No history entries yet.").length).toBeGreaterThan(0);
   });
 
-  it("renders history entries", () => {
+  it("renders history table rows", () => {
     render(
       <MemberHistoryTimeline
         {...baseProps}
@@ -44,6 +44,7 @@ describe("MemberHistoryTimeline", () => {
             status_before: "",
             status_after: "pending",
             club_name_snapshot: "Club",
+            license_type_name: "Athlete",
             created_at: "2026-01-01T00:00:00Z",
           },
         ]}
@@ -59,42 +60,49 @@ describe("MemberHistoryTimeline", () => {
             exam_date: null,
             proof_ref: "",
             notes: "Good exam",
+            created_by: "Club",
             metadata: {},
             created_at: "2026-02-01T00:00:00Z",
           },
         ]}
       />
     );
-    expect(screen.getByText("2026 - Issued")).toBeInTheDocument();
-    expect(screen.getByText(/8th Kup/)).toBeInTheDocument();
-    expect(screen.getByText(/7th Kup/)).toBeInTheDocument();
-    expect(screen.getByText(/pending/)).toBeInTheDocument();
+    expect(screen.getByText("2026")).toBeInTheDocument();
+    expect(screen.getByText("Athlete")).toBeInTheDocument();
+    expect(screen.getByText("7th Kup")).toBeInTheDocument();
+    expect(screen.getByText("Club")).toBeInTheDocument();
   });
 
-  it("submits promotion form", async () => {
+  it("submits add grade form", async () => {
     const onPromote = jest.fn(async () => {});
     render(
       <MemberHistoryTimeline
         {...baseProps}
         onPromote={onPromote}
-        promoteTitle="Promote grade"
+        addGradeAriaLabel="Add grade"
+        gradeFormTitle="Add grade promotion"
         promoteToGradeLabel="New grade"
         promoteDateLabel="Promotion date"
-        promoteProofLabel="Proof"
-        promoteNotesLabel="Notes"
+        issuedByLabel="Issued by"
+        issuedByClubOption="Club"
+        issuedByLtfOption="LTF"
+        issuedByOtherOption="Other"
+        issuedByOtherPlaceholder="Enter issuer name"
         promoteSubmitLabel="Save promotion"
+        cancelLabel="Cancel"
       />
     );
 
-    const inputs = screen.getAllByRole("textbox");
-    fireEvent.change(inputs[0], { target: { value: "1st Dan" } });
+    fireEvent.click(screen.getByLabelText("Add grade"));
+    fireEvent.click(screen.getByRole("combobox", { name: "New grade" }));
+    fireEvent.click(screen.getByRole("option", { name: "1st Dan" }));
     await act(async () => {
       fireEvent.click(screen.getByText("Save promotion"));
     });
 
     expect(onPromote).toHaveBeenCalledTimes(1);
     expect(onPromote).toHaveBeenCalledWith(
-      expect.objectContaining({ to_grade: "1st Dan" })
+      expect.objectContaining({ to_grade: "1st Dan", created_by: "Club" })
     );
   });
 });

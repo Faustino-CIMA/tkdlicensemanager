@@ -15,7 +15,7 @@ export default function LtfMemberPhotoPage() {
   const rawId = params?.id;
   const locale = typeof rawLocale === "string" ? rawLocale : "en";
   const memberId = typeof rawId === "string" ? Number(rawId) : Number(rawId?.[0]);
-  const backHref = `/${locale}/dashboard/ltf/members/${memberId}?tab=overview`;
+  const backHref = `/${locale}/dashboard/ltf/members/${memberId}`;
 
   return (
     <LtfAdminLayout title={t("memberDetailTitleFallback")} subtitle={t("membersReadOnlyHint")}>

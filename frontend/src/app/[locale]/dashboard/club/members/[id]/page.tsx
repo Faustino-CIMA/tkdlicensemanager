@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Pencil } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { useTranslations } from "next-intl";
 import { z } from "zod";
@@ -26,15 +27,10 @@ import {
   getMemberHistory,
   promoteMemberGrade,
   updateMember,
+  updateMemberGrade,
 } from "@/lib/club-admin-api";
 import { apiRequest } from "@/lib/api";
 import { formatDateInputValue, formatDisplayDate, parseDisplayDateToIso } from "@/lib/date-display";
-
-type TabKey = "overview" | "history";
-type MemberDetailQueryUpdates = {
-  tab?: TabKey | null;
-  edit?: "1" | null;
-};
 
 const LICENSE_ROLE_VALUES = [
   "athlete",
@@ -74,6 +70,7 @@ type AuthMeResponse = { role: string };
 
 export default function ClubMemberDetailPage() {
   const t = useTranslations("ClubAdmin");
+  const commonT = useTranslations("Common");
   const importT = useTranslations("Import");
   const params = useParams();
   const router = useRouter();
@@ -82,8 +79,7 @@ export default function ClubMemberDetailPage() {
   const rawId = params?.id;
   const locale = typeof rawLocale === "string" ? rawLocale : "en";
   const memberId = typeof rawId === "string" ? Number(rawId) : Number(rawId?.[0]);
-  const activeTab: TabKey = searchParams.get("tab") === "history" ? "history" : "overview";
-  const isEditing = activeTab === "overview" && searchParams.get("edit") === "1";
+  const isEditing = searchParams.get("edit") === "1";
   const [member, setMember] = useState<Member | null>(null);
   const [history, setHistory] = useState<MemberHistoryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -129,40 +125,19 @@ export default function ClubMemberDetailPage() {
     [t]
   );
 
-  const tabItems = useMemo(
-    () => [
-      { key: "overview" as const, label: t("memberOverviewTab") },
-      { key: "history" as const, label: t("memberHistoryTab") },
-    ],
-    [t]
-  );
-
-  const updateDetailQuery = useCallback(
-    (updates: MemberDetailQueryUpdates) => {
+  const updateEditQuery = useCallback(
+    (edit: boolean) => {
       const nextParams = new URLSearchParams(searchParams.toString());
-
-      if (updates.tab !== undefined) {
-        if (updates.tab) {
-          nextParams.set("tab", updates.tab);
-        } else {
-          nextParams.delete("tab");
-        }
+      if (edit) {
+        nextParams.set("edit", "1");
+      } else {
+        nextParams.delete("edit");
       }
-
-      if (updates.edit !== undefined) {
-        if (updates.edit) {
-          nextParams.set("edit", updates.edit);
-        } else {
-          nextParams.delete("edit");
-        }
-      }
-
       const nextQuery = nextParams.toString();
       const currentQuery = searchParams.toString();
       if (nextQuery === currentQuery) {
         return;
       }
-
       router.replace(
         `/${locale}/dashboard/club/members/${memberId}${nextQuery ? `?${nextQuery}` : ""}`,
         { scroll: false }
@@ -235,12 +210,7 @@ export default function ClubMemberDetailPage() {
   const isCoach = currentRole === "coach";
   const canManageMemberFull = currentRole === "club_admin";
   const canEditMember = canManageMemberFull || isCoach;
-
-  useEffect(() => {
-    if (!searchParams.get("tab")) {
-      updateDetailQuery({ tab: "overview" });
-    }
-  }, [searchParams, updateDetailQuery]);
+  const canManageGrades = canEditMember;
 
   useEffect(() => {
     if (!member) {
@@ -265,11 +235,11 @@ export default function ClubMemberDetailPage() {
     if (!canEditMember) {
       return;
     }
-    updateDetailQuery({ tab: "overview", edit: "1" });
+    updateEditQuery(true);
   };
 
   const onCancelEdit = () => {
-    updateDetailQuery({ edit: null });
+    updateEditQuery(false);
     if (member) {
       reset({
         first_name: member.first_name,
@@ -314,7 +284,7 @@ export default function ClubMemberDetailPage() {
           is_active: values.is_active,
         });
       }
-      updateDetailQuery({ tab: "overview", edit: null });
+      updateEditQuery(false);
       await loadMember();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to update member.");
@@ -328,29 +298,9 @@ export default function ClubMemberDetailPage() {
   return (
     <ClubAdminLayout title={title} subtitle={t("memberDetailSubtitle")}>
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <Button variant="outline" size="sm" asChild>
-            <Link href={`/${locale}/dashboard/club/members`}>{t("backToMembers")}</Link>
-          </Button>
-          <div className="flex items-center gap-2">
-            {tabItems.map((tab) => (
-              <Button
-                key={tab.key}
-                variant={activeTab === tab.key ? "default" : "outline"}
-                size="sm"
-                onClick={() => {
-                  if (tab.key === "history") {
-                    updateDetailQuery({ tab: "history", edit: null });
-                    return;
-                  }
-                  updateDetailQuery({ tab: "overview" });
-                }}
-              >
-                {tab.label}
-              </Button>
-            ))}
-          </div>
-        </div>
+        <Button variant="outline" size="sm" className="h-10 min-h-10" asChild>
+          <Link href={`/${locale}/dashboard/club/members`}>{t("backToMembers")}</Link>
+        </Button>
 
         {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
@@ -358,348 +308,378 @@ export default function ClubMemberDetailPage() {
           <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
         ) : !member ? (
           <EmptyState title={t("noResultsTitle")} description={t("memberNotFound")} />
-        ) : activeTab === "overview" ? (
-          <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-lg font-semibold text-foreground">{t("memberOverviewTab")}</h2>
+        ) : (
+          <div className="space-y-4">
+            <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-lg font-semibold text-foreground">{t("memberOverviewTab")}</h2>
+                {isEditing ? (
+                  <Button variant="outline" size="sm" className="h-10 min-h-10" onClick={onCancelEdit}>
+                    {t("cancelEdit")}
+                  </Button>
+                ) : canEditMember ? (
+                  <Button
+                    variant="outline"
+                    size="icon-lg"
+                    className="h-10 min-h-10 w-10 shrink-0"
+                    aria-label={t("editAction")}
+                    onClick={onEdit}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                ) : null}
+              </div>
+              <div className="mt-4">
+                <ProfilePhotoManager
+                  imageUrl={member.profile_picture_url}
+                  thumbnailUrl={member.profile_picture_thumbnail_url}
+                  labels={{
+                    sectionTitle: t("photoSectionTitle"),
+                    sectionSubtitle: t("photoSectionSubtitle"),
+                    changeButton: t("photoChangeButton"),
+                    removeButton: t("photoRemoveButton"),
+                    downloadButton: t("photoDownloadButton"),
+                    modalTitle: t("photoModalTitle"),
+                    modalDescription: t("photoModalDescription"),
+                    dragDropLabel: t("photoDragDropLabel"),
+                    selectFileButton: t("photoSelectFileButton"),
+                    cameraButton: t("photoCameraButton"),
+                    zoomLabel: t("photoZoomLabel"),
+                    backgroundColorLabel: t("photoBackgroundColorLabel"),
+                    removeBackgroundButton: t("photoRemoveBackgroundButton"),
+                    removeBackgroundBusy: t("photoRemoveBackgroundBusy"),
+                    consentLabel: t("photoConsentLabel"),
+                    saveButton: t("photoSaveButton"),
+                    saveBusy: t("photoSaveBusy"),
+                    cancelButton: t("photoCancelButton"),
+                    previewTitle: t("photoPreviewTitle"),
+                    currentPhotoAlt: t("photoCurrentAlt"),
+                    emptyPhotoLabel: t("photoEmptyLabel"),
+                    removeBackgroundUnsupported: t("photoUnsupportedError"),
+                  }}
+                  onDelete={
+                    canManageMemberFull
+                      ? async () => {
+                          await deleteMemberProfilePicture(member.id);
+                          await loadMember();
+                        }
+                      : undefined
+                  }
+                  onDownload={handlePhotoDownload}
+                  onEdit={
+                    canManageMemberFull
+                      ? () => router.push(`/${locale}/dashboard/club/members/${member.id}/photo`)
+                      : undefined
+                  }
+                />
+              </div>
               {isEditing ? (
-                <Button variant="outline" size="sm" onClick={onCancelEdit}>
-                  {t("cancelEdit")}
-                </Button>
-              ) : canEditMember ? (
-                <Button variant="outline" size="sm" onClick={onEdit}>
-                  {t("editAction")}
-                </Button>
-              ) : null}
-            </div>
-            <div className="mt-4">
-              <ProfilePhotoManager
-                imageUrl={member.profile_picture_url}
-                thumbnailUrl={member.profile_picture_thumbnail_url}
-                labels={{
-                  sectionTitle: t("photoSectionTitle"),
-                  sectionSubtitle: t("photoSectionSubtitle"),
-                  changeButton: t("photoChangeButton"),
-                  removeButton: t("photoRemoveButton"),
-                  downloadButton: t("photoDownloadButton"),
-                  modalTitle: t("photoModalTitle"),
-                  modalDescription: t("photoModalDescription"),
-                  dragDropLabel: t("photoDragDropLabel"),
-                  selectFileButton: t("photoSelectFileButton"),
-                  cameraButton: t("photoCameraButton"),
-                  zoomLabel: t("photoZoomLabel"),
-                  backgroundColorLabel: t("photoBackgroundColorLabel"),
-                  removeBackgroundButton: t("photoRemoveBackgroundButton"),
-                  removeBackgroundBusy: t("photoRemoveBackgroundBusy"),
-                  consentLabel: t("photoConsentLabel"),
-                  saveButton: t("photoSaveButton"),
-                  saveBusy: t("photoSaveBusy"),
-                  cancelButton: t("photoCancelButton"),
-                  previewTitle: t("photoPreviewTitle"),
-                  currentPhotoAlt: t("photoCurrentAlt"),
-                  emptyPhotoLabel: t("photoEmptyLabel"),
-                  removeBackgroundUnsupported: t("photoUnsupportedError"),
-                }}
-                onDelete={
-                  canManageMemberFull
-                    ? async () => {
-                        await deleteMemberProfilePicture(member.id);
-                        await loadMember();
+                <form className="mt-4 grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
+                  <div className="space-y-2">
+                    <Label htmlFor="member-first-name">{t("firstNameLabel")}</Label>
+                    <Input
+                      id="member-first-name"
+                      placeholder="Jane"
+                      disabled={isCoach}
+                      {...register("first_name")}
+                    />
+                    {errors.first_name ? (
+                      <p className="text-sm text-destructive">{errors.first_name.message}</p>
+                    ) : null}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="member-last-name">{t("lastNameLabel")}</Label>
+                    <Input
+                      id="member-last-name"
+                      placeholder="Doe"
+                      disabled={isCoach}
+                      {...register("last_name")}
+                    />
+                    {errors.last_name ? (
+                      <p className="text-sm text-destructive">{errors.last_name.message}</p>
+                    ) : null}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>{t("sexLabel")}</Label>
+                    <Select
+                      disabled={isCoach}
+                      value={watch("sex")}
+                      onValueChange={(value) =>
+                        setValue("sex", value as "M" | "F", {
+                          shouldValidate: true,
+                        })
                       }
-                    : undefined
-                }
-                onDownload={handlePhotoDownload}
-                onEdit={
-                  canManageMemberFull
-                    ? () => router.push(`/${locale}/dashboard/club/members/${member.id}/photo`)
-                    : undefined
-                }
-              />
-            </div>
-            {isEditing ? (
-              <form
-                className="mt-4 grid gap-4 md:grid-cols-2"
-                onSubmit={handleSubmit(onSubmit)}
-              >
-                <div className="space-y-2">
-                  <Label htmlFor="member-first-name">{t("firstNameLabel")}</Label>
-                  <Input
-                    id="member-first-name"
-                    placeholder="Jane"
-                    disabled={isCoach}
-                    {...register("first_name")}
-                  />
-                  {errors.first_name ? (
-                    <p className="text-sm text-destructive">{errors.first_name.message}</p>
-                  ) : null}
-                </div>
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={t("sexLabel")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="M">{t("sexMale")}</SelectItem>
+                        <SelectItem value="F">{t("sexFemale")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {errors.sex ? <p className="text-sm text-destructive">{errors.sex.message}</p> : null}
+                  </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="member-last-name">{t("lastNameLabel")}</Label>
-                  <Input
-                    id="member-last-name"
-                    placeholder="Doe"
-                    disabled={isCoach}
-                    {...register("last_name")}
-                  />
-                  {errors.last_name ? (
-                    <p className="text-sm text-destructive">{errors.last_name.message}</p>
-                  ) : null}
-                </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="member-email">{t("emailLabel")}</Label>
+                    <Input
+                      id="member-email"
+                      type="email"
+                      placeholder="member@example.com"
+                      disabled={isCoach}
+                      {...register("email")}
+                    />
+                    {errors.email ? <p className="text-sm text-destructive">{errors.email.message}</p> : null}
+                  </div>
 
-                <div className="space-y-2">
-                  <Label>{t("sexLabel")}</Label>
-                  <Select
-                    disabled={isCoach}
-                    value={watch("sex")}
-                    onValueChange={(value) =>
-                      setValue("sex", value as "M" | "F", {
-                        shouldValidate: true,
-                      })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={t("sexLabel")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="M">{t("sexMale")}</SelectItem>
-                      <SelectItem value="F">{t("sexFemale")}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {errors.sex ? <p className="text-sm text-destructive">{errors.sex.message}</p> : null}
-                </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="member-wt-license">{importT("wtLicenseLabel")}</Label>
+                    <Input
+                      id="member-wt-license"
+                      placeholder="LUX-12345"
+                      disabled={isCoach}
+                      {...register("wt_licenseid")}
+                    />
+                    {errors.wt_licenseid ? (
+                      <p className="text-sm text-destructive">{errors.wt_licenseid.message}</p>
+                    ) : null}
+                  </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="member-email">{t("emailLabel")}</Label>
-                  <Input
-                    id="member-email"
-                    type="email"
-                    placeholder="member@example.com"
-                    disabled={isCoach}
-                    {...register("email")}
-                  />
-                  {errors.email ? <p className="text-sm text-destructive">{errors.email.message}</p> : null}
-                </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="member-ltf-license">{t("ltfLicenseLabel")}</Label>
+                    <Input
+                      id="member-ltf-license"
+                      placeholder="LTF-12345"
+                      disabled={isCoach}
+                      {...register("ltf_licenseid")}
+                    />
+                    {errors.ltf_licenseid ? (
+                      <p className="text-sm text-destructive">{errors.ltf_licenseid.message}</p>
+                    ) : null}
+                  </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="member-wt-license">{importT("wtLicenseLabel")}</Label>
-                  <Input
-                    id="member-wt-license"
-                    placeholder="LUX-12345"
-                    disabled={isCoach}
-                    {...register("wt_licenseid")}
-                  />
-                  {errors.wt_licenseid ? (
-                    <p className="text-sm text-destructive">{errors.wt_licenseid.message}</p>
-                  ) : null}
-                </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="member-dob">{t("dobLabel")}</Label>
+                    <Input
+                      id="member-dob"
+                      placeholder="29 Nov 2026"
+                      disabled={isCoach}
+                      {...register("date_of_birth")}
+                    />
+                    {errors.date_of_birth ? (
+                      <p className="text-sm text-destructive">{errors.date_of_birth.message}</p>
+                    ) : null}
+                  </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="member-ltf-license">{t("ltfLicenseLabel")}</Label>
-                  <Input
-                    id="member-ltf-license"
-                    placeholder="LTF-12345"
-                    disabled={isCoach}
-                    {...register("ltf_licenseid")}
-                  />
-                  {errors.ltf_licenseid ? (
-                    <p className="text-sm text-destructive">{errors.ltf_licenseid.message}</p>
-                  ) : null}
-                </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="member-belt-rank">{t("beltRankLabel")}</Label>
+                    <Input id="member-belt-rank" placeholder="1st Dan" {...register("belt_rank")} />
+                    {errors.belt_rank ? (
+                      <p className="text-sm text-destructive">{errors.belt_rank.message}</p>
+                    ) : null}
+                  </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="member-dob">{t("dobLabel")}</Label>
-                  <Input
-                    id="member-dob"
-                    placeholder="29 Nov 2026"
-                    disabled={isCoach}
-                    {...register("date_of_birth")}
-                  />
-                  {errors.date_of_birth ? (
-                    <p className="text-sm text-destructive">{errors.date_of_birth.message}</p>
-                  ) : null}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="member-belt-rank">{t("beltRankLabel")}</Label>
-                  <Input id="member-belt-rank" placeholder="1st Dan" {...register("belt_rank")} />
-                  {errors.belt_rank ? (
-                    <p className="text-sm text-destructive">{errors.belt_rank.message}</p>
-                  ) : null}
-                </div>
-
-                <div className="space-y-2">
-                  <Label>{t("primaryLicenseRoleLabel")}</Label>
-                  <Select
-                    disabled={isCoach}
-                    value={watch("primary_license_role") || "none"}
-                    onValueChange={(value) => {
-                      const nextPrimary = value === "none" ? "" : value;
-                      setValue(
-                        "primary_license_role",
-                        nextPrimary as MemberFormValues["primary_license_role"],
-                        { shouldValidate: true }
-                      );
-                      if (nextPrimary === watch("secondary_license_role")) {
-                        setValue("secondary_license_role", "", { shouldValidate: true });
-                      }
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={t("primaryLicenseRoleLabel")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">{t("roleNoneOption")}</SelectItem>
-                      {LICENSE_ROLE_VALUES.map((role) => (
-                        <SelectItem key={role} value={role}>
-                          {roleLabelByValue[role]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>{t("secondaryLicenseRoleLabel")}</Label>
-                  <Select
-                    disabled={isCoach || !watch("primary_license_role")}
-                    value={watch("secondary_license_role") || "none"}
-                    onValueChange={(value) =>
-                      setValue(
-                        "secondary_license_role",
-                        (value === "none" ? "" : value) as MemberFormValues["secondary_license_role"],
-                        { shouldValidate: true }
-                      )
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={t("secondaryLicenseRoleLabel")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">{t("roleNoneOption")}</SelectItem>
-                      {LICENSE_ROLE_VALUES.filter((role) => role !== watch("primary_license_role")).map(
-                        (role) => (
+                  <div className="space-y-2">
+                    <Label>{t("primaryLicenseRoleLabel")}</Label>
+                    <Select
+                      disabled={isCoach}
+                      value={watch("primary_license_role") || "none"}
+                      onValueChange={(value) => {
+                        const nextPrimary = value === "none" ? "" : value;
+                        setValue(
+                          "primary_license_role",
+                          nextPrimary as MemberFormValues["primary_license_role"],
+                          { shouldValidate: true }
+                        );
+                        if (nextPrimary === watch("secondary_license_role")) {
+                          setValue("secondary_license_role", "", { shouldValidate: true });
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={t("primaryLicenseRoleLabel")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">{t("roleNoneOption")}</SelectItem>
+                        {LICENSE_ROLE_VALUES.map((role) => (
                           <SelectItem key={role} value={role}>
                             {roleLabelByValue[role]}
                           </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>{t("secondaryLicenseRoleLabel")}</Label>
+                    <Select
+                      disabled={isCoach || !watch("primary_license_role")}
+                      value={watch("secondary_license_role") || "none"}
+                      onValueChange={(value) =>
+                        setValue(
+                          "secondary_license_role",
+                          (value === "none" ? "" : value) as MemberFormValues["secondary_license_role"],
+                          { shouldValidate: true }
                         )
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex items-center gap-2 md:col-span-2">
-                  <Checkbox
-                    checked={watch("is_active")}
-                    disabled={isCoach}
-                    onCheckedChange={(value) => {
-                      if (!isCoach) {
-                        setValue("is_active", Boolean(value));
                       }
-                    }}
-                    id="member-active"
-                  />
-                  <Label htmlFor="member-active">{t("isActiveLabel")}</Label>
-                </div>
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={t("secondaryLicenseRoleLabel")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">{t("roleNoneOption")}</SelectItem>
+                        {LICENSE_ROLE_VALUES.filter((role) => role !== watch("primary_license_role")).map(
+                          (role) => (
+                            <SelectItem key={role} value={role}>
+                              {roleLabelByValue[role]}
+                            </SelectItem>
+                          )
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                <div className="flex items-center gap-3 md:col-span-2">
-                  <Button type="submit" disabled={isSubmitting}>
-                    {t("updateMember")}
-                  </Button>
-                  <Button type="button" variant="outline" onClick={onCancelEdit}>
-                    {t("cancelEdit")}
-                  </Button>
+                  <div className="flex items-center gap-2 md:col-span-2">
+                    <Checkbox
+                      checked={watch("is_active")}
+                      disabled={isCoach}
+                      onCheckedChange={(value) => {
+                        if (!isCoach) {
+                          setValue("is_active", Boolean(value));
+                        }
+                      }}
+                      id="member-active"
+                    />
+                    <Label htmlFor="member-active">{t("isActiveLabel")}</Label>
+                  </div>
+
+                  <div className="flex items-center gap-3 md:col-span-2">
+                    <Button type="submit" className="h-10 min-h-10" disabled={isSubmitting}>
+                      {t("updateMember")}
+                    </Button>
+                    <Button type="button" variant="outline" className="h-10 min-h-10" onClick={onCancelEdit}>
+                      {t("cancelEdit")}
+                    </Button>
+                  </div>
+                </form>
+              ) : (
+                <div className="mt-4 grid gap-3 text-sm text-foreground md:grid-cols-2">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-muted">{t("firstNameLabel")}</span>
+                    <span className="font-medium">{member.first_name}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-muted">{t("lastNameLabel")}</span>
+                    <span className="font-medium">{member.last_name}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-muted">{t("sexLabel")}</span>
+                    <span className="font-medium">
+                      {member.sex === "M" ? t("sexMale") : t("sexFemale")}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-muted">{t("emailLabel")}</span>
+                    <span className="font-medium">{member.email || "-"}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-muted">{importT("wtLicenseLabel")}</span>
+                    <span className="font-medium">{member.wt_licenseid || "-"}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-muted">{t("ltfLicenseLabel")}</span>
+                    <span className="font-medium">{member.ltf_licenseid || "-"}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-muted">{t("dobLabel")}</span>
+                    <span className="font-medium">{formatDisplayDate(member.date_of_birth)}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-muted">{t("beltRankLabel")}</span>
+                    <span className="font-medium">{member.belt_rank || "-"}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-muted">{t("primaryLicenseRoleLabel")}</span>
+                    <span className="font-medium">
+                      {member.primary_license_role
+                        ? roleLabelByValue[member.primary_license_role]
+                        : "-"}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-muted">{t("secondaryLicenseRoleLabel")}</span>
+                    <span className="font-medium">
+                      {member.secondary_license_role
+                        ? roleLabelByValue[member.secondary_license_role]
+                        : "-"}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-muted">{t("isActiveLabel")}</span>
+                    <span className="font-medium">
+                      {member.is_active ? t("activeLabel") : t("inactiveLabel")}
+                    </span>
+                  </div>
                 </div>
-              </form>
-            ) : (
-              <div className="mt-4 grid gap-3 text-sm text-foreground md:grid-cols-2">
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs text-muted">{t("firstNameLabel")}</span>
-                  <span className="font-medium">{member.first_name}</span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs text-muted">{t("lastNameLabel")}</span>
-                  <span className="font-medium">{member.last_name}</span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs text-muted">{t("sexLabel")}</span>
-                  <span className="font-medium">
-                    {member.sex === "M" ? t("sexMale") : t("sexFemale")}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs text-muted">{t("emailLabel")}</span>
-                  <span className="font-medium">{member.email || "-"}</span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs text-muted">{importT("wtLicenseLabel")}</span>
-                  <span className="font-medium">{member.wt_licenseid || "-"}</span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs text-muted">{t("ltfLicenseLabel")}</span>
-                  <span className="font-medium">{member.ltf_licenseid || "-"}</span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs text-muted">{t("dobLabel")}</span>
-                  <span className="font-medium">{formatDisplayDate(member.date_of_birth)}</span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs text-muted">{t("beltRankLabel")}</span>
-                  <span className="font-medium">{member.belt_rank || "-"}</span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs text-muted">{t("primaryLicenseRoleLabel")}</span>
-                  <span className="font-medium">
-                    {member.primary_license_role
-                      ? roleLabelByValue[member.primary_license_role]
-                      : "-"}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs text-muted">{t("secondaryLicenseRoleLabel")}</span>
-                  <span className="font-medium">
-                    {member.secondary_license_role
-                      ? roleLabelByValue[member.secondary_license_role]
-                      : "-"}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs text-muted">{t("isActiveLabel")}</span>
-                  <span className="font-medium">
-                    {member.is_active ? t("activeLabel") : t("inactiveLabel")}
-                  </span>
-                </div>
+              )}
+            </section>
+
+            <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
+              <h2 className="text-lg font-semibold text-foreground">{t("memberHistoryTab")}</h2>
+              <p className="mt-1 text-sm text-muted">{t("memberHistorySubtitle")}</p>
+              <div className="mt-4">
+                <MemberHistoryTimeline
+                  licenseTitle={t("licenseHistoryTitle")}
+                  gradeTitle={t("gradeHistoryTitle")}
+                  emptyLabel={t("historyEmpty")}
+                  licenseYearLabel={t("historyLicenseYearColumn")}
+                  licenseTypeLabel={t("historyLicenseTypeColumn")}
+                  licenseStatusLabel={t("historyLicenseStatusColumn")}
+                  licenseIssuedLabel={t("historyLicenseIssuedColumn")}
+                  gradeDateLabel={t("historyGradeDateColumn")}
+                  gradeLabel={t("historyGradeColumn")}
+                  gradeIssuedByLabel={t("historyGradeIssuedByColumn")}
+                  addGradeAriaLabel={t("addGradeAction")}
+                  editGradeAriaLabel={t("editGradeAction")}
+                  gradeFormTitle={t("promoteGradeTitle")}
+                  editGradeFormTitle={t("editGradeTitle")}
+                  promoteToGradeLabel={t("promoteToGradeLabel")}
+                  promoteDateLabel={t("promoteDateLabel")}
+                  issuedByLabel={t("gradeIssuedByLabel")}
+                  issuedByClubOption={t("gradeIssuedByClubOption")}
+                  issuedByLtfOption={t("gradeIssuedByLtfOption")}
+                  issuedByOtherOption={t("gradeIssuedByOtherOption")}
+                  issuedByOtherPlaceholder={t("gradeIssuedByOtherPlaceholder")}
+                  promoteSubmitLabel={t("promoteSubmitLabel")}
+                  cancelLabel={t("cancelEdit")}
+                  previousPageLabel={commonT("paginationPrevious")}
+                  nextPageLabel={commonT("paginationNext")}
+                  pageLabel={commonT("paginationPage")}
+                  onPromote={
+                    canManageGrades
+                      ? async (input) => {
+                          await promoteMemberGrade(member.id, input);
+                          await loadMember();
+                        }
+                      : undefined
+                  }
+                  onUpdateGrade={
+                    canManageGrades
+                      ? async (historyId, input) => {
+                          await updateMemberGrade(member.id, historyId, input);
+                          await loadMember();
+                        }
+                      : undefined
+                  }
+                  licenseHistory={history?.license_history ?? []}
+                  gradeHistory={history?.grade_history ?? []}
+                />
               </div>
-            )}
-          </section>
-        ) : (
-          <MemberHistoryTimeline
-            title={t("memberHistoryTab")}
-            subtitle={t("memberHistorySubtitle")}
-            licenseTitle={t("licenseHistoryTitle")}
-            gradeTitle={t("gradeHistoryTitle")}
-            emptyLabel={t("historyEmpty")}
-            eventLabel={t("historyEventLabel")}
-            reasonLabel={t("historyReasonLabel")}
-            notesLabel={t("historyNotesLabel")}
-            fromLabel={t("historyFromLabel")}
-            toLabel={t("historyToLabel")}
-            promoteTitle={t("promoteGradeTitle")}
-            promoteToGradeLabel={t("promoteToGradeLabel")}
-            promoteDateLabel={t("promoteDateLabel")}
-            promoteProofLabel={t("promoteProofLabel")}
-            promoteNotesLabel={t("promoteNotesLabel")}
-            promoteSubmitLabel={t("promoteSubmitLabel")}
-            onPromote={async (input) => {
-              if (!member) {
-                return;
-              }
-              await promoteMemberGrade(member.id, input);
-              await loadMember();
-            }}
-            licenseHistory={history?.license_history ?? []}
-            gradeHistory={history?.grade_history ?? []}
-          />
+            </section>
+          </div>
         )}
       </div>
     </ClubAdminLayout>

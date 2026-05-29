@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 
 import { EmptyState } from "@/components/club-admin/empty-state";
@@ -18,32 +18,19 @@ import {
   getMemberHistory,
 } from "@/lib/ltf-admin-api";
 
-type TabKey = "overview" | "history";
-
 export default function LtfMemberDetailPage() {
   const t = useTranslations("LtfAdmin");
+  const commonT = useTranslations("Common");
   const params = useParams();
-  const searchParams = useSearchParams();
   const rawLocale = params?.locale;
   const rawId = params?.id;
   const locale = typeof rawLocale === "string" ? rawLocale : "en";
   const memberId = typeof rawId === "string" ? Number(rawId) : Number(rawId?.[0]);
-  const initialTab: TabKey = searchParams.get("tab") === "history" ? "history" : "overview";
 
-  // useState holds changing data, and each setX call refreshes the UI.
-  const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [member, setMember] = useState<Member | null>(null);
   const [history, setHistory] = useState<MemberHistoryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const tabItems = useMemo(
-    () => [
-      { key: "overview" as const, label: t("memberOverviewTab") },
-      { key: "history" as const, label: t("memberHistoryTab") },
-    ],
-    [t]
-  );
 
   const loadMember = useCallback(async () => {
     if (!memberId) {
@@ -93,23 +80,9 @@ export default function LtfMemberDetailPage() {
   return (
     <LtfAdminLayout title={title} subtitle={t("memberDetailSubtitle")}>
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <Button variant="outline" size="sm" asChild>
-            <Link href={`/${locale}/dashboard/ltf/members`}>{t("backToMembers")}</Link>
-          </Button>
-          <div className="flex items-center gap-2">
-            {tabItems.map((tab) => (
-              <Button
-                key={tab.key}
-                variant={activeTab === tab.key ? "default" : "outline"}
-                size="sm"
-                onClick={() => setActiveTab(tab.key)}
-              >
-                {tab.label}
-              </Button>
-            ))}
-          </div>
-        </div>
+        <Button variant="outline" size="sm" className="h-10 min-h-10" asChild>
+          <Link href={`/${locale}/dashboard/ltf/members`}>{t("backToMembers")}</Link>
+        </Button>
 
         {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
@@ -117,76 +90,87 @@ export default function LtfMemberDetailPage() {
           <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
         ) : !member ? (
           <EmptyState title={t("noResultsTitle")} description={t("memberNotFound")} />
-        ) : activeTab === "overview" ? (
-          <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-foreground">{t("memberOverviewTab")}</h2>
-            <p className="mt-1 text-sm text-muted">{t("membersReadOnlyHint")}</p>
-            <div className="mt-4">
-              <ProfilePhotoManager
-                imageUrl={member.profile_picture_url}
-                thumbnailUrl={member.profile_picture_thumbnail_url}
-                labels={{
-                  sectionTitle: t("photoSectionTitle"),
-                  sectionSubtitle: t("photoSectionSubtitle"),
-                  changeButton: t("photoChangeButton"),
-                  removeButton: t("photoRemoveButton"),
-                  downloadButton: t("photoDownloadButton"),
-                  modalTitle: t("photoModalTitle"),
-                  modalDescription: t("photoModalDescription"),
-                  dragDropLabel: t("photoDragDropLabel"),
-                  selectFileButton: t("photoSelectFileButton"),
-                  cameraButton: t("photoCameraButton"),
-                  zoomLabel: t("photoZoomLabel"),
-                  backgroundColorLabel: t("photoBackgroundColorLabel"),
-                  removeBackgroundButton: t("photoRemoveBackgroundButton"),
-                  removeBackgroundBusy: t("photoRemoveBackgroundBusy"),
-                  consentLabel: t("photoConsentLabel"),
-                  saveButton: t("photoSaveButton"),
-                  saveBusy: t("photoSaveBusy"),
-                  cancelButton: t("photoCancelButton"),
-                  previewTitle: t("photoPreviewTitle"),
-                  currentPhotoAlt: t("photoCurrentAlt"),
-                  emptyPhotoLabel: t("photoEmptyLabel"),
-                  removeBackgroundUnsupported: t("photoUnsupportedError"),
-                }}
-                readOnly
-                onDownload={handlePhotoDownload}
-              />
-            </div>
-            <div className="mt-4 grid gap-3 text-sm text-foreground md:grid-cols-2">
-              <div className="flex flex-col gap-1">
-                <span className="text-xs text-muted">{t("firstNameLabel")}</span>
-                <span className="font-medium">{member.first_name}</span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className="text-xs text-muted">{t("lastNameLabel")}</span>
-                <span className="font-medium">{member.last_name}</span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className="text-xs text-muted">{t("beltRankLabel")}</span>
-                <span className="font-medium">{member.belt_rank || "-"}</span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className="text-xs text-muted">{t("ltfLicenseLabel")}</span>
-                <span className="font-medium">{member.ltf_licenseid || "-"}</span>
-              </div>
-            </div>
-          </section>
         ) : (
-          <MemberHistoryTimeline
-            title={t("memberHistoryTab")}
-            subtitle={t("memberHistorySubtitle")}
-            licenseTitle={t("licenseHistoryTitle")}
-            gradeTitle={t("gradeHistoryTitle")}
-            emptyLabel={t("historyEmpty")}
-            eventLabel={t("historyEventLabel")}
-            reasonLabel={t("historyReasonLabel")}
-            notesLabel={t("historyNotesLabel")}
-            fromLabel={t("historyFromLabel")}
-            toLabel={t("historyToLabel")}
-            licenseHistory={history?.license_history ?? []}
-            gradeHistory={history?.grade_history ?? []}
-          />
+          <div className="space-y-4">
+            <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
+              <h2 className="text-lg font-semibold text-foreground">{t("memberOverviewTab")}</h2>
+              <p className="mt-1 text-sm text-muted">{t("membersReadOnlyHint")}</p>
+              <div className="mt-4">
+                <ProfilePhotoManager
+                  imageUrl={member.profile_picture_url}
+                  thumbnailUrl={member.profile_picture_thumbnail_url}
+                  labels={{
+                    sectionTitle: t("photoSectionTitle"),
+                    sectionSubtitle: t("photoSectionSubtitle"),
+                    changeButton: t("photoChangeButton"),
+                    removeButton: t("photoRemoveButton"),
+                    downloadButton: t("photoDownloadButton"),
+                    modalTitle: t("photoModalTitle"),
+                    modalDescription: t("photoModalDescription"),
+                    dragDropLabel: t("photoDragDropLabel"),
+                    selectFileButton: t("photoSelectFileButton"),
+                    cameraButton: t("photoCameraButton"),
+                    zoomLabel: t("photoZoomLabel"),
+                    backgroundColorLabel: t("photoBackgroundColorLabel"),
+                    removeBackgroundButton: t("photoRemoveBackgroundButton"),
+                    removeBackgroundBusy: t("photoRemoveBackgroundBusy"),
+                    consentLabel: t("photoConsentLabel"),
+                    saveButton: t("photoSaveButton"),
+                    saveBusy: t("photoSaveBusy"),
+                    cancelButton: t("photoCancelButton"),
+                    previewTitle: t("photoPreviewTitle"),
+                    currentPhotoAlt: t("photoCurrentAlt"),
+                    emptyPhotoLabel: t("photoEmptyLabel"),
+                    removeBackgroundUnsupported: t("photoUnsupportedError"),
+                  }}
+                  readOnly
+                  onDownload={handlePhotoDownload}
+                />
+              </div>
+              <div className="mt-4 grid gap-3 text-sm text-foreground md:grid-cols-2">
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-muted">{t("firstNameLabel")}</span>
+                  <span className="font-medium">{member.first_name}</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-muted">{t("lastNameLabel")}</span>
+                  <span className="font-medium">{member.last_name}</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-muted">{t("beltRankLabel")}</span>
+                  <span className="font-medium">{member.belt_rank || "-"}</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-muted">{t("ltfLicenseLabel")}</span>
+                  <span className="font-medium">{member.ltf_licenseid || "-"}</span>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
+              <h2 className="text-lg font-semibold text-foreground">{t("memberHistoryTab")}</h2>
+              <p className="mt-1 text-sm text-muted">{t("memberHistorySubtitle")}</p>
+              <div className="mt-4">
+                <MemberHistoryTimeline
+                  licenseTitle={t("licenseHistoryTitle")}
+                  gradeTitle={t("gradeHistoryTitle")}
+                  emptyLabel={t("historyEmpty")}
+                  licenseYearLabel={t("historyLicenseYearColumn")}
+                  licenseTypeLabel={t("historyLicenseTypeColumn")}
+                  licenseStatusLabel={t("historyLicenseStatusColumn")}
+                  licenseIssuedLabel={t("historyLicenseIssuedColumn")}
+                  gradeDateLabel={t("historyGradeDateColumn")}
+                  gradeLabel={t("historyGradeColumn")}
+                  gradeIssuedByLabel={t("historyGradeIssuedByColumn")}
+                  previousPageLabel={commonT("paginationPrevious")}
+                  nextPageLabel={commonT("paginationNext")}
+                  pageLabel={commonT("paginationPage")}
+                  licenseHistory={history?.license_history ?? []}
+                  gradeHistory={history?.grade_history ?? []}
+                />
+              </div>
+            </section>
+          </div>
         )}
       </div>
     </LtfAdminLayout>

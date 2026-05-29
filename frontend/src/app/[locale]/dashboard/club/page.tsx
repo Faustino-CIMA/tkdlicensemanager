@@ -191,7 +191,7 @@ export default function ClubAdminOverviewPage() {
     [activeMembers]
   );
 
-  const membersWithoutValidLicense = useMemo(() => {
+  const membersWithoutValidLicenseIds = useMemo(() => {
     const licensesByMember = new Map<number, Set<string>>();
     filteredLicenses.forEach((license) => {
       if (!licensesByMember.has(license.member)) {
@@ -199,14 +199,18 @@ export default function ClubAdminOverviewPage() {
       }
       licensesByMember.get(license.member)?.add(license.status);
     });
-    return activeMembers.filter((member) => {
-      const statuses = licensesByMember.get(member.id);
-      if (!statuses) {
-        return true;
-      }
-      return !statuses.has("active") && !statuses.has("pending");
-    }).length;
+    return activeMembers
+      .filter((member) => {
+        const statuses = licensesByMember.get(member.id);
+        if (!statuses) {
+          return true;
+        }
+        return !statuses.has("active") && !statuses.has("pending");
+      })
+      .map((member) => member.id);
   }, [activeMembers, filteredLicenses]);
+
+  const membersWithoutValidLicense = membersWithoutValidLicenseIds.length;
 
   const issuedInvoicesOverdue7d = useMemo(() => {
     const now = Date.now();
@@ -237,7 +241,10 @@ export default function ClubAdminOverviewPage() {
         label: t("overviewActionMembersWithoutValidLicense"),
         count: membersWithoutValidLicense,
         severity: "critical",
-        href: `/${locale}/dashboard/club/members`,
+        href:
+          membersWithoutValidLicenseIds.length > 0
+            ? `/${locale}/dashboard/club/members?filter=without_valid_license&ids=${membersWithoutValidLicenseIds.join(",")}`
+            : `/${locale}/dashboard/club/members`,
       },
       {
         id: "issued_invoices_overdue_7d",
@@ -247,7 +254,14 @@ export default function ClubAdminOverviewPage() {
         href: `/${locale}/dashboard/club/invoices`,
       },
     ],
-    [issuedInvoicesOverdue7d, locale, membersMissingLtfId, membersWithoutValidLicense, t]
+    [
+      issuedInvoicesOverdue7d,
+      locale,
+      membersMissingLtfId,
+      membersWithoutValidLicense,
+      membersWithoutValidLicenseIds,
+      t,
+    ]
   );
 
   const visibleQueueItems = queueItems.filter((item) => item.count > 0);
@@ -352,7 +366,12 @@ export default function ClubAdminOverviewPage() {
                 ? t("lastRefreshLabel", { time: formatDisplayDateTime(lastRefreshAt) })
                 : t("lastRefreshNever")}
             </p>
-            <Button variant="outline" onClick={() => loadOverview({ silent: true })} disabled={isRefreshing}>
+            <Button
+              variant="outline"
+              className="h-10 min-h-10"
+              onClick={() => loadOverview({ silent: true })}
+              disabled={isRefreshing}
+            >
               {isRefreshing ? t("refreshingAction") : t("refreshAction")}
             </Button>
           </section>
@@ -393,7 +412,7 @@ export default function ClubAdminOverviewPage() {
                     </div>
                     <Link
                       href={item.href}
-                      className="inline-flex min-h-11 items-center justify-center rounded-[var(--radius-form)] border border-current px-4 text-xs font-semibold"
+                      className="inline-flex h-10 min-h-10 items-center justify-center rounded-[var(--radius-form)] border border-current px-4 text-xs font-semibold"
                     >
                       {t("openAction")}
                     </Link>

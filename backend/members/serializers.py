@@ -174,6 +174,7 @@ class GradePromotionHistorySerializer(serializers.ModelSerializer):
             "exam_date",
             "proof_ref",
             "notes",
+            "created_by",
             "metadata",
             "created_at",
         ]
@@ -186,6 +187,23 @@ class GradePromotionCreateSerializer(serializers.Serializer):
     exam_date = serializers.DateField(required=False, allow_null=True)
     proof_ref = serializers.CharField(required=False, allow_blank=True)
     notes = serializers.CharField(required=False, allow_blank=True)
+    created_by = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    metadata = serializers.JSONField(required=False)
+
+    def validate_to_grade(self, value):
+        normalized = value.strip()
+        if not normalized:
+            raise serializers.ValidationError("to_grade is required.")
+        return normalized
+
+
+class GradePromotionUpdateSerializer(serializers.Serializer):
+    to_grade = serializers.CharField(max_length=100, required=False)
+    promotion_date = serializers.DateField(required=False)
+    exam_date = serializers.DateField(required=False, allow_null=True)
+    proof_ref = serializers.CharField(required=False, allow_blank=True)
+    notes = serializers.CharField(required=False, allow_blank=True)
+    created_by = serializers.CharField(required=False, allow_blank=True, max_length=255)
     metadata = serializers.JSONField(required=False)
 
     def validate_to_grade(self, value):
@@ -196,6 +214,8 @@ class GradePromotionCreateSerializer(serializers.Serializer):
 
 
 class LicenseHistoryEventSerializer(serializers.ModelSerializer):
+    license_type_name = serializers.SerializerMethodField()
+
     class Meta:
         model = LicenseHistoryEvent
         fields = [
@@ -214,8 +234,18 @@ class LicenseHistoryEventSerializer(serializers.ModelSerializer):
             "status_before",
             "status_after",
             "club_name_snapshot",
+            "license_type_name",
             "created_at",
         ]
+
+    def get_license_type_name(self, obj: LicenseHistoryEvent) -> str:
+        license_record = getattr(obj, "license", None)
+        if not license_record:
+            return ""
+        license_type = getattr(license_record, "license_type", None)
+        if not license_type:
+            return ""
+        return str(getattr(license_type, "name", "") or "")
 
 
 class MemberProfilePictureUploadSerializer(serializers.Serializer):

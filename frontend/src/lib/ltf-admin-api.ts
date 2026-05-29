@@ -105,6 +105,7 @@ export type LicenseHistoryEvent = {
   status_before: string;
   status_after: string;
   club_name_snapshot: string;
+  license_type_name?: string;
   created_at: string;
 };
 
@@ -119,6 +120,7 @@ export type GradeHistoryEntry = {
   exam_date: string | null;
   proof_ref: string;
   notes: string;
+  created_by: string;
   metadata: Record<string, unknown>;
   created_at: string;
 };
@@ -586,12 +588,24 @@ export type GradePromotionInput = {
   exam_date?: string | null;
   proof_ref?: string;
   notes?: string;
+  created_by?: string;
   metadata?: Record<string, unknown>;
 };
 
 export function promoteMemberGrade(memberId: number, input: GradePromotionInput) {
   return apiRequest<GradeHistoryEntry>(`/api/members/${memberId}/promote-grade/`, {
     method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateMemberGrade(
+  memberId: number,
+  historyId: number,
+  input: GradePromotionInput
+) {
+  return apiRequest<GradeHistoryEntry>(`/api/members/${memberId}/grade-history/${historyId}/`, {
+    method: "PATCH",
     body: JSON.stringify(input),
   });
 }

@@ -630,7 +630,7 @@ export function ProfilePhotoManager({
           <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex items-start gap-4">
-                <div className="h-28 w-28 overflow-hidden rounded-[var(--radius-card)] border border-border bg-secondary">
+                <div className="aspect-[8/10] w-28 overflow-hidden rounded-[var(--radius-card)] border border-border bg-secondary">
                   {storedPhotoPreviewUrl ? (
                     /* eslint-disable-next-line @next/next/no-img-element -- stored photo can be blob or API URL */
                     <img

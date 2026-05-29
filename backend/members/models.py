@@ -173,6 +173,7 @@ class GradePromotionHistory(models.Model):
     exam_date = models.DateField(null=True, blank=True)
     proof_ref = models.CharField(max_length=255, blank=True)
     notes = models.TextField(blank=True)
+    created_by = models.CharField(max_length=255, blank=True)
     metadata = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -218,8 +219,6 @@ class GradePromotionHistory(models.Model):
                 )
 
     def save(self, *args, **kwargs):
-        if not self._state.adding:
-            raise ValidationError(_("Grade promotion history is append-only."))
         self.full_clean()
         super().save(*args, **kwargs)
 
