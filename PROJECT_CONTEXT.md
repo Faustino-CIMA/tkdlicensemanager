@@ -1,5 +1,5 @@
-**LTF Taekwondo License Manager — Master Summary (March 2026)**
-Last updated: 2026-03-28
+**LTF Taekwondo License Manager — Master Summary (May 2026)**
+Last updated: 2026-05-30
 
 Current main branch state:
 - Version: v0.3.8 (annotated tag v0.3.8 created and pushed)
@@ -14,8 +14,10 @@ Current main branch state:
 Current working branch: improvements-clean
 Status: All visual, navigation and Club Members page improvements merged and verified locally
 Status: Member Import Step 3 UX improvement merged on improvements-clean (v0.3.9)
+Status: Member Detail View UX overhaul implemented on `feature/member-detail-view-redo` (commit 7d986ab, 2026-05-29); single scroll view, simplified Licenses/Grades tables with pagination, inline grade form, pencil edit actions — Club and LTF member detail pages
+Status: Hybrid responsive design-token refinements in progress on `feature/member-detail-view-redo` (14 files modified, uncommitted): `--control-height`, `--table-row-height`, `--control-padding-x`, `--checkbox-border`; shared Button/Input/Select/Modal and Club Members page migrated off hardcoded heights
 
-Current Stack (locked) — Updated 2026-03-28
+Current Stack (locked) — Updated 2026-05-30
 - Backend: python:3.13-slim-bookworm + Django 6.0.3 + DRF 3.17.0 + PostgreSQL 18
 - Frontend: Next.js 16.2.1 (App Router) + React 19.2.4 + TypeScript 5.9.3 + HeroUI v3.0.1 + Tailwind 4.2.2
 - Runtime: Python 3.13 + Node 22
@@ -60,6 +62,8 @@ Rules we follow:
 - **Release v0.3.6 (2026-03-19):** Merged `feature/general-improvements` to `main` (fast-forward). Printer profiles (user-owned, Club Admin nav + `/dashboard/club/printer-profiles`, LTF Admin CRUD, quick-print selection, PDF offset in final output) + photo fixes live on `main`. Tag `v0.3.6` created and pushed.
 - **v0.3.9 HeroUI Release (2026-03-28):** Full HeroUI v3.0.1 integration with custom ltf_theme.css, sticky top bar, stable tab navigation (no more swapping), Club Members page overhaul (RadioGroup filters with total counts, improved Members/Actions Selects, row status confirmation modals, pagination 50/150/300/All).
 - **Member Import Step 3 UX improvement (v0.3.9)**: Orange "Review" status for invalid/non-matching license roles, inline dropdowns to fix primary_license_role and secondary_license_role, empty secondary_license_role is valid, same-role validation with clear error message, role change confirmation dialogue — completed
+- **Member Detail View UX overhaul (feature/member-detail-view-redo, 2026-05-29, commit 7d986ab):** Removed Overview/History tabs in favor of a single scroll view; pencil-icon edit button; simplified Licenses table (Year | License type | Status | Issued, deduplicated to one row per year prioritizing Active then most recent) and Grades table (Date | Grade | Issued by); pagination (5 rows/page, Previous/Next) on both tables; inline grade add/edit form that swaps in place of the table (no modal); single-select checkboxes in the rightmost Grades column with a header "edit selected" pencil action; backend `created_by` support added to GradePromotionHistory (migration 0012) plus legacy grade-promotion column cleanup (migration 0013); applied to both Club (editable) and LTF (read-only) member detail pages — completed
+- **Hybrid responsive design-token system (2026-05-29):** Introduced CSS custom-property sizing tokens (`--control-height`, `--table-row-height`, `--control-padding-x`) in ltf_theme.css with a `@media (pointer: coarse)` override so the UI auto-adapts between compact desktop (40px controls / 44px table rows / 16px control padding) and comfortable touch (44px controls / 52px table rows / 20px padding); shared Button/Input/Select/Modal components and the Club Members page migrated off hardcoded heights onto the tokens; dedicated `--checkbox-border` token (74% lightness light / 48% dark) for visible 16px checkboxes; compact StatusBadge padding; editable member status switched to a Button styled as a status badge (22% tint) while read-only uses StatusBadge — completed
 
 ## Key Decisions
 - Club Admin payments do NOT require extra consent prompt
@@ -67,13 +71,16 @@ Rules we follow:
 - Stripe uses invoice_number as reference (not order_number)
 - All history is immutable and audited
 - Docker containers run without .cursor bind-mounts (ownership stability)
+- Moved from a fixed 40px button/control rule to a responsive token-based sizing system (40px desktop / 44px touch) driven by `pointer: coarse`
 
 ## Current Open / Next Priorities (update after every milestone)
 - Post-rollout observation on production/Dokploy (print queue, printer-profile offset correctness)
 - Gather real Payconiq sandbox credentials and run first live sandbox verification
 - Any remaining Dokploy stability tweaks
+- Member Detail View + responsive-token refinements on `feature/member-detail-view-redo` pending commit/merge to `improvements-clean` / `main`
+- EntityTable data cells still use `px-4 py-3` (not bound to `--table-row-height`); follow-up if strict desktop table density is desired
 
-Next phase: General improvements or next major feature (e.g. Invoice redesign, full Payconiq integration)
+Next phase: Finalize and merge Member Detail View + responsive-token work, then proceed to next major feature (Invoice redesign / full Payconiq integration)
 
 Coding & Memory Rules (always follow)
 - Always work on dedicated feature branches for new work
