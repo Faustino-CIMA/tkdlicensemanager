@@ -32,7 +32,7 @@ export function EntityTable<T extends { id: number | string }>({
           {rows.map((row) => (
             <tr
               key={row.id}
-              className={`text-foreground ${isClickable ? "cursor-pointer hover:bg-secondary" : ""}`}
+              className={`h-[var(--table-row-height)] text-foreground ${isClickable ? "cursor-pointer hover:bg-secondary" : ""}`}
               onClick={(event) => {
                 if (!onRowClick) {
                   return;

@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
 import { useClubSelection } from "@/components/club-selection-provider";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -711,7 +712,7 @@ export default function ClubAdminMembersPage() {
                   value="all"
                   className={(state) =>
                     [
-                      "flex min-h-11 min-w-0 flex-1 cursor-pointer flex-row items-center gap-3 rounded-[var(--radius-card)] border px-3 py-2 shadow-sm outline-none transition-[background-color,border-color,box-shadow] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]",
+                      "flex min-h-[var(--control-height)] min-w-0 flex-1 cursor-pointer flex-row items-center gap-3 rounded-[var(--radius-card)] border px-3 py-2 shadow-sm outline-none transition-[background-color,border-color,box-shadow] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]",
                       state.isSelected
                         ? "border-[var(--accent)] bg-[color-mix(in_oklch,var(--accent)_16%,var(--surface))]"
                         : "border-[var(--border)] bg-[var(--surface-secondary)]",
@@ -748,7 +749,7 @@ export default function ClubAdminMembersPage() {
                   value="active"
                   className={(state) =>
                     [
-                      "flex min-h-11 min-w-0 flex-1 cursor-pointer flex-row items-center gap-3 rounded-[var(--radius-card)] border px-3 py-2 shadow-sm outline-none transition-[background-color,border-color,box-shadow] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]",
+                      "flex min-h-[var(--control-height)] min-w-0 flex-1 cursor-pointer flex-row items-center gap-3 rounded-[var(--radius-card)] border px-3 py-2 shadow-sm outline-none transition-[background-color,border-color,box-shadow] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]",
                       state.isSelected
                         ? "border-[var(--accent)] bg-[color-mix(in_oklch,var(--accent)_16%,var(--surface))]"
                         : "border-[var(--border)] bg-[var(--surface-secondary)]",
@@ -785,7 +786,7 @@ export default function ClubAdminMembersPage() {
                   value="inactive"
                   className={(state) =>
                     [
-                      "flex min-h-11 min-w-0 flex-1 cursor-pointer flex-row items-center gap-3 rounded-[var(--radius-card)] border px-3 py-2 shadow-sm outline-none transition-[background-color,border-color,box-shadow] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]",
+                      "flex min-h-[var(--control-height)] min-w-0 flex-1 cursor-pointer flex-row items-center gap-3 rounded-[var(--radius-card)] border px-3 py-2 shadow-sm outline-none transition-[background-color,border-color,box-shadow] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]",
                       state.isSelected
                         ? "border-[var(--accent)] bg-[color-mix(in_oklch,var(--accent)_16%,var(--surface))]"
                         : "border-[var(--border)] bg-[var(--surface-secondary)]",
@@ -827,7 +828,7 @@ export default function ClubAdminMembersPage() {
               <p className="min-w-0 flex-1">{t("membersWithoutValidLicenseFilterMessage")}</p>
               <button
                 type="button"
-                className="inline-flex h-10 min-h-10 size-10 shrink-0 items-center justify-center rounded-[var(--radius-form)]"
+                className="inline-flex h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] shrink-0 items-center justify-center rounded-[var(--radius-form)]"
                 aria-label={common("modalClose")}
                 onClick={dismissLicenseGapMessage}
               >
@@ -877,7 +878,7 @@ export default function ClubAdminMembersPage() {
                   }
                 }}
               >
-                <SelectTrigger className="min-w-[11rem]">
+                <SelectTrigger className="min-w-[11rem]" aria-label={common("batchActionsLabel")}>
                   <SelectValue placeholder={common("batchActionsLabel")} />
                 </SelectTrigger>
                 <SelectContent>
@@ -900,7 +901,7 @@ export default function ClubAdminMembersPage() {
 
           <div className="flex flex-wrap items-center justify-between gap-4">
             {canManageMembers ? (
-              <div className="min-h-11 text-sm text-[var(--muted)]">
+              <div className="min-h-[var(--control-height)] text-sm text-[var(--muted)]">
                 {selectedIds.length > 0 ? (
                   <div className="flex flex-wrap items-center gap-3">
                     <span className="font-medium text-[var(--foreground)]">
@@ -913,7 +914,7 @@ export default function ClubAdminMembersPage() {
                     ) : null}
                     <button
                       type="button"
-                      className="min-h-11 rounded-[var(--radius-form)] px-2 text-sm font-medium text-[var(--accent)] underline-offset-4 hover:underline"
+                      className="min-h-[var(--control-height)] rounded-[var(--radius-form)] px-2 text-sm font-medium text-[var(--accent)] underline-offset-4 hover:underline"
                       onClick={clearSelection}
                     >
                       {t("clearSelection")}
@@ -958,7 +959,7 @@ export default function ClubAdminMembersPage() {
                     {
                       key: "select",
                       header: (
-                        <span className="inline-flex min-h-11 min-w-11 items-center justify-center">
+                        <span className="inline-flex min-h-[var(--control-height)] min-w-[var(--control-height)] items-center justify-center">
                           <Checkbox
                             aria-label={common("selectAllLabel")}
                             checked={allSelected}
@@ -968,7 +969,7 @@ export default function ClubAdminMembersPage() {
                       ),
                       render: (member: Member) => (
                         <span
-                          className="inline-flex min-h-11 min-w-11 items-center justify-center"
+                          className="inline-flex min-h-[var(--control-height)] min-w-[var(--control-height)] items-center justify-center"
                           onClick={(e) => e.stopPropagation()}
                           onKeyDown={(e) => e.stopPropagation()}
                         >
@@ -998,7 +999,7 @@ export default function ClubAdminMembersPage() {
                 header: t("sexLabel"),
                 render: (member) => (
                   <span
-                    className="inline-flex h-11 w-11 items-center justify-center text-2xl font-semibold leading-none"
+                    className="inline-flex h-[var(--control-height)] w-[var(--control-height)] items-center justify-center text-2xl font-semibold leading-none"
                     aria-label={member.sex === "F" ? "Female" : "Male"}
                     title={member.sex === "F" ? "Female" : "Male"}
                   >
@@ -1020,25 +1021,22 @@ export default function ClubAdminMembersPage() {
                   const isUpdating = statusUpdatingSet.has(member.id);
                   if (!canManageMembers) {
                     return (
-                      <span
-                        className={`inline-flex min-h-11 items-center rounded-[var(--radius-form)] border px-3 text-xs font-medium ${
-                          member.is_active
-                            ? "badge-success"
-                            : "border-border bg-secondary text-muted"
-                        }`}
-                      >
-                        {member.is_active ? t("activeLabel") : t("inactiveLabel")}
-                      </span>
+                      <StatusBadge
+                        label={member.is_active ? t("activeLabel") : t("inactiveLabel")}
+                        tone={member.is_active ? "success" : "neutral"}
+                      />
                     );
                   }
                   return (
-                    <button
+                    <Button
                       type="button"
+                      variant="outline"
                       disabled={isUpdating}
-                      className={`inline-flex min-h-11 min-w-[5.5rem] items-center justify-center rounded-[var(--radius-form)] border px-3 text-xs font-semibold transition ${
+                      aria-label={t("actionChangeStatus")}
+                      className={`min-w-[5.5rem] text-xs font-semibold ${
                         member.is_active
-                          ? "badge-success hover:opacity-80"
-                          : "border-border bg-secondary text-muted hover:bg-secondary/80"
+                          ? "border-[var(--border)] bg-[color:color-mix(in_oklab,var(--success)_22%,white)] text-[color:color-mix(in_oklab,var(--success)_70%,black)] hover:opacity-80"
+                          : "border-[var(--border)] bg-[color:color-mix(in_oklab,var(--default)_88%,white)] text-[var(--default-foreground)] hover:opacity-80"
                       } ${isUpdating ? "cursor-wait opacity-70" : ""}`}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1046,7 +1044,7 @@ export default function ClubAdminMembersPage() {
                       }}
                     >
                       {member.is_active ? t("activeLabel") : t("inactiveLabel")}
-                    </button>
+                    </Button>
                   );
                 },
               },
@@ -1057,7 +1055,7 @@ export default function ClubAdminMembersPage() {
                   <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
                     <Button
                       variant="outline"
-                      className="min-h-11 min-w-11 shrink-0 p-0"
+                      className="h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] shrink-0 p-0"
                       aria-label={t("editAction")}
                       onClick={() =>
                         router.push(
@@ -1070,7 +1068,7 @@ export default function ClubAdminMembersPage() {
                     {canManageMembers ? (
                       <Button
                         variant="destructive"
-                        className="min-h-11 min-w-11 shrink-0 p-0"
+                        className="h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] shrink-0 p-0"
                         aria-label={t("deleteAction")}
                         onClick={() => handleDelete(member)}
                       >

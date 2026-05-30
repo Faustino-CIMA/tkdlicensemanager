@@ -15,6 +15,7 @@
   --accent-foreground: oklch(15% 0.0299 234.42);
   --background: oklch(97.02% 0.0015 234.42);
   --border: oklch(90.00% 0.0015 234.42);
+  --checkbox-border: oklch(74.00% 0.0015 234.42);
   --danger: oklch(65.32% 0.2335 23.41);
   --danger-foreground: oklch(99.11% 0 0);
   --default: oklch(94.00% 0.0015 234.42);
@@ -49,6 +50,11 @@
   --radius: 0.125rem;
   --field-radius: 0.125rem;
 
+  /* Control & layout sizing (desktop / compact defaults) */
+  --control-height: 40px;
+  --table-row-height: 44px;
+  --control-padding-x: 16px;
+
   /* Font Family */
   /* Make sure to load Inter font in your app */
   --font-sans: var(--font-inter);
@@ -62,6 +68,7 @@
   --accent-foreground: oklch(15% 0.0299 234.42);
   --background: oklch(12.00% 0.0015 234.42);
   --border: oklch(28.00% 0.0015 234.42);
+  --checkbox-border: oklch(48.00% 0.0015 234.42);
   --danger: oklch(59.40% 0.1973 22.30);
   --danger-foreground: oklch(99.11% 0 0);
   --default: oklch(27.40% 0.0015 234.42);
@@ -91,4 +98,18 @@
 
   /* Modal scrim — dark mode: translucent background tone */
   --modal-backdrop: color-mix(in oklab, var(--background) 72%, transparent);
+}
+
+@media (pointer: coarse) {
+  :root,
+  .light,
+  .default,
+  [data-theme="light"],
+  [data-theme="default"],
+  .dark,
+  [data-theme="dark"] {
+    --control-height: 44px;
+    --table-row-height: 52px;
+    --control-padding-x: 20px;
+  }
 }

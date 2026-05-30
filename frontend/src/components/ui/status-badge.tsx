@@ -14,7 +14,7 @@ const toneClasses: Record<NonNullable<StatusBadgeProps["tone"]>, string> = {
 export function StatusBadge({ label, tone = "neutral" }: StatusBadgeProps) {
   return (
     <span
-      className={`inline-flex items-center rounded-[var(--radius-form)] border border-[var(--border)] px-2.5 py-1 text-xs font-medium ${toneClasses[tone]}`}
+      className={`inline-flex items-center rounded-[var(--radius-form)] border border-[var(--border)] px-2 py-0.5 text-xs font-medium ${toneClasses[tone]}`}
     >
       {label}
     </span>

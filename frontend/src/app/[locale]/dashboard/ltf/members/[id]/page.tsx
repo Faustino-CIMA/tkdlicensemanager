@@ -80,7 +80,7 @@ export default function LtfMemberDetailPage() {
   return (
     <LtfAdminLayout title={title} subtitle={t("memberDetailSubtitle")}>
       <div className="space-y-4">
-        <Button variant="outline" size="sm" className="h-10 min-h-10" asChild>
+        <Button variant="outline" size="sm" className="h-[var(--control-height)] min-h-[var(--control-height)]" asChild>
           <Link href={`/${locale}/dashboard/ltf/members`}>{t("backToMembers")}</Link>
         </Button>
 

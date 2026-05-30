@@ -225,7 +225,7 @@ function HistoryPagination({
       <Button
         type="button"
         variant="outline"
-        className="h-10 min-h-10 max-h-10 shrink-0"
+        className="h-[var(--control-height)] min-h-[var(--control-height)] shrink-0"
         disabled={currentPage <= 1}
         onClick={onPrevious}
       >
@@ -237,7 +237,7 @@ function HistoryPagination({
       <Button
         type="button"
         variant="outline"
-        className="h-10 min-h-10 max-h-10 shrink-0"
+        className="h-[var(--control-height)] min-h-[var(--control-height)] shrink-0"
         disabled={currentPage >= totalPages}
         onClick={onNext}
       >
@@ -362,10 +362,10 @@ function GradeInlineForm({
       </div>
       {errorMessage ? <p className="mt-3 text-sm text-destructive">{errorMessage}</p> : null}
       <div className="mt-4 flex justify-end gap-2">
-        <Button type="button" variant="outline" className="h-10 min-h-10" onClick={onCancel}>
+        <Button type="button" variant="outline" className="h-[var(--control-height)] min-h-[var(--control-height)]" onClick={onCancel}>
           {cancelLabel}
         </Button>
-        <Button type="button" className="h-10 min-h-10" disabled={isSubmitting} onClick={onSubmit}>
+        <Button type="button" className="h-[var(--control-height)] min-h-[var(--control-height)]" disabled={isSubmitting} onClick={onSubmit}>
           {promoteSubmitLabel}
         </Button>
       </div>
@@ -482,9 +482,7 @@ export function MemberHistoryTimeline({
     if (onUpdateGrade) {
       columns.push({
         key: "select",
-        header: (
-          <span className="inline-flex min-h-11 min-w-11 items-center justify-center" aria-hidden="true" />
-        ),
+        header: <span className="sr-only">Select</span>,
         render: (row) => (
           <span
             className="inline-flex min-h-11 min-w-11 items-center justify-center"
@@ -606,8 +604,8 @@ export function MemberHistoryTimeline({
                 },
               ]}
               rows={paginatedLicenses}
-              rowClassName="h-11"
-              cellClassName="box-border h-11 px-4 py-0 align-middle"
+              rowClassName="h-[var(--table-row-height)]"
+              cellClassName="box-border h-[var(--table-row-height)] px-4 py-0 align-middle"
             />
             {sortedLicenses.length > ROWS_PER_PAGE ? (
               <HistoryPagination
@@ -633,7 +631,7 @@ export function MemberHistoryTimeline({
                   type="button"
                   variant="outline"
                   size="icon"
-                  className="size-10 h-10 min-h-10 shrink-0"
+                  className="h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] shrink-0"
                   aria-label={addGradeAriaLabel}
                   onClick={openAddGradeForm}
                 >
@@ -645,7 +643,7 @@ export function MemberHistoryTimeline({
                   type="button"
                   variant="outline"
                   size="icon"
-                  className="size-10 h-10 min-h-10 shrink-0"
+                  className="h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] shrink-0"
                   aria-label={editGradeAriaLabel}
                   disabled={selectedGradeId === null}
                   onClick={openEditSelectedGrade}
@@ -693,8 +691,8 @@ export function MemberHistoryTimeline({
             <HistoryEntityTable
               columns={gradeTableColumns}
               rows={paginatedGrades}
-              rowClassName="h-12"
-              cellClassName="box-border h-12 px-4 py-0 align-middle"
+              rowClassName="h-[var(--table-row-height)]"
+              cellClassName="box-border h-[var(--table-row-height)] px-4 py-0 align-middle"
             />
             {sortedGrades.length > ROWS_PER_PAGE ? (
               <HistoryPagination

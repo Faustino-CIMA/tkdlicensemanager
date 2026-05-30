@@ -19,6 +19,7 @@ import {
 } from "@/lib/club-admin-api";
 import { formatDisplayDate } from "@/lib/date-display";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Input } from "@/components/ui/input";
 import { apiRequest } from "@/lib/api";
 import {
@@ -411,17 +412,17 @@ export default function ClubAdminLicensesPage() {
     return status;
   };
 
-  const getStatusChipClasses = (status: License["status"]) => {
+  const getStatusTone = (status: License["status"]): "success" | "warning" | "danger" | "neutral" => {
     if (status === "active") {
-      return "badge-success";
+      return "success";
     }
     if (status === "expired") {
-      return "border-border bg-secondary text-foreground";
+      return "neutral";
     }
     if (status === "pending") {
-      return "badge-warning";
+      return "warning";
     }
-    return "badge-danger";
+    return "danger";
   };
 
   const formatIssuedAt = (value: string | null) => {
@@ -658,13 +659,7 @@ export default function ClubAdminLicensesPage() {
                                           t("unknownLicenseType")}
                                       </td>
                                       <td className="px-4 py-2">
-                                        <span
-                                          className={`inline-flex rounded-[var(--radius-form)] border px-2 py-0.5 text-xs font-medium ${getStatusChipClasses(
-                                            license.status
-                                          )}`}
-                                        >
-                                          {getStatusLabel(license.status)}
-                                        </span>
+                                        <StatusBadge label={getStatusLabel(license.status)} tone={getStatusTone(license.status)} />
                                       </td>
                                       <td className="px-4 py-2">{formatIssuedAt(license.issued_at)}</td>
                                     </tr>

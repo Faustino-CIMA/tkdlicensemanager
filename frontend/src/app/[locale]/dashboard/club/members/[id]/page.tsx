@@ -298,7 +298,7 @@ export default function ClubMemberDetailPage() {
   return (
     <ClubAdminLayout title={title} subtitle={t("memberDetailSubtitle")}>
       <div className="space-y-4">
-        <Button variant="outline" size="sm" className="h-10 min-h-10" asChild>
+        <Button variant="outline" size="sm" className="h-[var(--control-height)] min-h-[var(--control-height)]" asChild>
           <Link href={`/${locale}/dashboard/club/members`}>{t("backToMembers")}</Link>
         </Button>
 
@@ -314,14 +314,14 @@ export default function ClubMemberDetailPage() {
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold text-foreground">{t("memberOverviewTab")}</h2>
                 {isEditing ? (
-                  <Button variant="outline" size="sm" className="h-10 min-h-10" onClick={onCancelEdit}>
+                  <Button variant="outline" size="sm" className="h-[var(--control-height)] min-h-[var(--control-height)]" onClick={onCancelEdit}>
                     {t("cancelEdit")}
                   </Button>
                 ) : canEditMember ? (
                   <Button
                     variant="outline"
                     size="icon-lg"
-                    className="h-10 min-h-10 w-10 shrink-0"
+                    className="h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] shrink-0"
                     aria-label={t("editAction")}
                     onClick={onEdit}
                   >
@@ -557,10 +557,10 @@ export default function ClubMemberDetailPage() {
                   </div>
 
                   <div className="flex items-center gap-3 md:col-span-2">
-                    <Button type="submit" className="h-10 min-h-10" disabled={isSubmitting}>
+                    <Button type="submit" className="h-[var(--control-height)] min-h-[var(--control-height)]" disabled={isSubmitting}>
                       {t("updateMember")}
                     </Button>
-                    <Button type="button" variant="outline" className="h-10 min-h-10" onClick={onCancelEdit}>
+                    <Button type="button" variant="outline" className="h-[var(--control-height)] min-h-[var(--control-height)]" onClick={onCancelEdit}>
                       {t("cancelEdit")}
                     </Button>
                   </div>
