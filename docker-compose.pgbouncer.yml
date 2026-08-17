@@ -1,0 +1,50 @@
+services:
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.25.1-p0
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB}
+      AUTH_TYPE: plain
+      POOL_MODE: ${PGBOUNCER_POOL_MODE:-transaction}
+      MAX_CLIENT_CONN: ${PGBOUNCER_MAX_CLIENT_CONN:-500}
+      DEFAULT_POOL_SIZE: ${PGBOUNCER_DEFAULT_POOL_SIZE:-50}
+      RESERVE_POOL_SIZE: ${PGBOUNCER_RESERVE_POOL_SIZE:-10}
+      SERVER_RESET_QUERY: DISCARD ALL
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app-net
+
+  backend:
+    environment:
+      POSTGRES_HOST: pgbouncer
+      DJANGO_DB_CONN_MAX_AGE: 0
+      DJANGO_DB_USE_PGBOUNCER: "True"
+    depends_on:
+      pgbouncer:
+        condition: service_started
+
+  worker:
+    environment:
+      POSTGRES_HOST: pgbouncer
+      DJANGO_DB_CONN_MAX_AGE: 0
+      DJANGO_DB_USE_PGBOUNCER: "True"
+    depends_on:
+      pgbouncer:
+        condition: service_started
+
+  beat:
+    environment:
+      POSTGRES_HOST: pgbouncer
+      DJANGO_DB_CONN_MAX_AGE: 0
+      DJANGO_DB_USE_PGBOUNCER: "True"
+    depends_on:
+      pgbouncer:
+        condition: service_started

@@ -1,0 +1,250 @@
+name: ltf-license-manager
+
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ltf_license_manager}
+      POSTGRES_USER: ${POSTGRES_USER:-ltf_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ltf_password}
+    command: >
+      postgres
+      -c max_connections=${POSTGRES_MAX_CONNECTIONS:-300}
+      -c shared_buffers=${POSTGRES_SHARED_BUFFERS:-256MB}
+      -c effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-768MB}
+      -c work_mem=${POSTGRES_WORK_MEM:-8MB}
+      -c maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-64MB}
+      -c log_min_duration_statement=${POSTGRES_LOG_MIN_DURATION_STATEMENT_MS:-750}
+      -c log_checkpoints=on
+      -c log_lock_waits=on
+    ports:
+      - "${DB_BIND_ADDRESS:-127.0.0.1}:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - app-net
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 20s
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_BIND_ADDRESS:-127.0.0.1}:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - app-net
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    init: true
+    stop_signal: SIGTERM
+    stop_grace_period: 60s
+    user: "0:0"
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "APP_UID=$$(id -u app) &&
+      APP_GID=$$(id -g app) &&
+      mkdir -p /app/media /app/staticfiles /app/.cursor 2>/dev/null || true &&
+      chown -R $$APP_UID:$$APP_GID /app/media /app/staticfiles /app/.cursor /var/lib/celerybeat 2>/dev/null || true &&
+      sh /app/scripts/check-env.sh &&
+      runuser -u app -- sh -lc 'python manage.py migrate --noinput &&
+      python manage.py check &&
+      python manage.py collectstatic --noinput &&
+      gunicorn config.wsgi:application
+      --bind 0.0.0.0:8000
+      --workers $${GUNICORN_WORKERS:-4}
+      --threads $${GUNICORN_THREADS:-2}
+      --timeout $${GUNICORN_TIMEOUT:-120}
+      --access-logfile -'"
+    volumes:
+      - ./backend:/app
+      # Keep for debug-mode logging (shared host log path)
+      - ./.cursor:/app/.cursor
+      - staticfiles_data:/app/staticfiles
+      - mediafiles_data:/app/media
+    ports:
+      - "${BACKEND_BIND_ADDRESS:-0.0.0.0}:8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -sf --max-time 5 -H 'X-Forwarded-Proto: https' http://localhost:8000/api/health/ || exit 1",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 120s
+    networks:
+      - app-net
+
+  worker:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    init: true
+    stop_signal: SIGTERM
+    stop_grace_period: 120s
+    user: "0:0"
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    command: >
+      sh -c "APP_UID=$$(id -u app) &&
+      APP_GID=$$(id -g app) &&
+      mkdir -p /app/media /app/.cursor 2>/dev/null || true &&
+      chown -R $$APP_UID:$$APP_GID /app/media /app/.cursor /var/lib/celerybeat 2>/dev/null || true &&
+      runuser -u app -- sh -lc 'python manage.py migrate --check &&
+      celery -A config worker -l info -Q celery,$${CELERY_PRINT_JOB_QUEUE:-print_jobs}'"
+    volumes:
+      - ./backend:/app
+      # Keep for debug-mode logging (shared host log path)
+      - ./.cursor:/app/.cursor
+      - mediafiles_data:/app/media
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A config inspect ping -d celery@$$HOSTNAME 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - app-net
+
+  beat:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    init: true
+    stop_signal: SIGTERM
+    stop_grace_period: 60s
+    user: "0:0"
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      CELERY_BEAT_SCHEDULE_FILENAME: /var/lib/celerybeat/celerybeat-schedule
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    command: >
+      sh -c "APP_UID=$$(id -u app) &&
+      APP_GID=$$(id -g app) &&
+      mkdir -p /app/media /app/.cursor /var/lib/celerybeat 2>/dev/null || true &&
+      chown -R $$APP_UID:$$APP_GID /app/media /app/.cursor /var/lib/celerybeat 2>/dev/null || true &&
+      runuser -u app -- sh -lc 'python manage.py migrate --check &&
+      celery -A config beat -l info'"
+    volumes:
+      - ./backend:/app
+      # Keep for debug-mode logging (shared host log path)
+      - ./.cursor:/app/.cursor
+      - mediafiles_data:/app/media
+      - celerybeat_data:/var/lib/celerybeat
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import os; c=open('/proc/1/cmdline').read().replace(chr(0),' '); exit(0 if 'celery' in c else 1)\" 2>/dev/null || exit 1",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - app-net
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    init: true
+    stop_signal: SIGTERM
+    stop_grace_period: 45s
+    env_file:
+      - .env
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    depends_on:
+      backend:
+        condition: service_healthy
+    command: ["npm", "run", "start", "--", "-p", "3000"]
+    ports:
+      - "${FRONTEND_BIND_ADDRESS:-0.0.0.0}:3000:3000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"const t=setTimeout(()=>process.exit(1),8000); fetch('http://localhost:3000/').then(()=>{clearTimeout(t); process.exit(0)}).catch(()=>{clearTimeout(t); process.exit(1)})\"",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 60s
+    networks:
+      - app-net
+
+volumes:
+  postgres_data:
+  redis_data:
+  staticfiles_data:
+  mediafiles_data:
+  celerybeat_data:
+  
+networks:
+  app-net:
+    driver: bridge

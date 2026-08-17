@@ -1,0 +1,18 @@
+<p>Hello {{ user.first_name|default:"" }} {{ user.last_name|default:"" }},</p>
+
+<p>
+  You have been assigned as a Club Admin for <strong>{{ club.name }}</strong> in the LTF License Manager.
+</p>
+
+<p>
+  This email was sent because you were selected as a Club Admin.
+  Please set your password using the link below:
+</p>
+
+<p>Your username: <strong>{{ user.username|default:"" }}</strong></p>
+
+<p><a href="{{ reset_url }}">Set your password</a></p>
+
+<p>If you did not expect this email, you can ignore it.</p>
+
+<p>LTF License Manager</p>

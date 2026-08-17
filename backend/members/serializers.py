@@ -1,0 +1,329 @@
+from rest_framework import serializers
+
+from licenses.models import LicenseHistoryEvent
+
+from .grades import OFFICIAL_GRADE_SET
+from .models import Member
+from .models import GradePromotionHistory
+from .services import generate_next_ltf_license_id
+
+
+def _normalize_official_grade(value: str) -> str:
+    normalized = str(value or "").strip()
+    if not normalized:
+        raise serializers.ValidationError("to_grade is required.")
+    if normalized not in OFFICIAL_GRADE_SET:
+        raise serializers.ValidationError("Grade must be a standard belt rank.")
+    return normalized
+
+
+class MemberSerializer(serializers.ModelSerializer):
+    sex = serializers.ChoiceField(choices=Member.Sex.choices, default=Member.Sex.MALE)
+    primary_license_role = serializers.ChoiceField(
+        choices=Member.LicenseRole.choices,
+        required=False,
+        allow_blank=True,
+    )
+    secondary_license_role = serializers.ChoiceField(
+        choices=Member.LicenseRole.choices,
+        required=False,
+        allow_blank=True,
+    )
+    profile_picture_url = serializers.SerializerMethodField()
+    profile_picture_thumbnail_url = serializers.SerializerMethodField()
+    ltf_license_prefix = serializers.ChoiceField(
+        choices=[("LUX", "LUX"), ("LTF", "LTF")],
+        write_only=True,
+        required=False,
+        default="LTF",
+    )
+
+    class Meta:
+        model = Member
+        fields = [
+            "id",
+            "user",
+            "club",
+            "first_name",
+            "last_name",
+            "sex",
+            "email",
+            "wt_licenseid",
+            "ltf_licenseid",
+            "ltf_license_prefix",
+            "date_of_birth",
+            "belt_rank",
+            "primary_license_role",
+            "secondary_license_role",
+            "profile_picture_url",
+            "profile_picture_thumbnail_url",
+            "photo_edit_metadata",
+            "photo_consent_attested_at",
+            "photo_consent_attested_by",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "created_at",
+            "updated_at",
+            "profile_picture_url",
+            "profile_picture_thumbnail_url",
+            "photo_edit_metadata",
+            "photo_consent_attested_at",
+            "photo_consent_attested_by",
+        ]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        wt_licenseid = attrs.get("wt_licenseid")
+        if wt_licenseid is not None:
+            attrs["wt_licenseid"] = str(wt_licenseid).strip().upper()
+        ltf_licenseid = attrs.get("ltf_licenseid")
+        if ltf_licenseid is not None:
+            attrs["ltf_licenseid"] = str(ltf_licenseid).strip().upper()
+
+        primary_role = attrs.get(
+            "primary_license_role",
+            getattr(self.instance, "primary_license_role", ""),
+        ) or ""
+        secondary_role = attrs.get(
+            "secondary_license_role",
+            getattr(self.instance, "secondary_license_role", ""),
+        ) or ""
+
+        if secondary_role and not primary_role:
+            raise serializers.ValidationError(
+                {"secondary_license_role": "Secondary role requires a primary role."}
+            )
+        if primary_role and secondary_role and primary_role == secondary_role:
+            raise serializers.ValidationError(
+                {"secondary_license_role": "Secondary role must differ from primary role."}
+            )
+        return attrs
+
+    def validate_wt_licenseid(self, value):
+        normalized_value = str(value or "").strip().upper()
+        if not normalized_value:
+            return ""
+        queryset = Member.objects.filter(wt_licenseid=normalized_value)
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        if queryset.exists():
+            raise serializers.ValidationError("WT license ID must be unique.")
+        return normalized_value
+
+    def validate_ltf_licenseid(self, value):
+        normalized_value = str(value or "").strip().upper()
+        if not normalized_value:
+            return ""
+        queryset = Member.objects.filter(ltf_licenseid=normalized_value)
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        if queryset.exists():
+            raise serializers.ValidationError("LTF license ID must be unique.")
+        return normalized_value
+
+    def validate_belt_rank(self, value):
+        normalized = str(value or "").strip()
+        if not normalized:
+            return ""
+        if normalized not in OFFICIAL_GRADE_SET:
+            raise serializers.ValidationError("Grade must be a standard belt rank.")
+        return normalized
+
+    def create(self, validated_data):
+        ltf_prefix = validated_data.pop("ltf_license_prefix", "LTF")
+        if not str(validated_data.get("ltf_licenseid", "")).strip():
+            validated_data["ltf_licenseid"] = generate_next_ltf_license_id(prefix=ltf_prefix)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        validated_data.pop("ltf_license_prefix", None)
+        previous_belt_rank = str(instance.belt_rank or "").strip()
+        updated_member = super().update(instance, validated_data)
+        new_belt_rank = str(updated_member.belt_rank or "").strip()
+
+        if new_belt_rank and new_belt_rank != previous_belt_rank:
+            from .services import add_grade_promotion
+
+            request = self.context.get("request")
+            actor = request.user if request and request.user.is_authenticated else None
+            add_grade_promotion(
+                updated_member,
+                to_grade=new_belt_rank,
+                from_grade=previous_belt_rank,
+                actor=actor,
+                metadata={"source": "member_serializer.update"},
+                sync_member=False,
+            )
+        return updated_member
+
+    def get_profile_picture_url(self, obj: Member):
+        request = self.context.get("request")
+        if not (obj.profile_picture_processed or obj.profile_picture_original):
+            return None
+        path = f"/api/members/{obj.id}/profile-picture/processed/"
+        return request.build_absolute_uri(path) if request else path
+
+    def get_profile_picture_thumbnail_url(self, obj: Member):
+        request = self.context.get("request")
+        if not (
+            obj.profile_picture_thumbnail
+            or obj.profile_picture_processed
+            or obj.profile_picture_original
+        ):
+            return None
+        path = f"/api/members/{obj.id}/profile-picture/thumbnail/"
+        return request.build_absolute_uri(path) if request else path
+
+
+class GradePromotionHistorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GradePromotionHistory
+        fields = [
+            "id",
+            "member",
+            "club",
+            "examiner_user",
+            "from_grade",
+            "to_grade",
+            "promotion_date",
+            "exam_date",
+            "proof_ref",
+            "notes",
+            "created_by",
+            "metadata",
+            "created_at",
+        ]
+        read_only_fields = ["created_at", "club", "examiner_user", "from_grade"]
+
+
+class GradePromotionCreateSerializer(serializers.Serializer):
+    to_grade = serializers.CharField(max_length=100)
+    promotion_date = serializers.DateField(required=False)
+    exam_date = serializers.DateField(required=False, allow_null=True)
+    proof_ref = serializers.CharField(required=False, allow_blank=True)
+    notes = serializers.CharField(required=False, allow_blank=True)
+    created_by = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    metadata = serializers.JSONField(required=False)
+
+    def validate_to_grade(self, value):
+        return _normalize_official_grade(value)
+
+
+class GradePromotionUpdateSerializer(serializers.Serializer):
+    to_grade = serializers.CharField(max_length=100, required=False)
+    promotion_date = serializers.DateField(required=False)
+    exam_date = serializers.DateField(required=False, allow_null=True)
+    proof_ref = serializers.CharField(required=False, allow_blank=True)
+    notes = serializers.CharField(required=False, allow_blank=True)
+    created_by = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    metadata = serializers.JSONField(required=False)
+
+    def validate_to_grade(self, value):
+        return _normalize_official_grade(value)
+
+
+class LicenseHistoryEventSerializer(serializers.ModelSerializer):
+    license_type_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = LicenseHistoryEvent
+        fields = [
+            "id",
+            "member",
+            "license",
+            "club",
+            "order",
+            "payment",
+            "actor",
+            "event_type",
+            "event_at",
+            "reason",
+            "metadata",
+            "license_year",
+            "status_before",
+            "status_after",
+            "club_name_snapshot",
+            "license_type_name",
+            "created_at",
+        ]
+
+    def get_license_type_name(self, obj: LicenseHistoryEvent) -> str:
+        license_record = getattr(obj, "license", None)
+        if not license_record:
+            return ""
+        license_type = getattr(license_record, "license_type", None)
+        if not license_type:
+            return ""
+        return str(getattr(license_type, "name", "") or "")
+
+
+class MemberProfilePictureUploadSerializer(serializers.Serializer):
+    original_image = serializers.FileField(required=False, allow_null=True)
+    processed_image = serializers.FileField(required=True)
+    photo_edit_metadata = serializers.JSONField(required=False)
+    photo_consent_confirmed = serializers.BooleanField(required=True)
+
+    def validate_photo_edit_metadata(self, value):
+        if value in (None, ""):
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("photo_edit_metadata must be an object.")
+        return value
+
+    def validate(self, attrs):
+        if not attrs.get("photo_consent_confirmed"):
+            raise serializers.ValidationError(
+                {"photo_consent_confirmed": "Photo consent confirmation is required."}
+            )
+        return attrs
+
+
+class MemberProfilePictureSerializer(serializers.ModelSerializer):
+    has_profile_picture = serializers.SerializerMethodField()
+    profile_picture_original_url = serializers.SerializerMethodField()
+    profile_picture_processed_url = serializers.SerializerMethodField()
+    profile_picture_thumbnail_url = serializers.SerializerMethodField()
+    photo_consent_attested_by = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = Member
+        fields = [
+            "id",
+            "has_profile_picture",
+            "profile_picture_original_url",
+            "profile_picture_processed_url",
+            "profile_picture_thumbnail_url",
+            "photo_edit_metadata",
+            "photo_consent_attested_at",
+            "photo_consent_attested_by",
+            "updated_at",
+        ]
+
+    def _build_api_url(self, obj: Member, endpoint: str):
+        has_any_photo = bool(
+            obj.profile_picture_original
+            or obj.profile_picture_processed
+            or obj.profile_picture_thumbnail
+        )
+        if not has_any_photo:
+            return None
+        request = self.context.get("request")
+        path = f"/api/members/{obj.id}/profile-picture/{endpoint}/"
+        return request.build_absolute_uri(path) if request else path
+
+    def get_has_profile_picture(self, obj: Member):
+        return bool(obj.profile_picture_processed or obj.profile_picture_original)
+
+    def get_profile_picture_original_url(self, obj: Member):
+        # Keep "original" URL as a downloadable API endpoint.
+        return self._build_api_url(obj, "download")
+
+    def get_profile_picture_processed_url(self, obj: Member):
+        return self._build_api_url(obj, "processed")
+
+    def get_profile_picture_thumbnail_url(self, obj: Member):
+        return self._build_api_url(obj, "thumbnail")
+

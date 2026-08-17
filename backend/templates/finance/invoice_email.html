@@ -1,0 +1,13 @@
+<!doctype html>
+<html>
+  <body>
+    <p>Hello,</p>
+    <p>
+      Your invoice <strong>{{ invoice.invoice_number }}</strong> is ready for
+      order <strong>{{ order.order_number }}</strong>.
+    </p>
+    <p>Total due: <strong>{{ invoice.total }} {{ invoice.currency }}</strong></p>
+    <p>The PDF is attached to this email.</p>
+    <p>Thank you.</p>
+  </body>
+</html>
