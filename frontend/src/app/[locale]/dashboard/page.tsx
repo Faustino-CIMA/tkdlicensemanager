@@ -48,7 +48,7 @@ export default function DashboardPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-6">
-      <div className="w-full max-w-3xl rounded-[var(--radius-card)] border border-border bg-card p-10 shadow-sm">
+      <div className="app-panel w-full max-w-xl p-10">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold text-foreground">{t("title")}</h1>

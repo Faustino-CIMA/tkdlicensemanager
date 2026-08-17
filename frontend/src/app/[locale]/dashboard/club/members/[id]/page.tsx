@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Pencil } from "lucide-react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { useTranslations } from "next-intl";
 import { z } from "zod";
 
@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
+  deleteMemberGrade,
   deleteMemberProfilePicture,
   downloadMemberProfilePicture,
   Member,
@@ -31,6 +32,14 @@ import {
 } from "@/lib/club-admin-api";
 import { apiRequest } from "@/lib/api";
 import { formatDateInputValue, formatDisplayDate, parseDisplayDateToIso } from "@/lib/date-display";
+
+function normalizeMemberSex(value: unknown): "M" | "F" {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (normalized === "F" || normalized === "FEMALE") {
+    return "F";
+  }
+  return "M";
+}
 
 const LICENSE_ROLE_VALUES = [
   "athlete",
@@ -45,10 +54,20 @@ const LICENSE_ROLE_VALUES = [
   "fan",
 ] as const;
 
+type LicenseRoleValue = (typeof LICENSE_ROLE_VALUES)[number];
+
+function normalizeLicenseRole(value: unknown): LicenseRoleValue | "" {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if ((LICENSE_ROLE_VALUES as readonly string[]).includes(normalized)) {
+    return normalized as LicenseRoleValue;
+  }
+  return "";
+}
+
 const memberSchema = z.object({
   first_name: z.string().trim().min(1, "First name is required."),
   last_name: z.string().trim().min(1, "Last name is required."),
-  sex: z.enum(["M", "F"]),
+  sex: z.preprocess(normalizeMemberSex, z.enum(["M", "F"])),
   email: z.union([z.literal(""), z.string().email("Please enter a valid email address.")]),
   wt_licenseid: z.string().max(32, "WT license ID must be at most 32 characters."),
   ltf_licenseid: z.string().max(20, "LTF license ID must be at most 20 characters."),
@@ -59,14 +78,34 @@ const memberSchema = z.object({
     },
     "Use date format 29 Nov 2026."
   ),
-  belt_rank: z.string().max(50, "Belt rank must be at most 50 characters."),
-  primary_license_role: z.enum(LICENSE_ROLE_VALUES).or(z.literal("")).optional(),
-  secondary_license_role: z.enum(LICENSE_ROLE_VALUES).or(z.literal("")).optional(),
+  primary_license_role: z.preprocess(
+    normalizeLicenseRole,
+    z.enum(LICENSE_ROLE_VALUES).or(z.literal(""))
+  ),
+  secondary_license_role: z.preprocess(
+    normalizeLicenseRole,
+    z.enum(LICENSE_ROLE_VALUES).or(z.literal(""))
+  ),
   is_active: z.boolean(),
 });
 
 type MemberFormValues = z.infer<typeof memberSchema>;
 type AuthMeResponse = { role: string };
+
+function memberToFormValues(member: Member): MemberFormValues {
+  return {
+    first_name: member.first_name,
+    last_name: member.last_name,
+    sex: normalizeMemberSex(member.sex),
+    email: member.email ?? "",
+    wt_licenseid: member.wt_licenseid ?? "",
+    ltf_licenseid: member.ltf_licenseid ?? "",
+    date_of_birth: formatDateInputValue(member.date_of_birth),
+    primary_license_role: normalizeLicenseRole(member.primary_license_role),
+    secondary_license_role: normalizeLicenseRole(member.secondary_license_role),
+    is_active: member.is_active,
+  };
+}
 
 export default function ClubMemberDetailPage() {
   const t = useTranslations("ClubAdmin");
@@ -92,6 +131,7 @@ export default function ClubMemberDetailPage() {
     reset,
     setValue,
     watch,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<MemberFormValues>({
     resolver: zodResolver(memberSchema),
@@ -103,11 +143,11 @@ export default function ClubMemberDetailPage() {
       wt_licenseid: "",
       ltf_licenseid: "",
       date_of_birth: "",
-      belt_rank: "",
       primary_license_role: "",
       secondary_license_role: "",
       is_active: true,
     },
+    values: member ? memberToFormValues(member) : undefined,
   });
   const roleLabelByValue = useMemo(
     () => ({
@@ -213,23 +253,11 @@ export default function ClubMemberDetailPage() {
   const canManageGrades = canEditMember;
 
   useEffect(() => {
-    if (!member) {
+    if (!member || !isEditing || !canManageMemberFull) {
       return;
     }
-    reset({
-      first_name: member.first_name,
-      last_name: member.last_name,
-      sex: member.sex,
-      email: member.email ?? "",
-      wt_licenseid: member.wt_licenseid ?? "",
-      ltf_licenseid: member.ltf_licenseid ?? "",
-      date_of_birth: formatDateInputValue(member.date_of_birth),
-      belt_rank: member.belt_rank ?? "",
-      primary_license_role: member.primary_license_role ?? "",
-      secondary_license_role: member.secondary_license_role ?? "",
-      is_active: member.is_active,
-    });
-  }, [member, reset]);
+    reset(memberToFormValues(member));
+  }, [canManageMemberFull, isEditing, member, reset]);
 
   const onEdit = () => {
     if (!canEditMember) {
@@ -241,19 +269,7 @@ export default function ClubMemberDetailPage() {
   const onCancelEdit = () => {
     updateEditQuery(false);
     if (member) {
-      reset({
-        first_name: member.first_name,
-        last_name: member.last_name,
-        sex: member.sex,
-        email: member.email ?? "",
-        wt_licenseid: member.wt_licenseid ?? "",
-        ltf_licenseid: member.ltf_licenseid ?? "",
-        date_of_birth: formatDateInputValue(member.date_of_birth),
-        belt_rank: member.belt_rank ?? "",
-        primary_license_role: member.primary_license_role ?? "",
-        secondary_license_role: member.secondary_license_role ?? "",
-        is_active: member.is_active,
-      });
+      reset(memberToFormValues(member));
     }
   };
 
@@ -264,26 +280,19 @@ export default function ClubMemberDetailPage() {
     setErrorMessage(null);
     const dateOfBirthIso = parseDisplayDateToIso(values.date_of_birth);
     try {
-      if (isCoach) {
-        await updateMember(member.id, {
-          belt_rank: values.belt_rank.trim(),
-        });
-      } else {
-        await updateMember(member.id, {
-          club: member.club,
-          first_name: values.first_name.trim(),
-          last_name: values.last_name.trim(),
-          sex: values.sex,
-          email: values.email.trim(),
-          wt_licenseid: values.wt_licenseid.trim(),
-          ltf_licenseid: values.ltf_licenseid.trim(),
-          date_of_birth: dateOfBirthIso,
-          belt_rank: values.belt_rank.trim(),
-          primary_license_role: values.primary_license_role ?? "",
-          secondary_license_role: values.secondary_license_role ?? "",
-          is_active: values.is_active,
-        });
-      }
+      await updateMember(member.id, {
+        club: member.club,
+        first_name: values.first_name.trim(),
+        last_name: values.last_name.trim(),
+        sex: values.sex,
+        email: values.email.trim(),
+        wt_licenseid: values.wt_licenseid.trim(),
+        ltf_licenseid: values.ltf_licenseid.trim(),
+        date_of_birth: dateOfBirthIso,
+        primary_license_role: values.primary_license_role ?? "",
+        secondary_license_role: values.secondary_license_role ?? "",
+        is_active: values.is_active,
+      });
       updateEditQuery(false);
       await loadMember();
     } catch (error) {
@@ -305,7 +314,7 @@ export default function ClubMemberDetailPage() {
         {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
         {isLoading ? (
-          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
         ) : !member ? (
           <EmptyState title={t("noResultsTitle")} description={t("memberNotFound")} />
         ) : (
@@ -313,11 +322,11 @@ export default function ClubMemberDetailPage() {
             <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold text-foreground">{t("memberOverviewTab")}</h2>
-                {isEditing ? (
+                {isEditing && canManageMemberFull ? (
                   <Button variant="outline" size="sm" className="h-[var(--control-height)] min-h-[var(--control-height)]" onClick={onCancelEdit}>
                     {t("cancelEdit")}
                   </Button>
-                ) : canEditMember ? (
+                ) : canManageMemberFull ? (
                   <Button
                     variant="outline"
                     size="icon-lg"
@@ -344,6 +353,12 @@ export default function ClubMemberDetailPage() {
                     dragDropLabel: t("photoDragDropLabel"),
                     selectFileButton: t("photoSelectFileButton"),
                     cameraButton: t("photoCameraButton"),
+                    cameraCaptureButton: t("photoCameraCaptureButton"),
+                    cameraCancelButton: t("photoCameraCancelButton"),
+                    cameraStarting: t("photoCameraStarting"),
+                    cameraUnavailable: t("photoCameraUnavailable"),
+                    cameraPermissionDenied: t("photoCameraPermissionDenied"),
+                    cameraStartError: t("photoCameraStartError"),
                     zoomLabel: t("photoZoomLabel"),
                     backgroundColorLabel: t("photoBackgroundColorLabel"),
                     removeBackgroundButton: t("photoRemoveBackgroundButton"),
@@ -373,7 +388,7 @@ export default function ClubMemberDetailPage() {
                   }
                 />
               </div>
-              {isEditing ? (
+              {isEditing && canManageMemberFull ? (
                 <form className="mt-4 grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
                   <div className="space-y-2">
                     <Label htmlFor="member-first-name">{t("firstNameLabel")}</Label>
@@ -403,23 +418,29 @@ export default function ClubMemberDetailPage() {
 
                   <div className="space-y-2">
                     <Label>{t("sexLabel")}</Label>
-                    <Select
-                      disabled={isCoach}
-                      value={watch("sex")}
-                      onValueChange={(value) =>
-                        setValue("sex", value as "M" | "F", {
-                          shouldValidate: true,
-                        })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={t("sexLabel")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="M">{t("sexMale")}</SelectItem>
-                        <SelectItem value="F">{t("sexFemale")}</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Controller
+                      name="sex"
+                      control={control}
+                      render={({ field }) => (
+                        <Select
+                          disabled={isCoach}
+                          value={field.value === "F" ? "F" : "M"}
+                          onValueChange={(value) => {
+                            if (value === "M" || value === "F") {
+                              field.onChange(value);
+                            }
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder={t("sexLabel")} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="M">{t("sexMale")}</SelectItem>
+                            <SelectItem value="F">{t("sexFemale")}</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
                     {errors.sex ? <p className="text-sm text-destructive">{errors.sex.message}</p> : null}
                   </div>
 
@@ -475,71 +496,73 @@ export default function ClubMemberDetailPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="member-belt-rank">{t("beltRankLabel")}</Label>
-                    <Input id="member-belt-rank" placeholder="1st Dan" {...register("belt_rank")} />
-                    {errors.belt_rank ? (
-                      <p className="text-sm text-destructive">{errors.belt_rank.message}</p>
-                    ) : null}
+                    <Label>{t("beltRankLabel")}</Label>
+                    <p className="text-sm font-medium text-foreground">{member.belt_rank || "-"}</p>
+                    <p className="text-xs text-muted">{t("beltRankManagedInGradesHint")}</p>
                   </div>
 
                   <div className="space-y-2">
                     <Label>{t("primaryLicenseRoleLabel")}</Label>
-                    <Select
-                      disabled={isCoach}
-                      value={watch("primary_license_role") || "none"}
-                      onValueChange={(value) => {
-                        const nextPrimary = value === "none" ? "" : value;
-                        setValue(
-                          "primary_license_role",
-                          nextPrimary as MemberFormValues["primary_license_role"],
-                          { shouldValidate: true }
-                        );
-                        if (nextPrimary === watch("secondary_license_role")) {
-                          setValue("secondary_license_role", "", { shouldValidate: true });
-                        }
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={t("primaryLicenseRoleLabel")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">{t("roleNoneOption")}</SelectItem>
-                        {LICENSE_ROLE_VALUES.map((role) => (
-                          <SelectItem key={role} value={role}>
-                            {roleLabelByValue[role]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Controller
+                      name="primary_license_role"
+                      control={control}
+                      render={({ field }) => (
+                        <Select
+                          disabled={isCoach}
+                          value={field.value || "none"}
+                          onValueChange={(value) => {
+                            const nextPrimary = value === "none" ? "" : value;
+                            field.onChange(nextPrimary);
+                            if (nextPrimary === watch("secondary_license_role")) {
+                              setValue("secondary_license_role", "", { shouldValidate: true });
+                            }
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder={t("primaryLicenseRoleLabel")} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">{t("roleNoneOption")}</SelectItem>
+                            {LICENSE_ROLE_VALUES.map((role) => (
+                              <SelectItem key={role} value={role}>
+                                {roleLabelByValue[role]}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
                   </div>
 
                   <div className="space-y-2">
                     <Label>{t("secondaryLicenseRoleLabel")}</Label>
-                    <Select
-                      disabled={isCoach || !watch("primary_license_role")}
-                      value={watch("secondary_license_role") || "none"}
-                      onValueChange={(value) =>
-                        setValue(
-                          "secondary_license_role",
-                          (value === "none" ? "" : value) as MemberFormValues["secondary_license_role"],
-                          { shouldValidate: true }
-                        )
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={t("secondaryLicenseRoleLabel")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">{t("roleNoneOption")}</SelectItem>
-                        {LICENSE_ROLE_VALUES.filter((role) => role !== watch("primary_license_role")).map(
-                          (role) => (
-                            <SelectItem key={role} value={role}>
-                              {roleLabelByValue[role]}
-                            </SelectItem>
-                          )
-                        )}
-                      </SelectContent>
-                    </Select>
+                    <Controller
+                      name="secondary_license_role"
+                      control={control}
+                      render={({ field }) => (
+                        <Select
+                          disabled={isCoach || !watch("primary_license_role")}
+                          value={field.value || "none"}
+                          onValueChange={(value) =>
+                            field.onChange(value === "none" ? "" : value)
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder={t("secondaryLicenseRoleLabel")} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">{t("roleNoneOption")}</SelectItem>
+                            {LICENSE_ROLE_VALUES.filter((role) => role !== watch("primary_license_role")).map(
+                              (role) => (
+                                <SelectItem key={role} value={role}>
+                                  {roleLabelByValue[role]}
+                                </SelectItem>
+                              )
+                            )}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
                   </div>
 
                   <div className="flex items-center gap-2 md:col-span-2">
@@ -644,6 +667,10 @@ export default function ClubMemberDetailPage() {
                   gradeIssuedByLabel={t("historyGradeIssuedByColumn")}
                   addGradeAriaLabel={t("addGradeAction")}
                   editGradeAriaLabel={t("editGradeAction")}
+                  deleteGradeAriaLabel={t("deleteGradeAction")}
+                  deleteGradeTitle={t("deleteGradeTitle")}
+                  deleteGradeDescription={t("deleteGradeDescription")}
+                  deleteConfirmLabel={commonT("deleteConfirmButton")}
                   gradeFormTitle={t("promoteGradeTitle")}
                   editGradeFormTitle={t("editGradeTitle")}
                   promoteToGradeLabel={t("promoteToGradeLabel")}
@@ -670,6 +697,14 @@ export default function ClubMemberDetailPage() {
                     canManageGrades
                       ? async (historyId, input) => {
                           await updateMemberGrade(member.id, historyId, input);
+                          await loadMember();
+                        }
+                      : undefined
+                  }
+                  onDeleteGrade={
+                    canManageGrades
+                      ? async (historyId) => {
+                          await deleteMemberGrade(member.id, historyId);
                           await loadMember();
                         }
                       : undefined

@@ -1637,7 +1637,7 @@ export function ImportWizardPage({
                 </div>
               </div>
 
-              <p className="rounded-[var(--radius-form)] border px-3 py-2 text-sm banner-warning">
+              <p className="banner-notice rounded-[var(--radius-form)] border px-3 py-2 text-sm">
                 {t("confirmWarning")}
               </p>
             </div>
@@ -1753,7 +1753,7 @@ export function ImportWizardPage({
             ) : null}
             {showBackButton ? (
               <Button variant="outline" onClick={goBackStep} disabled={isLoading}>
-                {common("previousPage")}
+                {common("paginationPrevious")}
               </Button>
             ) : null}
           </div>

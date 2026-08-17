@@ -61,7 +61,7 @@ export default function ClubMemberPhotoPage() {
         {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
         {isLoading ? (
-          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
         ) : !member ? (
           <EmptyState title={t("noResultsTitle")} description={t("memberNotFound")} />
         ) : (
@@ -79,6 +79,12 @@ export default function ClubMemberPhotoPage() {
               dragDropLabel: t("photoDragDropLabel"),
               selectFileButton: t("photoSelectFileButton"),
               cameraButton: t("photoCameraButton"),
+              cameraCaptureButton: t("photoCameraCaptureButton"),
+              cameraCancelButton: t("photoCameraCancelButton"),
+              cameraStarting: t("photoCameraStarting"),
+              cameraUnavailable: t("photoCameraUnavailable"),
+              cameraPermissionDenied: t("photoCameraPermissionDenied"),
+              cameraStartError: t("photoCameraStartError"),
               zoomLabel: t("photoZoomLabel"),
               backgroundColorLabel: t("photoBackgroundColorLabel"),
               removeBackgroundButton: t("photoRemoveBackgroundButton"),

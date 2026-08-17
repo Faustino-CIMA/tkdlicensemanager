@@ -128,6 +128,28 @@ def update_grade_promotion(
     return history_record
 
 
+def delete_grade_promotion(
+    history_record: GradePromotionHistory,
+    *,
+    sync_member: bool = True,
+) -> None:
+    member = history_record.member
+    with transaction.atomic():
+        # QuerySet.delete() bypasses the append-only model.delete() guard so
+        # club staff can correct mistaken grade entries from the Grades UI.
+        GradePromotionHistory.objects.filter(pk=history_record.pk).delete()
+        if sync_member:
+            latest = (
+                GradePromotionHistory.objects.filter(member=member)
+                .order_by("-promotion_date", "-created_at")
+                .first()
+            )
+            next_rank = str(latest.to_grade or "").strip() if latest else ""
+            if member.belt_rank != next_rank:
+                member.belt_rank = next_rank
+                member.save(update_fields=["belt_rank", "updated_at"])
+
+
 def _validate_upload_basics(
     uploaded_file,
     *,

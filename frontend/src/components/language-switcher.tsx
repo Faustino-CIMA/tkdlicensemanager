@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-export function LanguageSwitcher() {
+export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
   const t = useTranslations("Common");
   const locale = useLocale();
   const router = useRouter();
@@ -34,9 +34,9 @@ export function LanguageSwitcher() {
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-sm font-medium text-muted">{t("languageLabel")}</span>
+      {compact ? null : <span className="text-sm font-medium text-muted">{t("languageLabel")}</span>}
       <Select value={locale} onValueChange={handleLocaleChange}>
-        <SelectTrigger className="w-[150px]">
+        <SelectTrigger className={compact ? "w-[7.5rem]" : "w-[150px]"} aria-label={t("languageLabel")}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

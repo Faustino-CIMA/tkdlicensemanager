@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 
 import { EmptyState } from "@/components/club-admin/empty-state";
+import { MemberLayout } from "@/components/member/member-layout";
 import { MemberHistoryTimeline } from "@/components/history/member-history-timeline";
 import { ProfilePhotoManager } from "@/components/profile-photo/profile-photo-manager";
 import { apiRequest } from "@/lib/api";
@@ -81,17 +82,12 @@ export default function MemberDashboardPage() {
   }, [loadData]);
 
   return (
-    <main className="min-h-screen bg-background px-6 py-10">
-      <div className="mx-auto w-full max-w-5xl space-y-6">
-        <header className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
-          <h1 className="text-2xl font-semibold text-foreground">{t("title")}</h1>
-          <p className="mt-2 text-sm text-muted">{t("subtitle")}</p>
-        </header>
-
+    <MemberLayout title={t("title")} subtitle={t("subtitle")}>
+      <div className="space-y-6">
         {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
         {isLoading ? (
-          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
         ) : !member ? (
           <EmptyState title={t("emptyTitle")} description={t("emptySubtitle")} />
         ) : (
@@ -110,6 +106,12 @@ export default function MemberDashboardPage() {
                 dragDropLabel: t("photoDragDropLabel"),
                 selectFileButton: t("photoSelectFileButton"),
                 cameraButton: t("photoCameraButton"),
+                cameraCaptureButton: t("photoCameraCaptureButton"),
+                cameraCancelButton: t("photoCameraCancelButton"),
+                cameraStarting: t("photoCameraStarting"),
+                cameraUnavailable: t("photoCameraUnavailable"),
+                cameraPermissionDenied: t("photoCameraPermissionDenied"),
+                cameraStartError: t("photoCameraStartError"),
                 zoomLabel: t("photoZoomLabel"),
                 backgroundColorLabel: t("photoBackgroundColorLabel"),
                 removeBackgroundButton: t("photoRemoveBackgroundButton"),
@@ -151,6 +153,6 @@ export default function MemberDashboardPage() {
           </div>
         )}
       </div>
-    </main>
+    </MemberLayout>
   );
 }

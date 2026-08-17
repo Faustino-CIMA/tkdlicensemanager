@@ -178,7 +178,7 @@ export default function ClubPrintJobsPage() {
   if (isRoleLoading) {
     return (
       <ClubAdminLayout title={t("printJobsTitle")} subtitle={t("printJobsSubtitle")}>
-        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       </ClubAdminLayout>
     );
   }
@@ -233,7 +233,7 @@ export default function ClubPrintJobsPage() {
         </div>
 
         {isLoading ? (
-          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
         ) : filteredJobs.length === 0 ? (
           <EmptyState title={t("printJobsEmptyTitle")} description={t("printJobsEmptySubtitle")} />
         ) : (

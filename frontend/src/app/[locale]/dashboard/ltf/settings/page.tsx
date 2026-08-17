@@ -1,27 +1,22 @@
 "use client";
 
-import Image from "next/image";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
+import {
+  BrandingLogoUploadPayload,
+  BrandingLogosManager,
+} from "@/components/branding/branding-logos-manager";
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { deriveBankNameFromIban, isValidIban } from "@/lib/iban";
 import {
   BrandingLogo,
-  LogoUsageType,
   deleteFederationLogo,
   getFederationLogos,
   getFederationProfile,
@@ -44,18 +39,6 @@ const federationSchema = z.object({
 
 type FederationFormValues = z.infer<typeof federationSchema>;
 
-function formatFileSize(bytes: number): string {
-  if (!bytes || bytes <= 0) {
-    return "-";
-  }
-  const kb = 1024;
-  const mb = kb * 1024;
-  if (bytes >= mb) {
-    return `${(bytes / mb).toFixed(2)} MB`;
-  }
-  return `${(bytes / kb).toFixed(1)} KB`;
-}
-
 export default function LtfAdminSettingsPage() {
   const t = useTranslations("LtfAdmin");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -63,12 +46,7 @@ export default function LtfAdminSettingsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [logos, setLogos] = useState<BrandingLogo[]>([]);
   const [isLoadingLogos, setIsLoadingLogos] = useState(false);
-  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
-  const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [logoUsage, setLogoUsage] = useState<LogoUsageType>("general");
-  const [logoLabel, setLogoLabel] = useState("");
-  const [markUploadedAsSelected, setMarkUploadedAsSelected] = useState(true);
-  const logoFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [logosLoadError, setLogosLoadError] = useState<string | null>(null);
 
   const {
     register,
@@ -89,15 +67,6 @@ export default function LtfAdminSettingsPage() {
   });
   const watchedIban = useWatch({ control, name: "iban", defaultValue: "" });
   const derivedBankName = deriveBankNameFromIban(watchedIban);
-  const usageLabelMap: Record<LogoUsageType, string> = useMemo(
-    () => ({
-      general: t("logoUsageGeneral"),
-      invoice: t("logoUsageInvoice"),
-      print: t("logoUsagePrint"),
-      digital: t("logoUsageDigital"),
-    }),
-    [t]
-  );
 
   const loadProfile = useCallback(async () => {
     setIsLoading(true);
@@ -126,8 +95,9 @@ export default function LtfAdminSettingsPage() {
     try {
       const response = await getFederationLogos();
       setLogos(response.logos);
+      setLogosLoadError(null);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to load logos.");
+      setLogosLoadError(error instanceof Error ? error.message : "Failed to load logos.");
     } finally {
       setIsLoadingLogos(false);
     }
@@ -162,49 +132,19 @@ export default function LtfAdminSettingsPage() {
     }
   };
 
-  const handleUploadLogo = async () => {
-    if (!logoFile) {
-      return;
-    }
-    setErrorMessage(null);
-    setIsUploadingLogo(true);
-    try {
-      await uploadFederationLogo({
-        file: logoFile,
-        usage_type: logoUsage,
-        label: logoLabel.trim(),
-        is_selected: markUploadedAsSelected,
-      });
-      setLogoFile(null);
-      setLogoLabel("");
-      setMarkUploadedAsSelected(true);
-      if (logoFileInputRef.current) {
-        logoFileInputRef.current.value = "";
-      }
-      await loadLogos();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to upload logo.");
-    } finally {
-      setIsUploadingLogo(false);
-    }
+  const handleUploadLogo = async (payload: BrandingLogoUploadPayload) => {
+    await uploadFederationLogo(payload);
+    await loadLogos();
   };
 
   const handleSelectLogo = async (logoId: number) => {
-    try {
-      await updateFederationLogo(logoId, { is_selected: true });
-      await loadLogos();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to select logo.");
-    }
+    await updateFederationLogo(logoId, { is_selected: true });
+    await loadLogos();
   };
 
   const handleDeleteLogo = async (logoId: number) => {
-    try {
-      await deleteFederationLogo(logoId);
-      await loadLogos();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to delete logo.");
-    }
+    await deleteFederationLogo(logoId);
+    await loadLogos();
   };
 
   return (
@@ -213,7 +153,7 @@ export default function LtfAdminSettingsPage() {
       subtitle={t("federationSettingsSubtitle")}
     >
       {isLoading ? (
-        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       ) : (
         <div className="space-y-4">
           <section className="rounded-[var(--radius-card)] border border-border bg-card p-6 shadow-sm">
@@ -272,128 +212,26 @@ export default function LtfAdminSettingsPage() {
             </div>
           </form>
 
-          {successMessage ? <p className="mt-4 text-sm text-success">{successMessage}</p> : null}
-          {errorMessage ? <p className="mt-4 text-sm text-destructive">{errorMessage}</p> : null}
-          </section>
-
-          <section className="rounded-[var(--radius-card)] border border-border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-foreground">{t("logoSectionTitle")}</h2>
-          <p className="mt-2 text-sm text-muted">{t("logoSectionSubtitle")}</p>
-
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">{t("logoLabelInputLabel")}</label>
-              <Input
-                value={logoLabel}
-                onChange={(event) => setLogoLabel(event.target.value)}
-                placeholder={t("logoLabelPlaceholder")}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">{t("logoUsageLabel")}</label>
-              <Select value={logoUsage} onValueChange={(value) => setLogoUsage(value as LogoUsageType)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(usageLabelMap).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <input
-              ref={logoFileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(event) => setLogoFile(event.target.files?.[0] ?? null)}
-            />
-            <Button type="button" variant="outline" onClick={() => logoFileInputRef.current?.click()}>
-              {t("chooseLogoFileAction")}
-            </Button>
-            <label className="flex items-center gap-2 text-sm text-muted">
-              <input
-                type="checkbox"
-                checked={markUploadedAsSelected}
-                onChange={(event) => setMarkUploadedAsSelected(event.target.checked)}
-              />
-              {t("markLogoSelectedLabel")}
-            </label>
-            <Button type="button" onClick={handleUploadLogo} disabled={!logoFile || isUploadingLogo}>
-              {isUploadingLogo ? t("savingAction") : t("uploadLogoAction")}
-            </Button>
-          </div>
-
-          {logoFile ? (
-            <p className="mt-2 text-sm text-muted">
-              {t("selectedFileLabel")}: {logoFile.name} ({formatFileSize(logoFile.size)})
+          {successMessage ? (
+            <p className="banner-success mt-4 rounded-[var(--radius-form)] border px-3 py-2 text-sm">
+              {successMessage}
             </p>
           ) : null}
-
-          {isLoadingLogos ? (
-            <p className="mt-4 text-sm text-muted">{t("loadingTitle")}</p>
-          ) : logos.length === 0 ? (
-            <p className="mt-4 text-sm text-muted">{t("logoEmptyState")}</p>
-          ) : (
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {logos.map((logo) => (
-                <article key={logo.id} className="rounded-[var(--radius-card)] border border-border p-3">
-                  <div className="aspect-[16/9] w-full overflow-hidden rounded-[var(--radius-form)] bg-secondary">
-                    {logo.content_url ? (
-                      <Image
-                        src={logo.content_url}
-                        alt={logo.label || logo.file_name}
-                        width={320}
-                        height={180}
-                        className="h-full w-full object-contain"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-xs text-muted">
-                        {t("noPreviewAvailable")}
-                      </div>
-                    )}
-                  </div>
-                  <div className="mt-3 space-y-1 text-xs text-muted">
-                    <p className="font-medium text-foreground">{logo.label || logo.file_name}</p>
-                    <p>
-                      {t("logoUsageLabel")}: {usageLabelMap[logo.usage_type]}
-                    </p>
-                    <p>{formatFileSize(logo.file_size)}</p>
-                    {logo.is_selected ? (
-                      <p className="font-medium text-success">{t("logoSelectedBadge")}</p>
-                    ) : null}
-                  </div>
-                  <div className="mt-3 flex items-center gap-2">
-                    {!logo.is_selected ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleSelectLogo(logo.id)}
-                      >
-                        {t("selectLogoAction")}
-                      </Button>
-                    ) : null}
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => handleDeleteLogo(logo.id)}
-                    >
-                      {t("deleteAction")}
-                    </Button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
+          {errorMessage ? (
+            <p className="banner-danger mt-4 rounded-[var(--radius-form)] border px-3 py-2 text-sm">
+              {errorMessage}
+            </p>
+          ) : null}
           </section>
+
+          <BrandingLogosManager
+            logos={logos}
+            isLoading={isLoadingLogos}
+            loadError={logosLoadError}
+            onUpload={handleUploadLogo}
+            onSelect={handleSelectLogo}
+            onDelete={handleDeleteLogo}
+          />
         </div>
       )}
     </LtfAdminLayout>

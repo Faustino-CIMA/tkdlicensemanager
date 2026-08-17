@@ -135,7 +135,7 @@ export default function LtfFinanceOrderDetailPage() {
   if (isLoading) {
     return (
       <LtfFinanceLayout title={t("ordersTitle")} subtitle={t("ordersSubtitle")}>
-        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       </LtfFinanceLayout>
     );
   }

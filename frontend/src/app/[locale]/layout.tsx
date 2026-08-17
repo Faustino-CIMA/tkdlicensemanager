@@ -3,9 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getMessages } from "next-intl/server";
 
+import { AppChrome } from "@/components/app-chrome";
 import { ClubSelectionProvider } from "@/components/club-selection-provider";
-import { HeroUIProvider } from "@/components/heroui-provider";
-import { TopBar } from "@/components/top-bar";
 
 import "../globals.css";
 
@@ -37,12 +36,9 @@ export default async function LocaleLayout({ children, params }: LocaleLayoutPro
     <html lang={locale}>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased default`}>
         <NextIntlClientProvider locale={locale} messages={messages}>
-          <HeroUIProvider>
-            <ClubSelectionProvider>
-              <TopBar />
-              {children}
-            </ClubSelectionProvider>
-          </HeroUIProvider>
+          <ClubSelectionProvider>
+            <AppChrome>{children}</AppChrome>
+          </ClubSelectionProvider>
         </NextIntlClientProvider>
       </body>
     </html>

@@ -5,6 +5,32 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 
+import {
+  AlignCenter,
+  AlignCenterVertical,
+  AlignEndVertical,
+  AlignLeft,
+  AlignRight,
+  AlignStartVertical,
+  Barcode,
+  BringToFront,
+  Copy,
+  Database,
+  FlipHorizontal2,
+  Group,
+  Image as ImageIcon,
+  QrCode,
+  Redo2,
+  SendToBack,
+  Square,
+  Type,
+  Undo2,
+  Ungroup,
+  ZoomIn,
+  ZoomOut,
+  ArrowLeft,
+} from "lucide-react";
+
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { Button } from "@/components/ui/button";
@@ -257,6 +283,16 @@ function toMmString(value: number) {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readFontAssetMeta(asset: CardFontAsset): { family: string; weight: number } {
+  const metadata = isPlainObject(asset.metadata) ? asset.metadata : {};
+  const family = String(metadata.family || asset.name || "").trim() || asset.name;
+  const parsedWeight = Number(metadata.weight);
+  return {
+    family,
+    weight: Number.isFinite(parsedWeight) && parsedWeight > 0 ? parsedWeight : 400,
+  };
 }
 
 function generateElementId() {
@@ -1225,6 +1261,9 @@ export default function LtfAdminLicenseCardDesignerPage() {
   const [imageAssets, setImageAssets] = useState<CardImageAsset[]>([]);
   const [isAssetLibraryOpen, setIsAssetLibraryOpen] = useState(false);
   const [assetLibraryTab, setAssetLibraryTab] = useState<"fonts" | "images">("fonts");
+  const [zoomPercent, setZoomPercent] = useState(100);
+  const [designerPanel, setDesignerPanel] = useState<"inspect" | "preview">("inspect");
+  const [mergeDrawerOpen, setMergeDrawerOpen] = useState(false);
   const [newFontAssetName, setNewFontAssetName] = useState("");
   const [newFontAssetFile, setNewFontAssetFile] = useState<File | null>(null);
   const [isUploadingFontAsset, setIsUploadingFontAsset] = useState(false);
@@ -1377,11 +1416,12 @@ export default function LtfAdminLicenseCardDesignerPage() {
 
   const canvasWidthMm = CONTRACT_CARD_WIDTH_MM;
   const canvasHeightMm = CONTRACT_CARD_HEIGHT_MM;
-  const canvasScale = useMemo(() => {
+  const baseCanvasScale = useMemo(() => {
     const widthScale = 760 / Math.max(canvasWidthMm, 1);
     const heightScale = 520 / Math.max(canvasHeightMm, 1);
     return clamp(Math.min(widthScale, heightScale), 2.2, 8);
   }, [canvasHeightMm, canvasWidthMm]);
+  const canvasScale = baseCanvasScale * (zoomPercent / 100);
   const canvasWidthPx = canvasWidthMm * canvasScale;
   const canvasHeightPx = canvasHeightMm * canvasScale;
   const bleedGuideMm = Math.max(0, toFiniteNumber(bleedGuideMmInput, Number(DEFAULT_BLEED_MM)));
@@ -1540,6 +1580,32 @@ export default function LtfAdminLicenseCardDesignerPage() {
     () => parseOptionalInt(selectedElementStyle.font_asset_id),
     [selectedElementStyle]
   );
+  const selectedFontAsset = useMemo(
+    () => fontAssets.find((asset) => asset.id === selectedFontAssetId) ?? null,
+    [fontAssets, selectedFontAssetId]
+  );
+  const fontFamilies = useMemo(() => {
+    const families = new Map<string, CardFontAsset[]>();
+    for (const asset of fontAssets) {
+      const family = readFontAssetMeta(asset).family;
+      const current = families.get(family) ?? [];
+      current.push(asset);
+      families.set(family, current);
+    }
+    return Array.from(families.entries()).sort(([left], [right]) => left.localeCompare(right));
+  }, [fontAssets]);
+  const selectedFontFamily = selectedFontAsset
+    ? readFontAssetMeta(selectedFontAsset).family
+    : "";
+  const weightsForSelectedFamily = useMemo(() => {
+    const family = selectedFontFamily;
+    if (!family) {
+      return [];
+    }
+    return fontAssets
+      .filter((asset) => readFontAssetMeta(asset).family === family)
+      .sort((left, right) => readFontAssetMeta(left).weight - readFontAssetMeta(right).weight);
+  }, [fontAssets, selectedFontFamily]);
 
   const selectedImageAssetId = useMemo(
     () => parseOptionalInt(selectedElementStyle.image_asset_id),
@@ -2414,11 +2480,30 @@ export default function LtfAdminLicenseCardDesignerPage() {
     [updateSelectedElement]
   );
 
+  const applyFontAsset = useCallback(
+    (assetId: number | null) => {
+      if (assetId === null) {
+        setSelectedElementStylePatch({
+          font_asset_id: undefined,
+        });
+        return;
+      }
+      const asset = fontAssets.find((item) => item.id === assetId);
+      const meta = asset ? readFontAssetMeta(asset) : null;
+      setSelectedElementStylePatch({
+        font_asset_id: assetId,
+        font_family: meta?.family || asset?.name || undefined,
+        font_weight: meta ? String(meta.weight) : undefined,
+      });
+    },
+    [fontAssets, setSelectedElementStylePatch]
+  );
+
   const setSelectedElementField = useCallback(
     (key: keyof EditableDesignElement, value: unknown) => {
       updateSelectedElement((element) => {
         const nextElement = { ...element } as EditableDesignElement;
-        const normalized = sanitizeStyleValue(value);
+        const normalized = key === "text" ? value : sanitizeStyleValue(value);
         if (typeof normalized === "undefined" || normalized === null) {
           delete (nextElement as Record<string, unknown>)[key];
         } else {
@@ -3893,7 +3978,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
   if (isLoading) {
     return (
       <LtfAdminLayout title={pageTitle} subtitle={t("licenseCardDesignerSubtitle")}>
-        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       </LtfAdminLayout>
     );
   }
@@ -3922,20 +4007,215 @@ export default function LtfAdminLicenseCardDesignerPage() {
     );
   }
 
+  const toolIconByType: Record<CardElementType, typeof Type> = {
+    text: Type,
+    image: ImageIcon,
+    shape: Square,
+    qr: QrCode,
+    barcode: Barcode,
+  };
+
   return (
     <LtfAdminLayout title={pageTitle} subtitle={t("licenseCardDesignerSubtitle")}>
-      <div className="mb-4 flex flex-wrap gap-2">
-        <Button asChild variant="outline">
-          <Link href={`/${locale}/dashboard/ltf/license-cards`}>
-            {t("licenseCardDesignerBackToTemplatesAction")}
-          </Link>
-        </Button>
+      <div className="designer-workspace">
+      <div className="designer-topbar">
+        <div className="designer-toolbar-group">
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/${locale}/dashboard/ltf/license-cards`}>
+              {t("licenseCardDesignerBackToTemplatesAction")}
+            </Link>
+          </Button>
+          <Select
+            value={selectedVersionId ? String(selectedVersionId) : "none"}
+            onValueChange={(value) => {
+              setSuccessMessage(null);
+              setErrorMessage(null);
+              setSelectedVersionId(value === "none" ? null : Number(value));
+            }}
+          >
+            <SelectTrigger className="w-[180px]" aria-label={t("licenseCardDesignerVersionLabel")}>
+              <SelectValue placeholder={t("licenseCardDesignerSelectVersionPlaceholder")} />
+            </SelectTrigger>
+            <SelectContent>
+              {sortedVersions.length === 0 ? (
+                <SelectItem value="none">{t("licenseCardDesignerNoVersions")}</SelectItem>
+              ) : (
+                sortedVersions.map((version) => (
+                  <SelectItem key={version.id} value={String(version.id)}>
+                    {t("licenseCardDesignerVersionOptionLabel", {
+                      version: version.version_number,
+                      status:
+                        version.status === "draft"
+                          ? t("licenseCardDesignerVersionStatusDraft")
+                          : t("licenseCardDesignerVersionStatusPublished"),
+                    })}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={isCreatingDraft || isSavingDraft || isPublishingDraft}
+            onClick={() => void handleCreateDraft()}
+          >
+            {isCreatingDraft
+              ? t("licenseCardDesignerCreatingDraftAction")
+              : t("licenseCardDesignerCreateDraftAction")}
+          </Button>
+        </div>
+        <div className="designer-toolbar-group">
+          <Button
+            size="sm"
+            variant={activeSide === "front" ? "default" : "outline"}
+            onClick={() => switchActiveSide("front")}
+          >
+            {sideLabelByValue.front}
+          </Button>
+          <Button
+            size="sm"
+            variant={activeSide === "back" ? "default" : "outline"}
+            onClick={() => switchActiveSide("back")}
+          >
+            {sideLabelByValue.back}
+          </Button>
+          <Button size="sm" variant="outline" onClick={flipActiveSide} title={t("licenseCardDesignerFlipSideAction")}>
+            <FlipHorizontal2 className="size-4" />
+          </Button>
+        </div>
+        <div className="designer-toolbar-group">
+          <Button size="sm" variant="outline" disabled={!canUndo} onClick={handleUndo} title={t("licenseCardEditorUndoAction")}>
+            <Undo2 className="size-4" />
+          </Button>
+          <Button size="sm" variant="outline" disabled={!canRedo} onClick={handleRedo} title={t("licenseCardEditorRedoAction")}>
+            <Redo2 className="size-4" />
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setZoomPercent((value) => clamp(value - 25, 50, 200))}
+            title={t("licenseCardDesignerZoomOutAction")}
+          >
+            <ZoomOut className="size-4" />
+          </Button>
+          <span className="min-w-12 text-center text-xs text-muted">{zoomPercent}%</span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setZoomPercent((value) => clamp(value + 25, 50, 200))}
+            title={t("licenseCardDesignerZoomInAction")}
+          >
+            <ZoomIn className="size-4" />
+          </Button>
+        </div>
+        <div className="designer-topbar-end">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setDesignerPanel("preview")}
+          >
+            {t("licenseCardDesignerPreviewPanelAction")}
+          </Button>
+          <Button
+            size="sm"
+            disabled={!isEditableDraft || isSavingDraft || isPublishingDraft}
+            onClick={() => void handleSaveDraft()}
+          >
+            {isSavingDraft
+              ? t("licenseCardDesignerSavingDraftAction")
+              : t("licenseCardDesignerSaveDraftAction")}
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={!isEditableDraft || isSavingDraft || isPublishingDraft}
+            onClick={() => void handlePublishDraft()}
+          >
+            {isPublishingDraft
+              ? t("licenseCardDesignerPublishingDraftAction")
+              : t("licenseCardDesignerPublishDraftAction")}
+          </Button>
+        </div>
       </div>
 
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
-      {successMessage ? <p className="text-sm text-emerald-700">{successMessage}</p> : null}
+      {errorMessage ? <p className="px-3 py-1 text-sm text-destructive">{errorMessage}</p> : null}
+      {successMessage ? <p className="px-3 py-1 text-sm text-success">{successMessage}</p> : null}
 
-      <section className="mb-4 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+      <div className={designerPanel === "preview" ? "designer-preview-slot" : "hidden"}>
+      <div className="designer-preview-header">
+        <div className="designer-toolbar-group">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setDesignerPanel("inspect")}
+          >
+            <ArrowLeft className="size-4" />
+            {t("licenseCardDesignerBackToDesignerAction")}
+          </Button>
+          <p className="text-sm font-semibold text-foreground">
+            {t("licenseCardDesignerPreviewTitle")}
+          </p>
+        </div>
+        <div className="designer-toolbar-group">
+          <Button
+            size="sm"
+            variant={activeSide === "front" ? "default" : "outline"}
+            onClick={() => switchActiveSide("front")}
+          >
+            {sideLabelByValue.front}
+          </Button>
+          <Button
+            size="sm"
+            variant={activeSide === "back" ? "default" : "outline"}
+            onClick={() => switchActiveSide("back")}
+          >
+            {sideLabelByValue.back}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!isEditableDraft}
+            onClick={() => copySidePayload("front", "back")}
+          >
+            {t("licenseCardDesignerCopyFrontToBackAction")}
+          </Button>
+        </div>
+        <div className="designer-topbar-end">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!selectedVersion || isLoadingPreviewData}
+            onClick={() => void handleRefreshPreviewData()}
+          >
+            {isLoadingPreviewData
+              ? t("licenseCardPreviewRefreshingDataAction")
+              : t("licenseCardPreviewRefreshDataAction")}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!selectedVersion || isOpeningCardPreviewPdf}
+            onClick={() => void handleOpenCardPreviewPdf()}
+          >
+            {isOpeningCardPreviewPdf
+              ? t("licenseCardPreviewOpeningCardPdfAction")
+              : t("licenseCardPreviewOpenCardPdfAction")}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!selectedVersion || isOpeningSheetPreviewPdf}
+            onClick={() => void handleOpenSheetPreviewPdf()}
+          >
+            {isOpeningSheetPreviewPdf
+              ? t("licenseCardPreviewOpeningSheetPdfAction")
+              : t("licenseCardPreviewOpenSheetPdfAction")}
+          </Button>
+        </div>
+      </div>
+      <div className="designer-preview-body">
+      <section className="mb-4 rounded-[var(--radius-card)] border border-border bg-card p-4 shadow-sm">
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-1">
             <p className="text-xs text-zinc-500">{t("licenseCardsTemplateNameLabel")}</p>
@@ -3971,7 +4251,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
         </div>
       </section>
 
-      <section className="mb-4 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+      <section className="mb-4 hidden rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-end gap-3">
           <div className="w-full max-w-xs space-y-2">
             <label className="text-sm font-medium text-zinc-700">
@@ -4039,7 +4319,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
         </div>
       </section>
 
-      <section className="mb-4 space-y-3 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+      <section className="mb-4 hidden space-y-3 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-zinc-900">
             {t("licenseCardDesignerSidesTitle")}
@@ -4088,7 +4368,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
         </div>
       </section>
 
-      <section className="mb-4 space-y-3 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+      <section className="mb-4 hidden space-y-3 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-zinc-900">{t("licenseCardEditorToolsTitle")}</h2>
           <p className="text-xs text-zinc-500">
@@ -4749,46 +5029,119 @@ export default function LtfAdminLicenseCardDesignerPage() {
           </div>
         )}
       </section>
+      </div>
+      </div>
 
       {selectedVersion?.status === "published" ? (
-        <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+        <p className="shrink-0 border-b border-amber-300/40 bg-amber-50 px-3 py-1.5 text-sm text-amber-800">
           {t("licenseCardDesignerPublishedReadOnlyHint")}
         </p>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
-        <section className="space-y-4 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
-          <div>
-            <h2 className="text-sm font-semibold text-zinc-900">
-              {t("licenseCardDesignerElementToolsTitle")}
-            </h2>
-            <p className="mt-1 text-xs text-zinc-500">
-              {t("licenseCardDesignerDragHint")}
-            </p>
-          </div>
-          <div className="grid gap-2">
-            {ALLOWED_ELEMENT_TYPES.map((type) => (
+      <div className="designer-canvasbar">
+        <Button size="sm" variant="outline" disabled={!isEditableDraft || selectedCount < 2} onClick={() => alignSelectedElements("left")} title={t("licenseCardEditorAlignLeftAction")}>
+          <AlignLeft className="size-4" />
+        </Button>
+        <Button size="sm" variant="outline" disabled={!isEditableDraft || selectedCount < 2} onClick={() => alignSelectedElements("center")} title={t("licenseCardEditorAlignCenterAction")}>
+          <AlignCenter className="size-4" />
+        </Button>
+        <Button size="sm" variant="outline" disabled={!isEditableDraft || selectedCount < 2} onClick={() => alignSelectedElements("right")} title={t("licenseCardEditorAlignRightAction")}>
+          <AlignRight className="size-4" />
+        </Button>
+        <Button size="sm" variant="outline" disabled={!isEditableDraft || selectedCount < 2} onClick={() => alignSelectedElements("top")} title={t("licenseCardEditorAlignTopAction")}>
+          <AlignStartVertical className="size-4" />
+        </Button>
+        <Button size="sm" variant="outline" disabled={!isEditableDraft || selectedCount < 2} onClick={() => alignSelectedElements("middle")} title={t("licenseCardEditorAlignMiddleAction")}>
+          <AlignCenterVertical className="size-4" />
+        </Button>
+        <Button size="sm" variant="outline" disabled={!isEditableDraft || selectedCount < 2} onClick={() => alignSelectedElements("bottom")} title={t("licenseCardEditorAlignBottomAction")}>
+          <AlignEndVertical className="size-4" />
+        </Button>
+        <Button size="sm" variant="outline" disabled={!isEditableDraft || selectedCount < 2} onClick={groupSelectedElements} title={t("licenseCardEditorGroupAction")}>
+          <Group className="size-4" />
+        </Button>
+        <Button size="sm" variant="outline" disabled={!isEditableDraft || selectedCount === 0} onClick={ungroupSelectedElements} title={t("licenseCardEditorUngroupAction")}>
+          <Ungroup className="size-4" />
+        </Button>
+        <Button size="sm" variant="outline" disabled={!isEditableDraft || selectedCount === 0} onClick={() => moveSelectedLayers("forward")} title={t("licenseCardEditorBringForwardAction")}>
+          <BringToFront className="size-4" />
+        </Button>
+        <Button size="sm" variant="outline" disabled={!isEditableDraft || selectedCount === 0} onClick={() => moveSelectedLayers("backward")} title={t("licenseCardEditorSendBackwardAction")}>
+          <SendToBack className="size-4" />
+        </Button>
+        <Button size="sm" variant="outline" disabled={!isEditableDraft || selectedCount === 0} onClick={duplicateSelectedElements} title={t("licenseCardEditorDuplicateAction")}>
+          <Copy className="size-4" />
+        </Button>
+        <label className="ml-2 inline-flex items-center gap-2 text-xs text-foreground">
+          <Checkbox checked={showGrid} onCheckedChange={(checked) => setShowGrid(Boolean(checked))} />
+          {t("licenseCardEditorShowGridToggle")}
+        </label>
+        <label className="inline-flex items-center gap-2 text-xs text-foreground">
+          <Checkbox checked={snapToGrid} onCheckedChange={(checked) => setSnapToGrid(Boolean(checked))} />
+          {t("licenseCardEditorSnapToGridToggle")}
+        </label>
+        <label className="inline-flex items-center gap-2 text-xs text-foreground">
+          <Checkbox checked={snapToElements} onCheckedChange={(checked) => setSnapToElements(Boolean(checked))} />
+          {t("licenseCardEditorSnapToElementsToggle")}
+        </label>
+        <label className="inline-flex items-center gap-2 text-xs text-foreground">
+          <Checkbox
+            checked={isLivePrintSimulationEnabled}
+            onCheckedChange={(checked) => {
+              const enabled = Boolean(checked);
+              setIsLivePrintSimulationEnabled(enabled);
+              if (!enabled) {
+                liveSimulationAbortControllerRef.current?.abort();
+                liveSimulationAbortControllerRef.current = null;
+                liveSimulationRequestIdRef.current += 1;
+                setIsLoadingLiveSimulation(false);
+                setLiveSimulationData(null);
+                setLiveSimulationError(null);
+              }
+            }}
+          />
+          {t("licenseCardPreviewSimulationToggleLabel")}
+        </label>
+      </div>
+
+      <div className="designer-body">
+        <aside className="designer-tools">
+          {ALLOWED_ELEMENT_TYPES.map((type) => {
+            const Icon = toolIconByType[type];
+            return (
               <button
                 key={type}
                 type="button"
-                className="rounded-xl border border-zinc-200 px-3 py-2 text-left text-sm text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="designer-tool"
                 draggable={isEditableDraft}
                 disabled={!isEditableDraft}
+                title={toolLabelByType[type]}
                 onDragStart={(event) => {
                   event.dataTransfer.setData("application/x-license-card-tool", type);
                 }}
               >
-                {toolLabelByType[type]}
+                <Icon className="size-4" />
+                <span>{toolLabelByType[type]}</span>
               </button>
-            ))}
-          </div>
-
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-zinc-900">
+            );
+          })}
+          <button
+            type="button"
+            className="designer-tool"
+            onClick={() => setMergeDrawerOpen((value) => !value)}
+            title={t("licenseCardDesignerMergeFieldsTitle")}
+          >
+            <Database className="size-4" />
+            <span>{t("licenseCardDesignerMergeFieldsTitle")}</span>
+          </button>
+        </aside>
+        {mergeDrawerOpen ? (
+          <aside className="designer-tools designer-tools-wide">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
               {t("licenseCardDesignerMergeFieldsTitle")}
             </h3>
             {mergeFields.length === 0 ? (
-              <p className="text-xs text-zinc-500">{t("licenseCardDesignerMergeFieldsEmpty")}</p>
+              <p className="text-xs text-muted">{t("licenseCardDesignerMergeFieldsEmpty")}</p>
             ) : (
               <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
                 {mergeFields.map((field) => (
@@ -4819,61 +5172,37 @@ export default function LtfAdminLicenseCardDesignerPage() {
                       });
                     }}
                   >
-                    <p className="text-xs font-medium text-zinc-800">{field.label}</p>
-                    <p className="text-[11px] text-zinc-500">{field.key}</p>
+                    <p className="text-xs font-medium text-foreground">{field.label}</p>
+                    <p className="text-[11px] text-muted">{field.key}</p>
                   </button>
                 ))}
               </div>
             )}
-          </div>
-        </section>
+          </aside>
+        ) : null}
 
-        <section className="space-y-3 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-zinc-900">
-              {t("licenseCardDesignerCanvasTitle")}
-            </h2>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-zinc-300 bg-zinc-50 px-2 py-0.5 text-[11px] text-zinc-700">
-                {t("licenseCardDesignerCanvasActiveSideBadge", { side: activeSideLabel })}
-              </span>
-              <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
-                <Checkbox
-                  checked={isLivePrintSimulationEnabled}
-                  onCheckedChange={(checked) => {
-                    const enabled = Boolean(checked);
-                    setIsLivePrintSimulationEnabled(enabled);
-                    if (!enabled) {
-                      liveSimulationAbortControllerRef.current?.abort();
-                      liveSimulationAbortControllerRef.current = null;
-                      liveSimulationRequestIdRef.current += 1;
-                      setIsLoadingLiveSimulation(false);
-                      setLiveSimulationData(null);
-                      setLiveSimulationError(null);
-                    }
-                  }}
-                />
-                {t("licenseCardPreviewSimulationToggleLabel")}
-              </label>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={!selectedVersion || !isLivePrintSimulationEnabled || isLoadingLiveSimulation}
-                onClick={() => void handleRefreshLiveSimulation()}
-              >
-                {isLoadingLiveSimulation
-                  ? t("licenseCardPreviewSimulationRefreshingAction")
-                  : t("licenseCardPreviewSimulationRefreshAction")}
-              </Button>
-            </div>
+        <section className="designer-stage">
+          <div className="flex items-center justify-between gap-3 px-3 py-2 text-xs text-muted">
+            <span>
+              {t("licenseCardDesignerCanvasActiveSideBadge", { side: activeSideLabel })}
+              {" · "}
+              {t("licenseCardDesignerCanvasSizeLabel", {
+                width: canvasWidthMm.toFixed(2),
+                height: canvasHeightMm.toFixed(2),
+                scale: canvasScale.toFixed(2),
+              })}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!selectedVersion || !isLivePrintSimulationEnabled || isLoadingLiveSimulation}
+              onClick={() => void handleRefreshLiveSimulation()}
+            >
+              {isLoadingLiveSimulation
+                ? t("licenseCardPreviewSimulationRefreshingAction")
+                : t("licenseCardPreviewSimulationRefreshAction")}
+            </Button>
           </div>
-          <p className="text-xs text-zinc-500">
-            {t("licenseCardDesignerCanvasSizeLabel", {
-              width: canvasWidthMm.toFixed(2),
-              height: canvasHeightMm.toFixed(2),
-              scale: canvasScale.toFixed(2),
-            })}
-          </p>
 
           {!selectedVersion ? (
             <EmptyState
@@ -4883,7 +5212,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
           ) : (
             <>
             <div
-              className={`overflow-auto rounded-2xl border border-zinc-200 bg-zinc-100 p-4 ${
+              className={`designer-stage-scroll ${
                 isLivePrintSimulationEnabled ? "hidden" : ""
               }`}
             >
@@ -5082,7 +5411,8 @@ export default function LtfAdminLicenseCardDesignerPage() {
           )}
         </section>
 
-        <section className="space-y-4 rounded-3xl border border-zinc-100 bg-white p-4 shadow-sm">
+        <aside className="designer-side">
+          <div className="designer-side-scroll">
           <div className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-zinc-900">
@@ -5510,15 +5840,23 @@ export default function LtfAdminLicenseCardDesignerPage() {
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
                       <label className="text-xs font-medium uppercase text-zinc-500">
-                        {t("licenseCardInspectorFontAssetLabel")}
+                        {t("licenseCardInspectorFontFamilyLabel")}
                       </label>
                       <Select
-                        disabled={!isEditableDraft || fontAssets.length === 0}
-                        value={selectedFontAssetId ? String(selectedFontAssetId) : "none"}
+                        disabled={!isEditableDraft || fontFamilies.length === 0}
+                        value={selectedFontFamily || "none"}
                         onValueChange={(value) => {
-                          setSelectedElementStylePatch({
-                            font_asset_id: value === "none" ? undefined : Number(value),
-                          });
+                          if (value === "none") {
+                            applyFontAsset(null);
+                            return;
+                          }
+                          const familyFaces = fontAssets.filter(
+                            (asset) => readFontAssetMeta(asset).family === value
+                          );
+                          const preferred =
+                            familyFaces.find((asset) => readFontAssetMeta(asset).weight === 400) ??
+                            familyFaces[0];
+                          applyFontAsset(preferred ? preferred.id : null);
                         }}
                       >
                         <SelectTrigger className="w-full">
@@ -5526,28 +5864,44 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">{t("licenseCardDesignerNoMergeFieldOption")}</SelectItem>
-                          {fontAssets.map((asset) => (
-                            <SelectItem key={asset.id} value={String(asset.id)}>
-                              {asset.name}
+                          {fontFamilies.map(([family]) => (
+                            <SelectItem key={family} value={family}>
+                              {family}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
+                      {fontAssets.length === 0 ? (
+                        <p className="text-[11px] text-amber-700">{t("licenseCardInspectorNoEmbeddedFontsHint")}</p>
+                      ) : null}
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-medium uppercase text-zinc-500">
-                        {t("licenseCardInspectorFontFamilyLabel")}
+                        {t("licenseCardInspectorFontWeightLabel")}
                       </label>
-                      <Input
-                        value={getStyleStringValue(selectedElementStyle, "font_family")}
-                        disabled={!isEditableDraft}
-                        placeholder="Inter"
-                        onChange={(event) => {
-                          setSelectedElementStylePatch({
-                            font_family: event.target.value,
-                          });
+                      <Select
+                        disabled={!isEditableDraft || weightsForSelectedFamily.length === 0}
+                        value={selectedFontAssetId ? String(selectedFontAssetId) : "none"}
+                        onValueChange={(value) => {
+                          applyFontAsset(value === "none" ? null : Number(value));
                         }}
-                      />
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder={t("licenseCardInspectorFontWeightPlaceholder")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {weightsForSelectedFamily.map((asset) => {
+                            const weight = readFontAssetMeta(asset).weight;
+                            return (
+                              <SelectItem key={asset.id} value={String(asset.id)}>
+                                {weight >= 700
+                                  ? t("licenseCardInspectorFontWeightBold")
+                                  : t("licenseCardInspectorFontWeightRegular")}
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-medium uppercase text-zinc-500">
@@ -5556,6 +5910,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                       <Input
                         type="number"
                         step="0.1"
+                        min="0.5"
                         value={getStyleStringValue(selectedElementStyle, "font_size_mm")}
                         disabled={!isEditableDraft}
                         onChange={(event) => {
@@ -5576,21 +5931,6 @@ export default function LtfAdminLicenseCardDesignerPage() {
                         onChange={(event) => {
                           setSelectedElementStylePatch({
                             color: event.target.value,
-                          });
-                        }}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium uppercase text-zinc-500">
-                        {t("licenseCardInspectorFontWeightLabel")}
-                      </label>
-                      <Input
-                        value={getStyleStringValue(selectedElementStyle, "font_weight")}
-                        disabled={!isEditableDraft}
-                        placeholder="500"
-                        onChange={(event) => {
-                          setSelectedElementStylePatch({
-                            font_weight: event.target.value,
                           });
                         }}
                       />
@@ -6663,7 +7003,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
                               className="h-6 px-2 text-[10px]"
                               disabled={!isEditableDraft}
                               onClick={() => {
-                                setSelectedElementStylePatch({ font_asset_id: asset.id });
+                                applyFontAsset(asset.id);
                               }}
                             >
                               {t("licenseCardAssetLibraryApplyAction")}
@@ -6762,7 +7102,9 @@ export default function LtfAdminLicenseCardDesignerPage() {
               )}
             </div>
           </Modal>
-        </section>
+          </div>
+        </aside>
+      </div>
       </div>
     </LtfAdminLayout>
   );

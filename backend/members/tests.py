@@ -18,7 +18,7 @@ from clubs.models import Club
 from licenses.models import License, LicenseHistoryEvent, LicenseType
 
 from .models import GradePromotionHistory, Member
-from .services import add_grade_promotion
+from .services import add_grade_promotion, delete_grade_promotion
 
 
 class MemberApiTests(TestCase):
@@ -453,6 +453,81 @@ class MemberApiTests(TestCase):
         self.member.refresh_from_db()
         self.assertEqual(self.member.belt_rank, "3rd Dan")
 
+    def test_promote_grade_rejects_unofficial_grade(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            f"/api/members/{self.member.id}/promote-grade/",
+            {"to_grade": "DAN 1"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("to_grade", response.data)
+        self.member.refresh_from_db()
+        self.assertNotEqual(self.member.belt_rank, "DAN 1")
+
+    def test_delete_grade_history_resyncs_member_belt_rank(self):
+        self.client.force_authenticate(user=self.club_admin)
+        first = self.client.post(
+            f"/api/members/{self.member.id}/promote-grade/",
+            {"to_grade": "2nd Dan", "promotion_date": "2026-06-01"},
+            format="json",
+        )
+        second = self.client.post(
+            f"/api/members/{self.member.id}/promote-grade/",
+            {"to_grade": "3rd Dan", "promotion_date": "2026-07-01"},
+            format="json",
+        )
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second.status_code, status.HTTP_201_CREATED)
+        delete_response = self.client.delete(
+            f"/api/members/{self.member.id}/grade-history/{second.data['id']}/"
+        )
+        self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(
+            GradePromotionHistory.objects.filter(id=second.data["id"]).exists()
+        )
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.belt_rank, "2nd Dan")
+
+    def test_delete_last_grade_history_clears_member_belt_rank(self):
+        self.client.force_authenticate(user=self.club_admin)
+        create_response = self.client.post(
+            f"/api/members/{self.member.id}/promote-grade/",
+            {"to_grade": "2nd Dan"},
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        delete_response = self.client.delete(
+            f"/api/members/{self.member.id}/grade-history/{create_response.data['id']}/"
+        )
+        self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.belt_rank, "")
+
+    def test_ltf_admin_cannot_delete_grade_history(self):
+        self.client.force_authenticate(user=self.club_admin)
+        create_response = self.client.post(
+            f"/api/members/{self.member.id}/promote-grade/",
+            {"to_grade": "2nd Dan"},
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.delete(
+            f"/api/members/{self.member.id}/grade-history/{create_response.data['id']}/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_member_update_rejects_unofficial_belt_rank(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.patch(
+            f"/api/members/{self.member.id}/",
+            {"belt_rank": "DAN 1"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("belt_rank", response.data)
+
     def test_member_can_view_own_history(self):
         license_record = License.objects.create(
             member=self.member,
@@ -746,10 +821,19 @@ class GradePromotionModelTests(TestCase):
         self.assertEqual(history.to_grade, "6th Kup")
         self.assertEqual(history.created_by, "Club")
 
-    def test_grade_history_still_blocks_delete(self):
+    def test_grade_history_still_blocks_direct_delete(self):
         history = add_grade_promotion(self.member, to_grade="7th Kup", actor=self.admin)
         with self.assertRaises(ValidationError):
             history.delete()
+
+    def test_delete_grade_promotion_service_removes_entry(self):
+        first = add_grade_promotion(self.member, to_grade="7th Kup", actor=self.admin)
+        second = add_grade_promotion(self.member, to_grade="6th Kup", actor=self.admin)
+        delete_grade_promotion(second)
+        self.assertFalse(GradePromotionHistory.objects.filter(id=second.id).exists())
+        self.assertTrue(GradePromotionHistory.objects.filter(id=first.id).exists())
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.belt_rank, "7th Kup")
 
     def test_grade_history_must_be_chronological(self):
         add_grade_promotion(self.member, to_grade="7th Kup", actor=self.admin)

@@ -229,7 +229,7 @@ export default function LtfFinanceLicenseTypeDetailPage() {
   if (isLoading) {
     return (
       <LtfFinanceLayout title={t("licenseSettingsTitle")} subtitle={t("licenseTypeDetailSubtitle")}>
-        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       </LtfFinanceLayout>
     );
   }

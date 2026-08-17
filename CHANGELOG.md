@@ -4,6 +4,45 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-17
+
+### User-facing
+- **Visual refresh:** Softer athletic-fintech chrome — brand cyan, canvas/card contrast, and a radius scale (12px controls, 18px cards, pill chips) instead of 2px sharp boxes.
+- **App shell:** Role dashboards use a left sidebar with icons and a quiet sticky top bar (title, club switcher, user, language). Tab strips are gone.
+- **Overview cards:** Tinted KPI tiles with icons, a clearer action queue, and bar breakdowns for license/invoice/order mixes.
+- **Login and home:** Split branded login and a lighter marketing home. Public pages use a slim header.
+- **Members filters:** Status filters are pill buttons with live counts (HeroUI RadioGroup removed).
+- **Import confirm:** “Only rows with action set to create…” is a yellow notice, not an alert.
+- **Import wizard:** Step back button now shows “Previous” instead of the raw key `Common.previousPage`.
+- **Home:** A signed-in visit to `/{locale}` shows role-based navigation instead of the public Sign in landing.
+- **Club Members:** Active status controls are green; inactive stays the previous neutral tone.
+- **Profile photo:** Use camera opens the device webcam via the browser camera permission, then lets the user take a photo. Choose file still opens the file picker.
+- **Member grades:** Belt rank is no longer a free-text field on member create/edit. Grades are changed only from the Grades section, using the official Kup/Poom/Dan dropdown. Custom values such as “DAN 1” no longer appear in that list. A selected grade promotion can now be deleted; the member’s current belt rank is updated to the latest remaining official grade.
+- **Page loading:** Fetching dashboard page data now shows a brand spinner above the existing “loading” message.
+- **Club header switcher:** Club Admin (and Coach) always see one of their assigned clubs in the header dropdown. A leftover or invalid stored club ID no longer leaves the field blank.
+- **LTF club filter:** The header club dropdown is hidden on LTF Overview, License cards, Print jobs, License types, Printer profiles, and Settings. On the remaining LTF pages it filters the listed data, with an **All clubs** option. **All clubs** is the default on LTF Admin pages.
+- **Club Members filters:** Status pills show the count next to the title (e.g. All 34) instead of a second line of text.
+- **Club Members toolbar:** Members and Actions sit on the same row as pagination. Actions is disabled until a row is selected. The batch-action hint is behind an exclamation icon (hover or click).
+- **Club Members table:** The row pencil was removed. Open a member by clicking the row, then edit from the detail page. The row still has delete.
+- **Club Licenses:** Toolbar, status pills, pagination, and table styling now match Club Members. Actions stays disabled until a license is selected.
+- **Club Orders and Invoices:** Filter card, status pills with counts, page-size options, and pagination now match Club Members / Licenses.
+- **Club IBAN bank lookup:** Luxembourg IBANs now use the official 3-digit bank code, so older accounts (especially Spuerkeess numbers starting with 9) are no longer mistaken for POST.
+- **Club and LTF Settings logos:** Upload starts with a drop well and preview. Purpose (General, Invoice, Print, Digital) is explained, the selected-logo checkbox is shown once, and uploaded logos are grouped by purpose with a larger preview and a delete confirm.
+- **License card designer:** The LTF designer is now a full-height design workspace (no sidebar). Tools, canvas, and inspector stay on screen. Preview/print controls open as a panel. Built-in print fonts (Inter, Source Sans 3, Source Serif 4, IBM Plex Mono, Barlow Condensed) are seeded as embeddable TTF assets. Designer chrome uses the same light surface, border, and muted icon tokens as the rest of the app. The top bar is grouped into document / side / history / save clusters. Preview & print is a full-screen panel with a **Back to designer** button. Spaces can be typed normally in Text controls.
+- **LTF Finance club filter:** The header club dropdown is hidden on Finance Overview, Audit log, and License settings. Orders, Invoices, and Payments keep it as a club filter, including **All clubs**.
+
+### Technical
+- Design tokens live in `ltf_theme.css` / `globals.css` (`--radius-control`, `--radius-card`, `--shadow-card`, type scale).
+- Shared `AppShell` + `AppChrome`; Club / LTF / Finance / Member layouts are thin nav adapters.
+- Removed `@heroui/react` (only RadioGroup + RouterProvider were in use).
+- Grade promotions now validate against the official belt-rank list. `DELETE /api/members/{id}/grade-history/{history_id}/` removes a promotion (bypassing the append-only model guard) and resyncs `member.belt_rank`.
+- Shared `Spinner` for page-data loading; `EmptyState` accepts `loading` to show it above the existing message.
+- Club header selection now validates the stored club ID against clubs returned for the current user and falls back to the first assigned club.
+- LTF Admin header club control is route-aware (hidden on federation-wide pages) and treats `null` as “All clubs” on filter pages.
+- Luxembourg IBAN bank lookup uses the official 3-digit bank code first. Existing club and federation `bank_name` values are re-derived in `clubs.0005_rederive_luxembourg_bank_names`.
+- Club and LTF Settings share `BrandingLogosManager` for logo upload, purpose grouping, and delete confirm.
+- Card designer workspace chrome lives in `AppShell` `variant="workspace"`. Built-in print faces are seeded by `manage.py seed_card_print_fonts` from `licenses/print_fonts/*.ttf`. The millimetre render/PDF path is unchanged.
+
 ## [0.3.9] - 2026-03-28
 
 ### User-facing

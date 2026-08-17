@@ -189,7 +189,7 @@ export default function LtfAdminLicenseCardPrintJobsPage() {
         title={t("licenseCardPrintJobsTitle")}
         subtitle={t("licenseCardPrintJobsSubtitle")}
       >
-        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       </LtfAdminLayout>
     );
   }
@@ -249,7 +249,7 @@ export default function LtfAdminLicenseCardPrintJobsPage() {
         </div>
 
         {isLoading ? (
-          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
         ) : filteredJobs.length === 0 ? (
           <EmptyState
             title={t("licenseCardPrintJobsEmptyTitle")}

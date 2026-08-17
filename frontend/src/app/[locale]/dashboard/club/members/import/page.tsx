@@ -50,7 +50,7 @@ export default function ClubMembersImportPage() {
   if (isLoading && clubs.length === 0) {
     return (
       <ClubAdminLayout title={t("importMembers")} subtitle={t("wizardSubtitleMembers")}>
-        <EmptyState title={clubT("loadingTitle")} description={clubT("loadingSubtitle")} />
+        <EmptyState title={clubT("loadingTitle")} description={clubT("loadingSubtitle")} loading />
       </ClubAdminLayout>
     );
   }

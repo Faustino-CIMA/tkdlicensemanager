@@ -174,7 +174,7 @@ export default function LtfFinanceAuditLogPage() {
       </section>
 
       {isLoading ? (
-        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       ) : logs.length === 0 ? (
         <EmptyState title={t("noAuditLogTitle")} description={t("noAuditLogSubtitle")} />
       ) : (

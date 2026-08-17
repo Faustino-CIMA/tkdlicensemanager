@@ -224,7 +224,7 @@ class ClubApiTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.club.refresh_from_db()
         self.assertEqual(self.club.iban, "LU280019400644750000")
-        self.assertEqual(self.club.bank_name, "POST Luxembourg")
+        self.assertEqual(self.club.bank_name, "Spuerkeess (BCEE)")
 
     def test_club_admin_can_patch_own_club_iban(self):
         self.client.force_authenticate(user=self.club_admin)
@@ -238,7 +238,7 @@ class ClubApiTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.club.refresh_from_db()
         self.assertEqual(self.club.iban, "LU280019400644750000")
-        self.assertEqual(self.club.bank_name, "POST Luxembourg")
+        self.assertEqual(self.club.bank_name, "Spuerkeess (BCEE)")
 
     def test_club_admin_cannot_patch_other_club(self):
         other_club = Club.objects.create(
@@ -338,7 +338,7 @@ class ClubImportTests(TestCase):
         self.assertEqual(created.postal_code, "2345")
         self.assertEqual(created.locality, "Esch")
         self.assertEqual(created.iban, "LU280019400644750000")
-        self.assertEqual(created.bank_name, "POST Luxembourg")
+        self.assertEqual(created.bank_name, "Spuerkeess (BCEE)")
 
 
 class ClubAdminManagementTests(TestCase):
@@ -494,7 +494,7 @@ class FederationProfileApiTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         profile = FederationProfile.objects.get(pk=1)
         self.assertEqual(profile.iban, "LU280019400644750000")
-        self.assertEqual(profile.bank_name, "POST Luxembourg")
+        self.assertEqual(profile.bank_name, "Spuerkeess (BCEE)")
 
     def test_ltf_admin_patch_rejects_invalid_iban(self):
         self.client.force_authenticate(user=self.ltf_admin)
@@ -532,7 +532,7 @@ class FederationProfileApiTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["bank_name"], "POST Luxembourg")
+        self.assertEqual(response.data["bank_name"], "Spuerkeess (BCEE)")
 
     def test_ltf_admin_patch_federation_rejects_invalid_iban(self):
         self.client.force_authenticate(user=self.ltf_admin)
@@ -739,3 +739,38 @@ class BrandingAssetApiTests(TestCase):
             format="multipart",
         )
         self.assertEqual(post_response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class LuxembourgIbanBankLookupTests(TestCase):
+    def test_three_digit_bank_code_identifies_spuerkeess_not_post(self):
+        from .banking import derive_bank_name_from_iban
+
+        # Official LU IBAN example: bank code 001, account starts with 9.
+        self.assertEqual(
+            derive_bank_name_from_iban("LU28 0019 4006 4475 0000"),
+            "Spuerkeess (BCEE)",
+        )
+
+    def test_post_luxembourg_uses_code_111(self):
+        from .banking import derive_bank_name_from_iban
+
+        self.assertEqual(
+            derive_bank_name_from_iban("LU391110000000000001"),
+            "POST Luxembourg",
+        )
+
+    def test_legacy_post_code_019_still_recognized(self):
+        from .banking import derive_bank_name_from_iban
+
+        self.assertEqual(
+            derive_bank_name_from_iban("LU660194006447500000"),
+            "POST Luxembourg",
+        )
+
+    def test_banque_de_luxembourg_code_008(self):
+        from .banking import derive_bank_name_from_iban
+
+        self.assertEqual(
+            derive_bank_name_from_iban("LU440080000000000001"),
+            "Banque de Luxembourg",
+        )

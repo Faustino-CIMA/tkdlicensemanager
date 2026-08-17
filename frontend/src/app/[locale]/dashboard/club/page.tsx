@@ -1,15 +1,23 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 
+import { ActionQueue } from "@/components/club-admin/action-queue";
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { EntityTable } from "@/components/club-admin/entity-table";
 import { EmptyState } from "@/components/club-admin/empty-state";
+import { StatBreakdown } from "@/components/club-admin/stat-breakdown";
 import { SummaryCard } from "@/components/club-admin/summary-card";
-import { useClubSelection } from "@/components/club-selection-provider";
+import {
+  AlertTriangle,
+  BadgeEuro,
+  Clock3,
+  IdCard,
+  Users,
+} from "lucide-react";
+import { resolveAssignedClubId, useClubSelection } from "@/components/club-selection-provider";
 import { Button } from "@/components/ui/button";
 import {
   Club,
@@ -44,15 +52,7 @@ type RecentActivityRow = {
   href: string;
 };
 
-function getSeverityClasses(severity: QueueSeverity) {
-  if (severity === "critical") {
-    return "badge-danger";
-  }
-  if (severity === "warning") {
-    return "badge-warning";
-  }
-  return "badge-info";
-}
+
 
 function toTimestamp(value: string | null) {
   if (!value) {
@@ -97,8 +97,8 @@ export default function ClubAdminOverviewPage() {
         setMembers(membersResponse);
         setLicenses(licensesResponse);
 
-        const effectiveClubId = selectedClubId ?? clubsResponse[0]?.id ?? null;
-        if (!selectedClubId && effectiveClubId) {
+        const effectiveClubId = resolveAssignedClubId(clubsResponse, selectedClubId);
+        if (effectiveClubId !== selectedClubId) {
           setSelectedClubId(effectiveClubId);
         }
 
@@ -131,7 +131,7 @@ export default function ClubAdminOverviewPage() {
     loadOverview();
   }, [loadOverview]);
 
-  const activeClubId = selectedClubId ?? clubs[0]?.id ?? null;
+  const activeClubId = resolveAssignedClubId(clubs, selectedClubId);
 
   const filteredMembers = useMemo(() => {
     if (!activeClubId) {
@@ -355,13 +355,13 @@ export default function ClubAdminOverviewPage() {
       {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
       {isLoading ? (
-        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       ) : clubs.length === 0 ? (
         <EmptyState title={t("overviewEmptyTitle")} description={t("overviewEmptySubtitle")} />
       ) : (
         <div className="space-y-6">
-          <section className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] px-4 py-3 shadow-sm">
-            <p className="text-xs text-[var(--muted)]">
+          <section className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-meta">
               {lastRefreshAt
                 ? t("lastRefreshLabel", { time: formatDisplayDateTime(lastRefreshAt) })
                 : t("lastRefreshNever")}
@@ -376,86 +376,53 @@ export default function ClubAdminOverviewPage() {
           </section>
 
           <section className="grid gap-4 md:grid-cols-2 md:gap-5 xl:grid-cols-4">
-            <SummaryCard title={t("totalMembers")} value={String(filteredMembers.length)} />
-            <SummaryCard title={t("activeMembers")} value={String(activeMembers.length)} />
-            <SummaryCard title={t("totalLicenses")} value={String(filteredLicenses.length)} />
-            <SummaryCard title={t("activeLicenses")} value={String(activeLicenses.length)} />
-            <SummaryCard title={t("pendingLicenses")} value={String(pendingLicenses.length)} />
-            <SummaryCard title={t("expiringIn30Days")} value={String(expiringIn30Days)} />
+            <SummaryCard title={t("totalMembers")} value={String(filteredMembers.length)} icon={Users} tone="accent" />
+            <SummaryCard title={t("activeMembers")} value={String(activeMembers.length)} icon={Users} tone="success" />
+            <SummaryCard title={t("totalLicenses")} value={String(filteredLicenses.length)} icon={IdCard} tone="accent" />
+            <SummaryCard title={t("activeLicenses")} value={String(activeLicenses.length)} icon={IdCard} tone="success" />
+            <SummaryCard title={t("pendingLicenses")} value={String(pendingLicenses.length)} icon={Clock3} tone="warning" />
+            <SummaryCard title={t("expiringIn30Days")} value={String(expiringIn30Days)} icon={AlertTriangle} tone="warning" />
             <SummaryCard
               title={t("issuedInvoicesOpen")}
               value={String(invoicesByStatus.issued)}
+              icon={BadgeEuro}
+              tone="warning"
             />
             <SummaryCard
               title={t("outstandingAmountLabel")}
               value={`${outstandingAmount.toFixed(2)} ${currency}`}
+              icon={BadgeEuro}
+              tone="danger"
             />
           </section>
 
-          <section className="space-y-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-[var(--foreground)]">{t("actionQueueTitle")}</h2>
-            {visibleQueueItems.length === 0 ? (
-              <p className="text-sm text-muted">{t("actionQueueAllClear")}</p>
-            ) : (
-              <div className="space-y-2">
-                {visibleQueueItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className={`flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-form)] border px-3 py-3 ${getSeverityClasses(item.severity)}`}
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium">{item.label}</p>
-                      <p className="text-xs opacity-90">
-                        {t("actionQueueCountLabel", { count: item.count })}
-                      </p>
-                    </div>
-                    <Link
-                      href={item.href}
-                      className="inline-flex h-[var(--control-height)] min-h-[var(--control-height)] items-center justify-center rounded-[var(--radius-form)] border border-current px-4 text-xs font-semibold"
-                    >
-                      {t("openAction")}
-                    </Link>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
+          <ActionQueue
+            title={t("actionQueueTitle")}
+            emptyLabel={t("actionQueueAllClear")}
+            countLabel={(count) => t("actionQueueCountLabel", { count })}
+            openLabel={t("openAction")}
+            items={visibleQueueItems}
+          />
 
           <section className="grid gap-4 md:gap-5 xl:grid-cols-2">
-            <div className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
-              <h2 className="text-sm font-semibold text-[var(--foreground)]">{t("licensesDistributionTitle")}</h2>
-              <div className="mt-3 space-y-2 text-sm text-foreground">
-                <p>
-                  {t("activeLicenses")}: <span className="font-semibold">{activeLicenses.length}</span>
-                </p>
-                <p>
-                  {t("pendingLicenses")}: <span className="font-semibold">{pendingLicenses.length}</span>
-                </p>
-                <p>
-                  {t("expiredLicenses")}: <span className="font-semibold">{expiredLicenses.length}</span>
-                </p>
-                <p>
-                  {t("revokedLicenses")}: <span className="font-semibold">{revokedLicenses.length}</span>
-                </p>
-              </div>
-            </div>
-            <div className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
-              <h2 className="text-sm font-semibold text-[var(--foreground)]">{t("invoicesDistributionTitle")}</h2>
-              <div className="mt-3 space-y-2 text-sm text-foreground">
-                <p>
-                  {t("invoiceStatusDraft")}: <span className="font-semibold">{invoicesByStatus.draft}</span>
-                </p>
-                <p>
-                  {t("invoiceStatusDue")}: <span className="font-semibold">{invoicesByStatus.issued}</span>
-                </p>
-                <p>
-                  {t("invoiceStatusPaid")}: <span className="font-semibold">{invoicesByStatus.paid}</span>
-                </p>
-                <p>
-                  {t("invoiceStatusVoid")}: <span className="font-semibold">{invoicesByStatus.void}</span>
-                </p>
-              </div>
-            </div>
+            <StatBreakdown
+              title={t("licensesDistributionTitle")}
+              items={[
+                { label: t("activeLicenses"), value: activeLicenses.length, tone: "success" },
+                { label: t("pendingLicenses"), value: pendingLicenses.length, tone: "warning" },
+                { label: t("expiredLicenses"), value: expiredLicenses.length, tone: "neutral" },
+                { label: t("revokedLicenses"), value: revokedLicenses.length, tone: "danger" },
+              ]}
+            />
+            <StatBreakdown
+              title={t("invoicesDistributionTitle")}
+              items={[
+                { label: t("invoiceStatusDraft"), value: invoicesByStatus.draft, tone: "neutral" },
+                { label: t("invoiceStatusDue"), value: invoicesByStatus.issued, tone: "warning" },
+                { label: t("invoiceStatusPaid"), value: invoicesByStatus.paid, tone: "success" },
+                { label: t("invoiceStatusVoid"), value: invoicesByStatus.void, tone: "danger" },
+              ]}
+            />
           </section>
 
           <section className="space-y-3">

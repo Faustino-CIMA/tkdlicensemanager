@@ -4,10 +4,10 @@ Modern, secure Taekwondo license management for the Luxembourg Taekwondo Federat
 
 ## Release Notes
 
-This release refreshes the **HeroUI**-based dashboard chrome (v3.0.1) and delivers a focused **Club Members** experience: clearer filters with totals, safer status changes, and more practical pagination. It also improves **Member Import Step 3**: an orange **Review** status for role issues, inline dropdowns to fix primary/secondary license roles, same-role validation, and a confirmation dialogue before applying changes—see `CHANGELOG.md` **0.3.9** for the full list.
+This working tree is **v0.4.0**: sidebar app shell, athletic-fintech theme, club/LTF settings logo manager, and a full-height license-card designer. Millimetre print output is unchanged.
 
-- See `CHANGELOG.md` for user-facing and technical release notes.
-- Current stable release: `v0.3.9` (HeroUI v3 shell + Club Members UX + Member Import Step 3 role review, sticky top bar, stable tabs).
+- See `CHANGELOG.md` **0.4.0** for this release and **0.3.9** for the previous Club Members / import notes.
+- Current tagged release: `v0.4.0`.
 
 ## CI (GitHub Actions)
 
@@ -530,7 +530,9 @@ Member history endpoints:
 - `GET /api/members/{id}/history/` (combined license + grade history)
 - `GET /api/members/{id}/license-history/`
 - `GET /api/members/{id}/grade-history/`
-- `POST /api/members/{id}/promote-grade/` (LTF Admin / Club Admin / Coach)
+- `POST /api/members/{id}/promote-grade/` (Club Admin / Coach)
+- `PATCH /api/members/{id}/grade-history/{history_id}/` (Club Admin / Coach)
+- `DELETE /api/members/{id}/grade-history/{history_id}/` (Club Admin / Coach)
 
 Role access:
 - Member: own history only
@@ -544,7 +546,8 @@ GDPR notes:
 
 Audit + immutability:
 - `License` uses `django-simple-history` (`HistoricalLicense`) for field-level change history
-- `LicenseHistoryEvent` and `GradePromotionHistory` are append-only business timelines
+- `LicenseHistoryEvent` is an append-only business timeline
+- `GradePromotionHistory` is managed from the Grades section (add, edit, delete). Direct model `delete()` stays blocked; the API delete path removes a mistaken entry and syncs the member’s current belt rank from the latest remaining promotion. Official grades are the standard Kup / Poom / Dan list only.
 
 ## Profile Picture Upload + Editing
 

@@ -1,8 +1,6 @@
 /*
- * HeroUI Theme Customization
- * Add this to your global.css after importing @heroui/styles
- * Only includes base variables from variables.css
- * @see https://v3.heroui.com/docs/react/getting-started/theming
+ * LTF visual system — athletic fintech.
+ * Brand cyan from the federation mark, soft geometry, canvas ≠ card.
  */
 
 :root,
@@ -10,94 +8,113 @@
 .default,
 [data-theme="light"],
 [data-theme="default"] {
-  /* Theme Colors (Light Mode) */
-  --accent: oklch(70.93% 0.1493 234.42);
-  --accent-foreground: oklch(15% 0.0299 234.42);
-  --background: oklch(97.02% 0.0015 234.42);
-  --border: oklch(90.00% 0.0015 234.42);
-  --checkbox-border: oklch(74.00% 0.0015 234.42);
-  --danger: oklch(65.32% 0.2335 23.41);
-  --danger-foreground: oklch(99.11% 0 0);
-  --default: oklch(94.00% 0.0015 234.42);
-  --default-foreground: oklch(21.03% 0.0059 234.42);
-  --field-background: oklch(100.00% 0.0008 234.42);
-  --field-foreground: oklch(21.03% 0.0015 234.42);
-  --field-placeholder: oklch(55.17% 0.0030 234.42);
-  --focus: oklch(70.93% 0.1493 234.42);
-  --foreground: oklch(21.03% 0.0015 234.42);
-  --muted: oklch(55.17% 0.0030 234.42);
-  --overlay: oklch(100.00% 0.0004 234.42);
-  --overlay-foreground: oklch(21.03% 0.0015 234.42);
-  --scrollbar: oklch(87.10% 0.0015 234.42);
-  --segment: oklch(100.00% 0.0015 234.42);
-  --segment-foreground: oklch(21.03% 0.0015 234.42);
-  --separator: oklch(92.00% 0.0015 234.42);
-  --success: oklch(73.29% 0.1941 148.48);
-  --success-foreground: oklch(21.03% 0.0059 148.48);
-  --surface: oklch(100.00% 0.0008 234.42);
-  --surface-foreground: oklch(21.03% 0.0015 234.42);
-  --surface-secondary: oklch(95.24% 0.0012 234.42);
-  --surface-secondary-foreground: oklch(21.03% 0.0015 234.42);
-  --surface-tertiary: oklch(93.73% 0.0012 234.42);
-  --surface-tertiary-foreground: oklch(21.03% 0.0015 234.42);
-  --warning: oklch(78.19% 0.1590 70.00);
-  --warning-foreground: oklch(21.03% 0.0059 70.00);
+  /* Brand */
+  --accent: oklch(54% 0.13 232);
+  --accent-foreground: oklch(99% 0.01 232);
+  --accent-soft: oklch(94% 0.03 232);
+  --brand-red: oklch(54% 0.19 25);
 
-  /* Modal / dialog scrim — derived from theme foreground for light mode */
-  --modal-backdrop: color-mix(in oklab, var(--foreground) 40%, transparent);
+  /* Canvas vs card */
+  --background: oklch(96.4% 0.012 232);
+  --foreground: oklch(24% 0.03 240);
+  --border: oklch(89% 0.016 232);
+  --checkbox-border: oklch(68% 0.03 232);
+  --danger: oklch(56% 0.19 25);
+  --danger-foreground: oklch(99% 0 0);
+  --default: oklch(93.5% 0.01 232);
+  --default-foreground: oklch(24% 0.03 240);
+  --field-background: oklch(99.5% 0.004 232);
+  --field-foreground: oklch(24% 0.03 240);
+  --field-placeholder: oklch(52% 0.02 232);
+  --focus: oklch(54% 0.13 232);
+  --muted: oklch(48% 0.025 232);
+  --overlay: oklch(99.5% 0.003 232);
+  --overlay-foreground: oklch(24% 0.03 240);
+  --scrollbar: oklch(84% 0.016 232);
+  --segment: oklch(99.5% 0.004 232);
+  --segment-foreground: oklch(24% 0.03 240);
+  --separator: oklch(91% 0.012 232);
+  --success: oklch(62% 0.14 155);
+  --success-foreground: oklch(22% 0.04 155);
+  --surface: oklch(99.4% 0.004 232);
+  --surface-foreground: oklch(24% 0.03 240);
+  --surface-secondary: oklch(95.2% 0.012 232);
+  --surface-secondary-foreground: oklch(24% 0.03 240);
+  --surface-tertiary: oklch(93.2% 0.014 232);
+  --surface-tertiary-foreground: oklch(24% 0.03 240);
+  --warning: oklch(74% 0.14 72);
+  --warning-foreground: oklch(32% 0.06 55);
 
-  /* Border Radius */
-  --radius: 0.125rem;
-  --field-radius: 0.125rem;
+  --modal-backdrop: color-mix(in oklab, var(--foreground) 36%, transparent);
+
+  /* Geometry */
+  --radius: 0.75rem;
+  --radius-control: 0.75rem;
+  --radius-card: 1.125rem;
+  --radius-modal: 1.25rem;
+  --radius-chip: 999px;
+  --field-radius: var(--radius-control);
+
+  /* Elevation */
+  --shadow-card: 0 1px 2px oklch(24% 0.04 240 / 0.04), 0 10px 28px oklch(24% 0.04 240 / 0.06);
+  --shadow-float: 0 8px 32px oklch(24% 0.04 240 / 0.1);
+
+  /* Type */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --text-display: 1.875rem;
+  --text-title: 1.5rem;
+  --text-section: 1.0625rem;
+  --text-body: 0.875rem;
+  --text-meta: 0.75rem;
+
+  /* Shell */
+  --sidebar-width: 16.5rem;
+  --topbar-height: 4rem;
 
   /* Control & layout sizing (desktop / compact defaults) */
   --control-height: 40px;
-  --table-row-height: 44px;
+  --table-row-height: 48px;
   --control-padding-x: 16px;
-
-  /* Font Family */
-  /* Make sure to load Inter font in your app */
-  --font-sans: var(--font-inter);
 }
 
 .dark,
 [data-theme="dark"] {
   color-scheme: dark;
-  /* Theme Colors (Dark Mode) */
-  --accent: oklch(70.93% 0.1493 234.42);
-  --accent-foreground: oklch(15% 0.0299 234.42);
-  --background: oklch(12.00% 0.0015 234.42);
-  --border: oklch(28.00% 0.0015 234.42);
-  --checkbox-border: oklch(48.00% 0.0015 234.42);
-  --danger: oklch(59.40% 0.1973 22.30);
-  --danger-foreground: oklch(99.11% 0 0);
-  --default: oklch(27.40% 0.0015 234.42);
-  --default-foreground: oklch(99.11% 0 0);
-  --field-background: oklch(21.03% 0.0030 234.42);
-  --field-foreground: oklch(99.11% 0.0015 234.42);
-  --field-placeholder: oklch(70.50% 0.0030 234.42);
-  --focus: oklch(70.93% 0.1493 234.42);
-  --foreground: oklch(99.11% 0.0015 234.42);
-  --muted: oklch(70.50% 0.0030 234.42);
-  --overlay: oklch(21.03% 0.0030 234.42);
-  --overlay-foreground: oklch(99.11% 0.0015 234.42);
-  --scrollbar: oklch(70.50% 0.0015 234.42);
-  --segment: oklch(39.64% 0.0015 234.42);
-  --segment-foreground: oklch(99.11% 0.0015 234.42);
-  --separator: oklch(25.00% 0.0015 234.42);
-  --success: oklch(73.29% 0.1941 148.48);
-  --success-foreground: oklch(21.03% 0.0059 148.48);
-  --surface: oklch(21.03% 0.0030 234.42);
-  --surface-foreground: oklch(99.11% 0.0015 234.42);
-  --surface-secondary: oklch(25.70% 0.0023 234.42);
-  --surface-secondary-foreground: oklch(99.11% 0.0015 234.42);
-  --surface-tertiary: oklch(27.21% 0.0023 234.42);
-  --surface-tertiary-foreground: oklch(99.11% 0.0015 234.42);
-  --warning: oklch(82.03% 0.1392 74.01);
-  --warning-foreground: oklch(21.03% 0.0059 74.01);
-
-  /* Modal scrim — dark mode: translucent background tone */
-  --modal-backdrop: color-mix(in oklab, var(--background) 72%, transparent);
+  --accent: oklch(72% 0.12 232);
+  --accent-foreground: oklch(18% 0.04 232);
+  --accent-soft: oklch(28% 0.04 232);
+  --brand-red: oklch(64% 0.17 25);
+  --background: oklch(16% 0.02 240);
+  --border: oklch(30% 0.02 232);
+  --checkbox-border: oklch(48% 0.03 232);
+  --danger: oklch(62% 0.17 25);
+  --danger-foreground: oklch(99% 0 0);
+  --default: oklch(28% 0.02 232);
+  --default-foreground: oklch(97% 0.01 232);
+  --field-background: oklch(22% 0.02 240);
+  --field-foreground: oklch(97% 0.01 232);
+  --field-placeholder: oklch(68% 0.02 232);
+  --focus: oklch(72% 0.12 232);
+  --foreground: oklch(97% 0.01 232);
+  --muted: oklch(72% 0.02 232);
+  --overlay: oklch(22% 0.02 240);
+  --overlay-foreground: oklch(97% 0.01 232);
+  --scrollbar: oklch(42% 0.02 232);
+  --segment: oklch(28% 0.02 232);
+  --segment-foreground: oklch(97% 0.01 232);
+  --separator: oklch(28% 0.02 232);
+  --success: oklch(70% 0.13 155);
+  --success-foreground: oklch(18% 0.04 155);
+  --surface: oklch(21% 0.022 240);
+  --surface-foreground: oklch(97% 0.01 232);
+  --surface-secondary: oklch(25% 0.022 240);
+  --surface-secondary-foreground: oklch(97% 0.01 232);
+  --surface-tertiary: oklch(28% 0.022 240);
+  --surface-tertiary-foreground: oklch(97% 0.01 232);
+  --warning: oklch(78% 0.12 74);
+  --warning-foreground: oklch(22% 0.04 74);
+  --modal-backdrop: color-mix(in oklab, var(--background) 62%, transparent);
+  --shadow-card: 0 1px 2px oklch(0% 0 0 / 0.24), 0 12px 32px oklch(0% 0 0 / 0.28);
 }
 
 @media (pointer: coarse) {

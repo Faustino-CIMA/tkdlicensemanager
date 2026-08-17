@@ -148,7 +148,7 @@ export default function ClubOrderDetailPage() {
   if (isLoading) {
     return (
       <ClubAdminLayout title={t("orderDetailTitle")} subtitle={t("orderDetailSubtitle")}>
-        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       </ClubAdminLayout>
     );
   }

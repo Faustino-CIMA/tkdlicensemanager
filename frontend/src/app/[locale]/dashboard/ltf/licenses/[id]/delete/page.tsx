@@ -117,7 +117,7 @@ export default function LtfLicenseDeletePage() {
       {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
       {isLoading ? (
-        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       ) : !licenseId || !license ? (
         <div className="space-y-4">
           <EmptyState

@@ -1,19 +1,21 @@
 "use client";
 
-import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
+import {
+  BrandingLogoUploadPayload,
+  BrandingLogosManager,
+} from "@/components/branding/branding-logos-manager";
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { useClubSelection } from "@/components/club-selection-provider";
 import { deriveBankNameFromIban, isValidIban } from "@/lib/iban";
 import {
   BrandingLogo,
-  LogoUsageType,
   deleteClubLogo,
   getClubLogos,
   getClubs,
@@ -23,13 +25,6 @@ import {
 } from "@/lib/club-admin-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 const clubSchema = z.object({
   name: z.string().min(1, "Club name is required"),
@@ -42,34 +37,17 @@ const clubSchema = z.object({
 
 type ClubFormValues = z.infer<typeof clubSchema>;
 
-function formatFileSize(bytes: number): string {
-  if (!bytes || bytes <= 0) {
-    return "-";
-  }
-  const kb = 1024;
-  const mb = kb * 1024;
-  if (bytes >= mb) {
-    return `${(bytes / mb).toFixed(2)} MB`;
-  }
-  return `${(bytes / kb).toFixed(1)} KB`;
-}
-
 export default function ClubAdminSettingsPage() {
   const t = useTranslations("ClubAdmin");
   const { selectedClubId } = useClubSelection();
   const requestIdRef = useRef(0);
   const logoRequestIdRef = useRef(0);
-  const logoFileInputRef = useRef<HTMLInputElement | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [clubLogos, setClubLogos] = useState<BrandingLogo[]>([]);
   const [isLoadingLogos, setIsLoadingLogos] = useState(false);
-  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
-  const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [logoUsage, setLogoUsage] = useState<LogoUsageType>("general");
-  const [logoLabel, setLogoLabel] = useState("");
-  const [markUploadedAsSelected, setMarkUploadedAsSelected] = useState(true);
+  const [logosLoadError, setLogosLoadError] = useState<string | null>(null);
 
   const {
     register,
@@ -93,12 +71,6 @@ export default function ClubAdminSettingsPage() {
     () => deriveBankNameFromIban(watchedIban),
     [watchedIban]
   );
-  const usageLabelMap: Record<LogoUsageType, string> = {
-    general: t("logoUsageGeneral"),
-    invoice: t("logoUsageInvoice"),
-    print: t("logoUsagePrint"),
-    digital: t("logoUsageDigital"),
-  };
 
   const resetToEmpty = useCallback(() => {
     reset({
@@ -156,6 +128,7 @@ export default function ClubAdminSettingsPage() {
     const requestId = ++logoRequestIdRef.current;
     if (!selectedClubId) {
       setClubLogos([]);
+      setLogosLoadError(null);
       setIsLoadingLogos(false);
       return;
     }
@@ -166,11 +139,12 @@ export default function ClubAdminSettingsPage() {
         return;
       }
       setClubLogos(response.logos);
+      setLogosLoadError(null);
     } catch (error) {
       if (requestId !== logoRequestIdRef.current) {
         return;
       }
-      setErrorMessage(error instanceof Error ? error.message : "Failed to load logos.");
+      setLogosLoadError(error instanceof Error ? error.message : "Failed to load logos.");
     } finally {
       if (requestId === logoRequestIdRef.current) {
         setIsLoadingLogos(false);
@@ -210,66 +184,34 @@ export default function ClubAdminSettingsPage() {
     }
   };
 
-  const handleUploadLogo = async () => {
-    if (!selectedClubId || !logoFile) {
-      return;
+  const handleUploadLogo = async (payload: BrandingLogoUploadPayload) => {
+    if (!selectedClubId) {
+      throw new Error("Select a club before uploading a logo.");
     }
-    setIsUploadingLogo(true);
-    setErrorMessage(null);
-    setSuccessMessage(null);
-    try {
-      await uploadClubLogo(selectedClubId, {
-        file: logoFile,
-        usage_type: logoUsage,
-        label: logoLabel.trim(),
-        is_selected: markUploadedAsSelected,
-      });
-      setLogoFile(null);
-      setLogoLabel("");
-      setMarkUploadedAsSelected(true);
-      if (logoFileInputRef.current) {
-        logoFileInputRef.current.value = "";
-      }
-      await loadLogos();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to upload logo.");
-    } finally {
-      setIsUploadingLogo(false);
-    }
+    await uploadClubLogo(selectedClubId, payload);
+    await loadLogos();
   };
 
   const handleSelectLogo = async (logoId: number) => {
     if (!selectedClubId) {
-      return;
+      throw new Error("Select a club before choosing a logo.");
     }
-    setErrorMessage(null);
-    setSuccessMessage(null);
-    try {
-      await updateClubLogo(selectedClubId, logoId, { is_selected: true });
-      await loadLogos();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to select logo.");
-    }
+    await updateClubLogo(selectedClubId, logoId, { is_selected: true });
+    await loadLogos();
   };
 
   const handleDeleteLogo = async (logoId: number) => {
     if (!selectedClubId) {
-      return;
+      throw new Error("Select a club before deleting a logo.");
     }
-    setErrorMessage(null);
-    setSuccessMessage(null);
-    try {
-      await deleteClubLogo(selectedClubId, logoId);
-      await loadLogos();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to delete logo.");
-    }
+    await deleteClubLogo(selectedClubId, logoId);
+    await loadLogos();
   };
 
   return (
     <ClubAdminLayout title={t("clubProfileTitle")} subtitle={t("clubProfileSubtitle")}>
       {isLoading ? (
-        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       ) : !selectedClubId ? (
         <EmptyState title={t("clubProfileTitle")} description={t("selectClubPlaceholder")} />
       ) : (
@@ -324,136 +266,27 @@ export default function ClubAdminSettingsPage() {
                 </Button>
               </div>
             </form>
-          </section>
 
-          <section className="rounded-[var(--radius-card)] border border-border bg-card p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-foreground">{t("logoSectionTitle")}</h2>
-            <p className="mt-1 text-sm text-muted">{t("logoSectionSubtitle")}</p>
-
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <div className="space-y-2 md:col-span-2">
-                <label className="text-sm font-medium text-foreground">{t("logoLabelInputLabel")}</label>
-                <Input
-                  value={logoLabel}
-                  onChange={(event) => setLogoLabel(event.target.value)}
-                  placeholder={t("logoLabelPlaceholder")}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">{t("logoUsageLabel")}</label>
-                <Select value={logoUsage} onValueChange={(value) => setLogoUsage(value as LogoUsageType)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="general">{t("logoUsageGeneral")}</SelectItem>
-                    <SelectItem value="invoice">{t("logoUsageInvoice")}</SelectItem>
-                    <SelectItem value="print">{t("logoUsagePrint")}</SelectItem>
-                    <SelectItem value="digital">{t("logoUsageDigital")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">{t("markLogoSelectedLabel")}</label>
-                <label className="inline-flex items-center gap-2 text-sm text-foreground">
-                  <input
-                    type="checkbox"
-                    checked={markUploadedAsSelected}
-                    onChange={(event) => setMarkUploadedAsSelected(event.target.checked)}
-                  />
-                  {t("markLogoSelectedLabel")}
-                </label>
-              </div>
-            </div>
-
-            <input
-              ref={logoFileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(event) => setLogoFile(event.target.files?.[0] ?? null)}
-            />
-
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Button type="button" variant="outline" onClick={() => logoFileInputRef.current?.click()}>
-                {t("chooseLogoFileAction")}
-              </Button>
-              <Button type="button" onClick={handleUploadLogo} disabled={!logoFile || isUploadingLogo}>
-                {isUploadingLogo ? t("savingAction") : t("uploadLogoAction")}
-              </Button>
-            </div>
-
-            {logoFile ? (
-              <p className="mt-2 text-xs text-muted">
-                {t("selectedFileLabel")}: {logoFile.name} ({formatFileSize(logoFile.size)})
+            {successMessage ? (
+              <p className="banner-success mt-4 rounded-[var(--radius-form)] border px-3 py-2 text-sm">
+                {successMessage}
               </p>
             ) : null}
-
-            {isLoadingLogos ? (
-              <p className="mt-4 text-sm text-muted">{t("loadingSubtitle")}</p>
-            ) : clubLogos.length === 0 ? (
-              <p className="mt-4 text-sm text-muted">{t("logoEmptyState")}</p>
-            ) : (
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {clubLogos.map((logo) => (
-                  <article key={logo.id} className="rounded-[var(--radius-card)] border border-border p-3">
-                    <div className="flex items-start gap-3">
-                      {logo.content_url ? (
-                        <Image
-                          src={logo.content_url}
-                          alt={logo.label || logo.file_name}
-                          width={64}
-                          height={64}
-                          className="h-16 w-16 rounded object-contain"
-                        />
-                      ) : (
-                        <div className="flex h-16 w-16 items-center justify-center rounded bg-secondary text-xs text-muted">
-                          {t("noPreviewAvailable")}
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1 text-xs text-muted">
-                        <p className="truncate font-medium text-foreground">
-                          {logo.label || logo.file_name}
-                        </p>
-                        <p>
-                          {t("logoUsageLabel")}: {usageLabelMap[logo.usage_type]}
-                        </p>
-                        <p>{formatFileSize(logo.file_size)}</p>
-                        {logo.is_selected ? (
-                          <p className="font-medium text-success">{t("logoSelectedBadge")}</p>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {!logo.is_selected ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleSelectLogo(logo.id)}
-                        >
-                          {t("selectLogoAction")}
-                        </Button>
-                      ) : null}
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleDeleteLogo(logo.id)}
-                      >
-                        {t("deleteAction")}
-                      </Button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
+            {errorMessage ? (
+              <p className="banner-danger mt-4 rounded-[var(--radius-form)] border px-3 py-2 text-sm">
+                {errorMessage}
+              </p>
+            ) : null}
           </section>
 
-          {successMessage ? <p className="text-sm text-success">{successMessage}</p> : null}
-          {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+          <BrandingLogosManager
+            logos={clubLogos}
+            isLoading={isLoadingLogos}
+            loadError={logosLoadError}
+            onUpload={handleUploadLogo}
+            onSelect={handleSelectLogo}
+            onDelete={handleDeleteLogo}
+          />
         </div>
       )}
     </ClubAdminLayout>

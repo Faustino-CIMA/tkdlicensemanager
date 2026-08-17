@@ -287,7 +287,7 @@ export type LtfAdminOverviewResponse = {
 };
 
 export function getClubs() {
-  return apiRequest<Club[]>("/api/clubs/");
+  return apiRequest<Club[] | PaginatedResponse<Club>>("/api/clubs/").then(unwrapListResponse);
 }
 
 export function getClub(id: number) {
@@ -607,6 +607,12 @@ export function updateMemberGrade(
   return apiRequest<GradeHistoryEntry>(`/api/members/${memberId}/grade-history/${historyId}/`, {
     method: "PATCH",
     body: JSON.stringify(input),
+  });
+}
+
+export function deleteMemberGrade(memberId: number, historyId: number) {
+  return apiRequest<void>(`/api/members/${memberId}/grade-history/${historyId}/`, {
+    method: "DELETE",
   });
 }
 

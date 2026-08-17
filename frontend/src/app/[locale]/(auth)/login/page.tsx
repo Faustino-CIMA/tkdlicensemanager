@@ -64,75 +64,80 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background px-6 py-10">
-      <div className="w-full max-w-md rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-8 text-[var(--surface-foreground)] shadow-sm">
-        <div className="flex flex-col items-center text-center">
-          <Image
-            src="/ltf-logo.svg"
-            alt="LTF"
-            width={160}
-            height={48}
-            className="h-10 w-auto"
-            priority
-          />
-          <h1 className="mt-6 text-2xl font-semibold tracking-tight text-[var(--foreground)]">
-            {t("loginTitle")}
-          </h1>
-          <p className="mt-2 max-w-sm text-sm leading-relaxed text-[var(--muted)]">{t("loginSubtitle")}</p>
+    <main className="grid min-h-screen lg:grid-cols-2">
+      <section className="relative hidden overflow-hidden bg-[oklch(22%_0.06_232)] px-12 py-16 text-white lg:flex lg:flex-col lg:justify-between">
+        <div className="pointer-events-none absolute -right-16 top-16 size-72 rounded-full bg-[oklch(54%_0.13_232_/_0.35)] blur-3xl" />
+        <div className="pointer-events-none absolute -left-10 bottom-10 size-64 rounded-full bg-[oklch(54%_0.19_25_/_0.22)] blur-3xl" />
+        <div className="relative">
+          <div className="inline-flex items-center gap-3">
+            <div className="flex size-12 items-center justify-center overflow-hidden rounded-[var(--radius-control)] bg-white/10">
+              <Image src="/ltf-logo.svg" alt="LTF" width={120} height={36} className="h-7 w-auto" priority />
+            </div>
+            <p className="text-sm font-semibold tracking-wide">Luxembourg Taekwondo Federation</p>
+          </div>
+          <h1 className="mt-16 max-w-md text-4xl font-semibold leading-tight tracking-tight">{t("brandTitle")}</h1>
+          <p className="mt-4 max-w-md text-base leading-relaxed text-white/75">{t("brandSubtitle")}</p>
         </div>
+        <p className="relative text-sm text-white/55">{t("brandFooter")}</p>
+      </section>
 
-        <form className="mt-8 space-y-5" onSubmit={onSubmit} noValidate>
-          <div className="space-y-2 text-left">
-            <label className="text-sm font-medium text-[var(--foreground)]" htmlFor="login-username">
-              {t("username")}
-            </label>
-            <Input
-              id="login-username"
-              name="username"
-              autoComplete="username"
-              placeholder="john.doe"
-              disabled={isSubmitting}
-            />
-            {fieldErrors.username ? (
-              <p className="text-sm text-destructive">{fieldErrors.username}</p>
-            ) : null}
+      <section className="flex items-center justify-center bg-background px-6 py-16">
+        <div className="app-panel w-full max-w-md p-8">
+          <div className="lg:hidden">
+            <Image src="/ltf-logo.svg" alt="LTF" width={140} height={42} className="h-9 w-auto" priority />
           </div>
+          <h2 className="mt-2 text-title text-foreground lg:mt-0">{t("loginTitle")}</h2>
+          <p className="mt-2 text-sm leading-relaxed text-muted">{t("loginSubtitle")}</p>
 
-          <div className="space-y-2 text-left">
-            <label className="text-sm font-medium text-[var(--foreground)]" htmlFor="login-password">
-              {t("password")}
-            </label>
-            <Input
-              id="login-password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              placeholder="••••••••"
-              disabled={isSubmitting}
-            />
-            {fieldErrors.password ? (
-              <p className="text-sm text-destructive">{fieldErrors.password}</p>
+          <form className="mt-8 space-y-5" onSubmit={onSubmit} noValidate>
+            <div className="space-y-2 text-left">
+              <label className="text-sm font-medium text-foreground" htmlFor="login-username">
+                {t("username")}
+              </label>
+              <Input
+                id="login-username"
+                name="username"
+                autoComplete="username"
+                placeholder="john.doe"
+                disabled={isSubmitting}
+              />
+              {fieldErrors.username ? <p className="text-sm text-destructive">{fieldErrors.username}</p> : null}
+            </div>
+
+            <div className="space-y-2 text-left">
+              <label className="text-sm font-medium text-foreground" htmlFor="login-password">
+                {t("password")}
+              </label>
+              <Input
+                id="login-password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                placeholder="••••••••"
+                disabled={isSubmitting}
+              />
+              {fieldErrors.password ? <p className="text-sm text-destructive">{fieldErrors.password}</p> : null}
+            </div>
+
+            {errorMessage ? <p className="text-center text-sm text-destructive">{errorMessage}</p> : null}
+            {showVerifyLink ? (
+              <p className="text-center text-sm text-muted">
+                {t("verifyPrompt")}{" "}
+                <Link
+                  className="font-medium text-foreground underline-offset-4 hover:underline"
+                  href={`/${locale}/verify-email`}
+                >
+                  {t("verifyLink")}
+                </Link>
+              </p>
             ) : null}
-          </div>
 
-          {errorMessage ? <p className="text-center text-sm text-destructive">{errorMessage}</p> : null}
-          {showVerifyLink ? (
-            <p className="text-center text-sm text-[var(--muted)]">
-              {t("verifyPrompt")}{" "}
-              <Link
-                className="font-medium text-[var(--foreground)] underline-offset-4 hover:underline"
-                href={`/${locale}/verify-email`}
-              >
-                {t("verifyLink")}
-              </Link>
-            </p>
-          ) : null}
-
-          <Button className="w-full text-base font-semibold" type="submit" disabled={isSubmitting}>
-            {isSubmitting ? t("loading") : t("submit")}
-          </Button>
-        </form>
-      </div>
+            <Button className="w-full text-base font-semibold" type="submit" disabled={isSubmitting}>
+              {isSubmitting ? t("loading") : t("submit")}
+            </Button>
+          </form>
+        </div>
+      </section>
     </main>
   );
 }

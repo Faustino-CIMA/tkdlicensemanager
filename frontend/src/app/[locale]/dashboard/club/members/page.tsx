@@ -3,14 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Pencil, Trash2, X } from "lucide-react";
-import { Radio, RadioGroup } from "@heroui/react";
+import { CircleAlert, Trash2, X } from "lucide-react";
 
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
-import { useClubSelection } from "@/components/club-selection-provider";
+import { resolveAssignedClubId, useClubSelection } from "@/components/club-selection-provider";
 import { Button } from "@/components/ui/button";
+import { FilterPills } from "@/components/ui/filter-pills";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -110,6 +110,7 @@ export default function ClubAdminMembersPage() {
   const [currentRole, setCurrentRole] = useState<string | null>(null);
   const [pendingRowStatusMember, setPendingRowStatusMember] = useState<Member | null>(null);
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
+  const [actionsHintOpen, setActionsHintOpen] = useState(false);
   const [bulkStatusBusy, setBulkStatusBusy] = useState(false);
   const [licenseGapFilterIds, setLicenseGapFilterIds] = useState<number[] | null>(null);
   const [showLicenseGapMessage, setShowLicenseGapMessage] = useState(false);
@@ -189,9 +190,9 @@ export default function ClubAdminMembersPage() {
         active: activeCountRes.count,
         inactive: inactiveCountRes.count,
       });
-      if (clubsResponse.length > 0 && !selectedClubId) {
-        const firstClubId = clubsResponse[0].id;
-        setSelectedClubId(firstClubId);
+      const assignedClubId = resolveAssignedClubId(clubsResponse, selectedClubId);
+      if (assignedClubId !== selectedClubId) {
+        setSelectedClubId(assignedClubId);
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to load members.");
@@ -696,130 +697,29 @@ export default function ClubAdminMembersPage() {
             </div>
 
             <div className="min-w-0 flex-1 border-t border-[var(--border)] pt-4 sm:border-t-0 sm:pt-0">
-              <RadioGroup
-                isDisabled={!statusFilterHydrated}
-                aria-label={t("membersStatusFilterAriaLabel")}
-                className="radio-group flex w-full min-w-0 flex-row flex-wrap gap-2"
-                orientation="horizontal"
+              <FilterPills
+                ariaLabel={t("membersStatusFilterAriaLabel")}
+                disabled={!statusFilterHydrated}
                 value={memberStatusFilter}
-                onChange={(value) => {
-                  if (isMemberStatusFilter(value)) {
-                    setMemberStatusFilter(value);
-                  }
-                }}
-              >
-                <Radio
-                  value="all"
-                  className={(state) =>
-                    [
-                      "flex min-h-[var(--control-height)] min-w-0 flex-1 cursor-pointer flex-row items-center gap-3 rounded-[var(--radius-card)] border px-3 py-2 shadow-sm outline-none transition-[background-color,border-color,box-shadow] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]",
-                      state.isSelected
-                        ? "border-[var(--accent)] bg-[color-mix(in_oklch,var(--accent)_16%,var(--surface))]"
-                        : "border-[var(--border)] bg-[var(--surface-secondary)]",
-                    ].join(" ")
-                  }
-                >
-                  {({ isSelected }) => (
-                    <>
-                      <span
-                        aria-hidden="true"
-                        className={[
-                          "flex size-4 shrink-0 items-center justify-center rounded-full border-2",
-                          isSelected
-                            ? "border-[var(--accent)] bg-[var(--accent)]"
-                            : "border-[var(--border)] bg-[var(--surface)]",
-                        ].join(" ")}
-                      >
-                        {isSelected ? (
-                          <span className="size-2 rounded-full bg-[var(--accent-foreground)]" />
-                        ) : null}
-                      </span>
-                      <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-left">
-                        <span className="text-sm font-semibold text-[var(--foreground)]">
-                          {t("filterAllTitle")}
-                        </span>
-                        <span className="text-xs text-[var(--muted)]">
-                          {t("filterAllSubtitle", { count: memberFacetCounts.all })}
-                        </span>
-                      </div>
-                    </>
-                  )}
-                </Radio>
-                <Radio
-                  value="active"
-                  className={(state) =>
-                    [
-                      "flex min-h-[var(--control-height)] min-w-0 flex-1 cursor-pointer flex-row items-center gap-3 rounded-[var(--radius-card)] border px-3 py-2 shadow-sm outline-none transition-[background-color,border-color,box-shadow] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]",
-                      state.isSelected
-                        ? "border-[var(--accent)] bg-[color-mix(in_oklch,var(--accent)_16%,var(--surface))]"
-                        : "border-[var(--border)] bg-[var(--surface-secondary)]",
-                    ].join(" ")
-                  }
-                >
-                  {({ isSelected }) => (
-                    <>
-                      <span
-                        aria-hidden="true"
-                        className={[
-                          "flex size-4 shrink-0 items-center justify-center rounded-full border-2",
-                          isSelected
-                            ? "border-[var(--accent)] bg-[var(--accent)]"
-                            : "border-[var(--border)] bg-[var(--surface)]",
-                        ].join(" ")}
-                      >
-                        {isSelected ? (
-                          <span className="size-2 rounded-full bg-[var(--accent-foreground)]" />
-                        ) : null}
-                      </span>
-                      <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-left">
-                        <span className="text-sm font-semibold text-[var(--foreground)]">
-                          {t("filterActiveTitle")}
-                        </span>
-                        <span className="text-xs text-[var(--muted)]">
-                          {t("filterActiveSubtitle", { count: memberFacetCounts.active })}
-                        </span>
-                      </div>
-                    </>
-                  )}
-                </Radio>
-                <Radio
-                  value="inactive"
-                  className={(state) =>
-                    [
-                      "flex min-h-[var(--control-height)] min-w-0 flex-1 cursor-pointer flex-row items-center gap-3 rounded-[var(--radius-card)] border px-3 py-2 shadow-sm outline-none transition-[background-color,border-color,box-shadow] focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]",
-                      state.isSelected
-                        ? "border-[var(--accent)] bg-[color-mix(in_oklch,var(--accent)_16%,var(--surface))]"
-                        : "border-[var(--border)] bg-[var(--surface-secondary)]",
-                    ].join(" ")
-                  }
-                >
-                  {({ isSelected }) => (
-                    <>
-                      <span
-                        aria-hidden="true"
-                        className={[
-                          "flex size-4 shrink-0 items-center justify-center rounded-full border-2",
-                          isSelected
-                            ? "border-[var(--accent)] bg-[var(--accent)]"
-                            : "border-[var(--border)] bg-[var(--surface)]",
-                        ].join(" ")}
-                      >
-                        {isSelected ? (
-                          <span className="size-2 rounded-full bg-[var(--accent-foreground)]" />
-                        ) : null}
-                      </span>
-                      <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-left">
-                        <span className="text-sm font-semibold text-[var(--foreground)]">
-                          {t("filterInactiveTitle")}
-                        </span>
-                        <span className="text-xs text-[var(--muted)]">
-                          {t("filterInactiveSubtitle", { count: memberFacetCounts.inactive })}
-                        </span>
-                      </div>
-                    </>
-                  )}
-                </Radio>
-              </RadioGroup>
+                onChange={setMemberStatusFilter}
+                options={[
+                  {
+                    value: "all",
+                    title: t("filterAllTitle"),
+                    count: memberFacetCounts.all,
+                  },
+                  {
+                    value: "active",
+                    title: t("filterActiveTitle"),
+                    count: memberFacetCounts.active,
+                  },
+                  {
+                    value: "inactive",
+                    title: t("filterInactiveTitle"),
+                    count: memberFacetCounts.inactive,
+                  },
+                ]}
+              />
             </div>
           </div>
 
@@ -837,73 +737,64 @@ export default function ClubAdminMembersPage() {
             </div>
           ) : null}
 
-          {canManageMembers ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <Select
-                value=""
-                onValueChange={(value) => {
-                  if (value === "create") {
-                    startCreate();
-                  }
-                  if (value === "import") {
-                    router.push(`/${locale}/dashboard/club/members/import`);
-                  }
-                }}
-              >
-                <SelectTrigger className="min-w-[11rem]" aria-label={t("membersMenuLabel")}>
-                  <SelectValue placeholder={t("membersMenuLabel")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="create">{t("createMember")}</SelectItem>
-                  <SelectItem value="import">{importT("importMembers")}</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Select
-                value=""
-                onValueChange={(value) => {
-                  if (value === "delete") {
-                    openBatchDeletePage();
-                  }
-                  if (value === "print-cards") {
-                    openQuickPrintPage();
-                  }
-                  if (value === "order-license") {
-                    openOrderPage();
-                  }
-                  if (value === "change-status") {
-                    if (selectedIds.length > 0) {
-                      setBulkStatusOpen(true);
-                    }
-                  }
-                }}
-              >
-                <SelectTrigger className="min-w-[11rem]" aria-label={common("batchActionsLabel")}>
-                  <SelectValue placeholder={common("batchActionsLabel")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="delete" disabled={selectedIds.length === 0}>
-                    {common("batchDeleteLabel")}
-                  </SelectItem>
-                  <SelectItem value="print-cards" disabled={selectedIds.length === 0 || !selectedClubId}>
-                    {t("actionPrintCards")}
-                  </SelectItem>
-                  <SelectItem value="order-license" disabled={selectedIds.length === 0}>
-                    {t("actionOrderLicense")}
-                  </SelectItem>
-                  <SelectItem value="change-status" disabled={selectedIds.length === 0}>
-                    {t("actionChangeStatus")}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          ) : null}
-
           <div className="flex flex-wrap items-center justify-between gap-4">
             {canManageMembers ? (
-              <div className="min-h-[var(--control-height)] text-sm text-[var(--muted)]">
+              <div className="flex min-h-[var(--control-height)] flex-wrap items-center gap-3">
+                <Select
+                  value=""
+                  onValueChange={(value) => {
+                    if (value === "create") {
+                      startCreate();
+                    }
+                    if (value === "import") {
+                      router.push(`/${locale}/dashboard/club/members/import`);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="min-w-[11rem]" aria-label={t("membersMenuLabel")}>
+                    <SelectValue placeholder={t("membersMenuLabel")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="create">{t("createMember")}</SelectItem>
+                    <SelectItem value="import">{importT("importMembers")}</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value=""
+                  disabled={selectedIds.length === 0}
+                  onValueChange={(value) => {
+                    if (value === "delete") {
+                      openBatchDeletePage();
+                    }
+                    if (value === "print-cards") {
+                      openQuickPrintPage();
+                    }
+                    if (value === "order-license") {
+                      openOrderPage();
+                    }
+                    if (value === "change-status") {
+                      if (selectedIds.length > 0) {
+                        setBulkStatusOpen(true);
+                      }
+                    }
+                  }}
+                >
+                  <SelectTrigger className="min-w-[11rem]" aria-label={common("batchActionsLabel")}>
+                    <SelectValue placeholder={common("batchActionsLabel")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="delete">{common("batchDeleteLabel")}</SelectItem>
+                    <SelectItem value="print-cards" disabled={!selectedClubId}>
+                      {t("actionPrintCards")}
+                    </SelectItem>
+                    <SelectItem value="order-license">{t("actionOrderLicense")}</SelectItem>
+                    <SelectItem value="change-status">{t("actionChangeStatus")}</SelectItem>
+                  </SelectContent>
+                </Select>
+
                 {selectedIds.length > 0 ? (
-                  <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-3 text-sm text-[var(--muted)]">
                     <span className="font-medium text-[var(--foreground)]">
                       {t("selectedMembersCountLabel", { count: selectedIds.length })}
                     </span>
@@ -921,7 +812,26 @@ export default function ClubAdminMembersPage() {
                     </button>
                   </div>
                 ) : (
-                  <span className="text-[var(--muted)]">{t("membersSelectionHintShort")}</span>
+                  <div className="group relative">
+                    <button
+                      type="button"
+                      className="inline-flex h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] items-center justify-center rounded-[var(--radius-form)] text-muted transition-colors hover:bg-secondary hover:text-foreground"
+                      aria-label={t("membersSelectionHintAriaLabel")}
+                      aria-expanded={actionsHintOpen}
+                      onClick={() => setActionsHintOpen((open) => !open)}
+                      onBlur={() => setActionsHintOpen(false)}
+                    >
+                      <CircleAlert className="h-4 w-4" />
+                    </button>
+                    <span
+                      role="tooltip"
+                      className={`absolute left-0 top-full z-20 mt-2 w-max max-w-xs rounded-[var(--radius-form)] border border-border bg-surface px-3 py-2 text-sm text-muted shadow-[var(--shadow-card)] ${
+                        actionsHintOpen ? "visible" : "invisible group-hover:visible group-focus-within:visible"
+                      }`}
+                    >
+                      {t("membersSelectionHintShort")}
+                    </span>
+                  </div>
                 )}
               </div>
             ) : (
@@ -948,7 +858,7 @@ export default function ClubAdminMembersPage() {
         </div>
 
         {isLoading ? (
-          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
         ) : members.length === 0 ? (
           <EmptyState title={t("noResultsTitle")} description={t("noMembersResultsSubtitle")} />
         ) : (
@@ -1028,15 +938,12 @@ export default function ClubAdminMembersPage() {
                     );
                   }
                   return (
-                    <Button
+                    <button
                       type="button"
-                      variant="outline"
                       disabled={isUpdating}
                       aria-label={t("actionChangeStatus")}
-                      className={`min-w-[5.5rem] text-xs font-semibold ${
-                        member.is_active
-                          ? "border-[var(--border)] bg-[color:color-mix(in_oklab,var(--success)_22%,white)] text-[color:color-mix(in_oklab,var(--success)_70%,black)] hover:opacity-80"
-                          : "border-[var(--border)] bg-[color:color-mix(in_oklab,var(--default)_88%,white)] text-[var(--default-foreground)] hover:opacity-80"
+                      className={`inline-flex min-h-[var(--control-height)] min-w-[5.5rem] items-center justify-center rounded-[var(--radius-chip)] border px-2.5 text-xs font-semibold hover:opacity-80 ${
+                        member.is_active ? "badge-success" : "bg-secondary text-[var(--default-foreground)]"
                       } ${isUpdating ? "cursor-wait opacity-70" : ""}`}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1044,40 +951,33 @@ export default function ClubAdminMembersPage() {
                       }}
                     >
                       {member.is_active ? t("activeLabel") : t("inactiveLabel")}
-                    </Button>
+                    </button>
                   );
                 },
               },
-              {
-                key: "actions",
-                header: t("actionsLabel"),
-                render: (member) => (
-                  <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                    <Button
-                      variant="outline"
-                      className="h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] shrink-0 p-0"
-                      aria-label={t("editAction")}
-                      onClick={() =>
-                        router.push(
-                          `/${locale}/dashboard/club/members/${member.id}?edit=1`
-                        )
-                      }
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    {canManageMembers ? (
-                      <Button
-                        variant="destructive"
-                        className="h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] shrink-0 p-0"
-                        aria-label={t("deleteAction")}
-                        onClick={() => handleDelete(member)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    ) : null}
-                  </div>
-                ),
-              },
+              ...(canManageMembers
+                ? [
+                    {
+                      key: "actions",
+                      header: t("actionsLabel"),
+                      render: (member: Member) => (
+                        <div
+                          className="flex flex-wrap items-center gap-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Button
+                            variant="destructive"
+                            className="h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] shrink-0 p-0"
+                            aria-label={t("deleteAction")}
+                            onClick={() => handleDelete(member)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ),
+                    },
+                  ]
+                : []),
             ]}
             rows={members}
             onRowClick={(member) => router.push(`/${locale}/dashboard/club/members/${member.id}`)}

@@ -4519,3 +4519,19 @@ class PrintJobExecutionPipelineTests(TestCase):
                         metadata__print_job_id=job_id,
                     ).exists()
                 )
+
+
+class SeedCardPrintFontsTests(TestCase):
+    def test_seed_command_is_idempotent_and_creates_static_faces(self):
+        stdout = StringIO()
+        call_command("seed_card_print_fonts", stdout=stdout)
+        first_count = CardFontAsset.objects.filter(metadata__builtin=True).count()
+        self.assertGreaterEqual(first_count, 8)
+        self.assertTrue(
+            CardFontAsset.objects.filter(metadata__source_key="source-sans-3-400").exists()
+        )
+        call_command("seed_card_print_fonts", stdout=stdout)
+        self.assertEqual(
+            CardFontAsset.objects.filter(metadata__builtin=True).count(),
+            first_count,
+        )

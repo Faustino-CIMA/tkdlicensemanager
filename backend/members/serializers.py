@@ -2,9 +2,19 @@ from rest_framework import serializers
 
 from licenses.models import LicenseHistoryEvent
 
+from .grades import OFFICIAL_GRADE_SET
 from .models import Member
 from .models import GradePromotionHistory
 from .services import generate_next_ltf_license_id
+
+
+def _normalize_official_grade(value: str) -> str:
+    normalized = str(value or "").strip()
+    if not normalized:
+        raise serializers.ValidationError("to_grade is required.")
+    if normalized not in OFFICIAL_GRADE_SET:
+        raise serializers.ValidationError("Grade must be a standard belt rank.")
+    return normalized
 
 
 class MemberSerializer(serializers.ModelSerializer):
@@ -114,6 +124,14 @@ class MemberSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("LTF license ID must be unique.")
         return normalized_value
 
+    def validate_belt_rank(self, value):
+        normalized = str(value or "").strip()
+        if not normalized:
+            return ""
+        if normalized not in OFFICIAL_GRADE_SET:
+            raise serializers.ValidationError("Grade must be a standard belt rank.")
+        return normalized
+
     def create(self, validated_data):
         ltf_prefix = validated_data.pop("ltf_license_prefix", "LTF")
         if not str(validated_data.get("ltf_licenseid", "")).strip():
@@ -191,10 +209,7 @@ class GradePromotionCreateSerializer(serializers.Serializer):
     metadata = serializers.JSONField(required=False)
 
     def validate_to_grade(self, value):
-        normalized = value.strip()
-        if not normalized:
-            raise serializers.ValidationError("to_grade is required.")
-        return normalized
+        return _normalize_official_grade(value)
 
 
 class GradePromotionUpdateSerializer(serializers.Serializer):
@@ -207,10 +222,7 @@ class GradePromotionUpdateSerializer(serializers.Serializer):
     metadata = serializers.JSONField(required=False)
 
     def validate_to_grade(self, value):
-        normalized = value.strip()
-        if not normalized:
-            raise serializers.ValidationError("to_grade is required.")
-        return normalized
+        return _normalize_official_grade(value)
 
 
 class LicenseHistoryEventSerializer(serializers.ModelSerializer):

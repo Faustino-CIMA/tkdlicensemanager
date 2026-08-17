@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 
+import { useClubSelection } from "@/components/club-selection-provider";
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { ImportWizardPage } from "@/components/import/import-wizard-page";
 import { getClubs } from "@/lib/ltf-admin-api";
@@ -23,6 +24,7 @@ export default function LtfImportPage() {
   const [clubOptions, setClubOptions] = useState<ClubOption[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { selectedClubId } = useClubSelection();
 
   const defaultType = searchParams.get("type") === "members" ? "members" : "clubs";
 
@@ -92,7 +94,8 @@ export default function LtfImportPage() {
       <ImportWizardPage
         allowedTypes={["clubs", "members"]}
         defaultType={defaultType}
-        allowClubSelection
+        allowClubSelection={!selectedClubId}
+        fixedClubId={selectedClubId}
         clubOptions={clubOptions}
         fieldsByType={fieldsByType}
         backHrefByType={{

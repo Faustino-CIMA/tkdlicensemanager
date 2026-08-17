@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatDisplayDate } from "@/lib/date-display";
+import { useClubSelection } from "@/components/club-selection-provider";
 import {
   Club,
   License,
@@ -89,6 +90,7 @@ export default function LtfAdminMembersPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { selectedClubId } = useClubSelection();
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -100,6 +102,7 @@ export default function LtfAdminMembersPage() {
           page: currentPage,
           pageSize: Number(pageSize),
           q: searchQuery || undefined,
+          clubId: selectedClubId ?? undefined,
           isActive: true,
         }),
       ]);
@@ -118,11 +121,15 @@ export default function LtfAdminMembersPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, pageSize, searchQuery]);
+  }, [currentPage, pageSize, searchQuery, selectedClubId]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedClubId]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -401,7 +408,7 @@ export default function LtfAdminMembersPage() {
         </div>
 
         {isLoading ? (
-          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
         ) : groupedClubRows.length === 0 ? (
           <EmptyState title={t("noResultsTitle")} description={t("noMembersResultsSubtitle")} />
         ) : (

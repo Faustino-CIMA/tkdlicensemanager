@@ -216,7 +216,7 @@ export type LicenseRoleValue =
   | "fan";
 
 export function getClubs() {
-  return apiRequest<Club[]>("/api/clubs/");
+  return apiRequest<Club[] | PaginatedResponse<Club>>("/api/clubs/").then(unwrapListResponse);
 }
 
 export function updateClub(id: number, input: ClubInput) {
@@ -442,6 +442,12 @@ export function updateMemberGrade(
   return apiRequest<GradeHistoryEntry>(`/api/members/${memberId}/grade-history/${historyId}/`, {
     method: "PATCH",
     body: JSON.stringify(input),
+  });
+}
+
+export function deleteMemberGrade(memberId: number, historyId: number) {
+  return apiRequest<void>(`/api/members/${memberId}/grade-history/${historyId}/`, {
+    method: "DELETE",
   });
 }
 

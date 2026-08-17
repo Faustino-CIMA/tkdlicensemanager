@@ -404,7 +404,7 @@ export default function ClubQuickPrintPage() {
   if (isRoleLoading) {
     return (
       <ClubAdminLayout title={t("quickPrintTitle")} subtitle={t("quickPrintSubtitle")}>
-        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       </ClubAdminLayout>
     );
   }
@@ -436,7 +436,7 @@ export default function ClubQuickPrintPage() {
       {successMessage ? <p className="text-sm text-emerald-700">{successMessage}</p> : null}
 
       {isLoading ? (
-        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       ) : printableTemplates.length === 0 ? (
         <EmptyState title={t("quickPrintNoTemplateTitle")} description={t("quickPrintNoTemplateSubtitle")} />
       ) : (

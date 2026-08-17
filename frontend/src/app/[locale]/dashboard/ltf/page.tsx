@@ -1,9 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
+import { AlertTriangle, Building2, Clock3, IdCard, Users } from "lucide-react";
 
+import { ActionQueue } from "@/components/club-admin/action-queue";
 import { EntityTable } from "@/components/club-admin/entity-table";
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
@@ -12,15 +13,7 @@ import { Button } from "@/components/ui/button";
 import { formatDisplayDateTime } from "@/lib/date-display";
 import { LtfAdminOverviewResponse, getLtfAdminOverview } from "@/lib/ltf-admin-api";
 
-function getSeverityClasses(severity: "info" | "warning" | "critical") {
-  if (severity === "critical") {
-    return "badge-danger";
-  }
-  if (severity === "warning") {
-    return "badge-warning";
-  }
-  return "badge-info";
-}
+
 
 export default function LtfAdminOverviewPage() {
   const t = useTranslations("LtfAdmin");
@@ -84,13 +77,13 @@ export default function LtfAdminOverviewPage() {
       {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
       {isLoading ? (
-        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       ) : !overview ? (
         <EmptyState title={t("overviewEmptyTitle")} description={t("overviewEmptySubtitle")} />
       ) : (
         <div className="space-y-6">
-          <section className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] px-4 py-3 shadow-sm">
-            <p className="text-xs text-[var(--muted)]">
+          <section className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-meta">
               {lastRefreshAt
                 ? t("lastRefreshLabel", { time: formatDisplayDateTime(lastRefreshAt) })
                 : t("lastRefreshNever")}
@@ -101,48 +94,37 @@ export default function LtfAdminOverviewPage() {
           </section>
 
           <section className="grid gap-4 md:grid-cols-2 md:gap-5 xl:grid-cols-4">
-            <SummaryCard title={t("totalClubs")} value={String(overview.cards.total_clubs)} />
-            <SummaryCard title={t("activeMembers")} value={String(overview.cards.active_members)} />
-            <SummaryCard title={t("activeLicenses")} value={String(overview.cards.active_licenses)} />
-            <SummaryCard title={t("pendingLicenses")} value={String(overview.cards.pending_licenses)} />
-            <SummaryCard title={t("expiredLicenses")} value={String(overview.cards.expired_licenses)} />
-            <SummaryCard title={t("revokedLicenses")} value={String(overview.cards.revoked_licenses)} />
-            <SummaryCard title={t("expiringIn30Days")} value={String(overview.cards.expiring_in_30_days)} />
+            <SummaryCard title={t("totalClubs")} value={String(overview.cards.total_clubs)} icon={Building2} tone="accent" />
+            <SummaryCard title={t("activeMembers")} value={String(overview.cards.active_members)} icon={Users} tone="success" />
+            <SummaryCard title={t("activeLicenses")} value={String(overview.cards.active_licenses)} icon={IdCard} tone="success" />
+            <SummaryCard title={t("pendingLicenses")} value={String(overview.cards.pending_licenses)} icon={Clock3} tone="warning" />
+            <SummaryCard title={t("expiredLicenses")} value={String(overview.cards.expired_licenses)} icon={Clock3} tone="neutral" />
+            <SummaryCard title={t("revokedLicenses")} value={String(overview.cards.revoked_licenses)} icon={AlertTriangle} tone="danger" />
+            <SummaryCard title={t("expiringIn30Days")} value={String(overview.cards.expiring_in_30_days)} icon={AlertTriangle} tone="warning" />
             <SummaryCard
               title={t("membersWithoutValidLicense")}
               value={String(overview.cards.active_members_without_valid_license)}
+              icon={Users}
+              tone="danger"
             />
           </section>
 
-          <section className="space-y-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-[var(--foreground)]">{t("actionQueueTitle")}</h2>
-            {queueWithFindings.length === 0 ? (
-              <p className="text-sm text-muted">{t("actionQueueAllClear")}</p>
-            ) : (
-              <div className="space-y-2">
-                {queueWithFindings.map((item) => (
-                  <div
-                    key={item.key}
-                    className={`flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-form)] border px-3 py-3 ${getSeverityClasses(item.severity)}`}
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium">{actionLabelByKey(item.key)}</p>
-                      <p className="text-xs opacity-90">{t("actionQueueCountLabel", { count: item.count })}</p>
-                    </div>
-                    <Link
-                      className="inline-flex min-h-11 items-center justify-center rounded-[var(--radius-form)] border border-current px-4 text-xs font-semibold"
-                      href={`/${locale}${item.link.path}`}
-                    >
-                      {t("openAction")}
-                    </Link>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
+          <ActionQueue
+            title={t("actionQueueTitle")}
+            emptyLabel={t("actionQueueAllClear")}
+            countLabel={(count) => t("actionQueueCountLabel", { count })}
+            openLabel={t("openAction")}
+            items={queueWithFindings.map((item) => ({
+              id: item.key,
+              label: actionLabelByKey(item.key),
+              count: item.count,
+              severity: item.severity,
+              href: `/${locale}${item.link.path}`,
+            }))}
+          />
 
-          <section className="space-y-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-[var(--foreground)]">{t("topClubsTitle")}</h2>
+          <section className="space-y-3">
+            <h2 className="text-section text-foreground">{t("topClubsTitle")}</h2>
             {overview.top_clubs.length === 0 ? (
               <p className="text-sm text-muted">{t("topClubsEmpty")}</p>
             ) : (

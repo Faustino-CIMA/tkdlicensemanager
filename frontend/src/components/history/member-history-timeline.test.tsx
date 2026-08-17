@@ -2,6 +2,10 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 
 import { MemberHistoryTimeline } from "./member-history-timeline";
 
+jest.mock("next-intl", () => ({
+  useTranslations: () => (key: string) => key,
+}));
+
 describe("MemberHistoryTimeline", () => {
   const baseProps = {
     licenseTitle: "Licenses",
@@ -104,5 +108,79 @@ describe("MemberHistoryTimeline", () => {
     expect(onPromote).toHaveBeenCalledWith(
       expect.objectContaining({ to_grade: "1st Dan", created_by: "Club" })
     );
+  });
+
+  it("does not add unofficial history grades to the dropdown", () => {
+    render(
+      <MemberHistoryTimeline
+        {...baseProps}
+        onPromote={jest.fn(async () => {})}
+        addGradeAriaLabel="Add grade"
+        promoteToGradeLabel="New grade"
+        gradeHistory={[
+          {
+            id: 1,
+            member: 1,
+            club: 1,
+            examiner_user: null,
+            from_grade: "1st Kup",
+            to_grade: "DAN 1",
+            promotion_date: "2026-02-01",
+            exam_date: null,
+            proof_ref: "",
+            notes: "",
+            created_by: "Club",
+            metadata: {},
+            created_at: "2026-02-01T00:00:00Z",
+          },
+        ]}
+      />
+    );
+
+    fireEvent.click(screen.getByLabelText("Add grade"));
+    fireEvent.click(screen.getByRole("combobox", { name: "New grade" }));
+    expect(screen.queryByRole("option", { name: "DAN 1" })).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "1st Dan" })).toBeInTheDocument();
+  });
+
+  it("deletes the selected grade after confirmation", async () => {
+    const onDeleteGrade = jest.fn(async () => {});
+    render(
+      <MemberHistoryTimeline
+        {...baseProps}
+        onDeleteGrade={onDeleteGrade}
+        deleteGradeAriaLabel="Delete grade"
+        deleteGradeTitle="Delete grade"
+        deleteGradeDescription="You are about to delete this grade promotion."
+        deleteConfirmLabel="Delete"
+        cancelLabel="Cancel"
+        gradeHistory={[
+          {
+            id: 7,
+            member: 1,
+            club: 1,
+            examiner_user: null,
+            from_grade: "8th Kup",
+            to_grade: "7th Kup",
+            promotion_date: "2026-02-01",
+            exam_date: null,
+            proof_ref: "",
+            notes: "",
+            created_by: "Club",
+            metadata: {},
+            created_at: "2026-02-01T00:00:00Z",
+          },
+        ]}
+      />
+    );
+
+    fireEvent.click(screen.getByLabelText("Select grade 7th Kup"));
+    fireEvent.click(screen.getByLabelText("Delete grade"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    });
+
+    expect(onDeleteGrade).toHaveBeenCalledTimes(1);
+    expect(onDeleteGrade).toHaveBeenCalledWith(7);
   });
 });
