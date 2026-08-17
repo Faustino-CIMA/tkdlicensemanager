@@ -3,11 +3,11 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, CircleAlert } from "lucide-react";
 
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
-import { useClubSelection } from "@/components/club-selection-provider";
+import { resolveAssignedClubId, useClubSelection } from "@/components/club-selection-provider";
 import {
   License,
   LicenseType,
@@ -19,6 +19,8 @@ import {
 } from "@/lib/club-admin-api";
 import { formatDisplayDate } from "@/lib/date-display";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { FilterPills } from "@/components/ui/filter-pills";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Input } from "@/components/ui/input";
 import { apiRequest } from "@/lib/api";
@@ -30,6 +32,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PrinterProfile, getPrinterProfiles } from "@/lib/license-card-api";
+
+type LicenseStatusFilter = "all" | "active" | "pending" | "expired";
+
+/** Matches backend `API_PAGINATION_MAX_PAGE_SIZE`. */
+const LICENSES_LIST_PAGE_SIZE_CAP = 200;
 
 type MemberLicenseRow = {
   member: Member;
@@ -63,14 +70,34 @@ export default function ClubAdminLicensesPage() {
   const [expandedStateHydrated, setExpandedStateHydrated] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [licenseStatusFilter, setLicenseStatusFilter] = useState<LicenseStatusFilter>("all");
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState("25");
+  const [pageSize, setPageSize] = useState("50");
   const [totalCount, setTotalCount] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [actionsHintOpen, setActionsHintOpen] = useState(false);
+  const [licenseFacetCounts, setLicenseFacetCounts] = useState({
+    all: 0,
+    active: 0,
+    pending: 0,
+    expired: 0,
+  });
 
-  const pageSizeOptions = ["10", "25", "50", "100", "150", "200"];
+  const pageSizeOptions = ["50", "150", "300", "all"];
   const canManageLicenses = currentRole === "club_admin";
+  const statusFilterParam = licenseStatusFilter === "all" ? undefined : licenseStatusFilter;
+
+  const licensesListPageSize = useMemo(() => {
+    if (pageSize === "all") {
+      return Math.min(Math.max(totalCount, 1), LICENSES_LIST_PAGE_SIZE_CAP);
+    }
+    const n = Number(pageSize);
+    if (!Number.isFinite(n) || n <= 0) {
+      return 50;
+    }
+    return Math.min(n, LICENSES_LIST_PAGE_SIZE_CAP);
+  }, [pageSize, totalCount]);
 
   useEffect(() => {
     if (!canManageLicenses) {
@@ -114,9 +141,8 @@ export default function ClubAdminLicensesPage() {
     setErrorMessage(null);
     try {
       const clubsResponse = await getClubs();
-      let effectiveClubId = selectedClubId ?? null;
-      if (clubsResponse.length > 0 && !effectiveClubId) {
-        effectiveClubId = clubsResponse[0].id;
+      const effectiveClubId = resolveAssignedClubId(clubsResponse, selectedClubId);
+      if (effectiveClubId !== selectedClubId) {
         setSelectedClubId(effectiveClubId);
       }
 
@@ -127,17 +153,56 @@ export default function ClubAdminLicensesPage() {
         setLicenses([]);
         setMembers([]);
         setTotalCount(0);
+        setLicenseFacetCounts({ all: 0, active: 0, pending: 0, expired: 0 });
         return;
       }
 
-      const licensesResponse = await getLicensesPage({
-        page: currentPage,
-        pageSize: Number(pageSize),
-        clubId: effectiveClubId,
-        q: searchQuery || undefined,
-      });
+      const q = searchQuery || undefined;
+      const [licensesResponse, allCountRes, activeCountRes, pendingCountRes, expiredCountRes] =
+        await Promise.all([
+          getLicensesPage({
+            page: currentPage,
+            pageSize: licensesListPageSize,
+            clubId: effectiveClubId,
+            q,
+            status: statusFilterParam,
+          }),
+          getLicensesPage({
+            page: 1,
+            pageSize: 1,
+            clubId: effectiveClubId,
+            q,
+          }),
+          getLicensesPage({
+            page: 1,
+            pageSize: 1,
+            clubId: effectiveClubId,
+            q,
+            status: "active",
+          }),
+          getLicensesPage({
+            page: 1,
+            pageSize: 1,
+            clubId: effectiveClubId,
+            q,
+            status: "pending",
+          }),
+          getLicensesPage({
+            page: 1,
+            pageSize: 1,
+            clubId: effectiveClubId,
+            q,
+            status: "expired",
+          }),
+        ]);
       setLicenses(licensesResponse.results);
       setTotalCount(licensesResponse.count);
+      setLicenseFacetCounts({
+        all: allCountRes.count,
+        active: activeCountRes.count,
+        pending: pendingCountRes.count,
+        expired: expiredCountRes.count,
+      });
 
       const memberIds = Array.from(new Set(licensesResponse.results.map((license) => license.member)));
       if (memberIds.length > 0) {
@@ -157,7 +222,14 @@ export default function ClubAdminLicensesPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, pageSize, searchQuery, selectedClubId, setSelectedClubId]);
+  }, [
+    currentPage,
+    licensesListPageSize,
+    searchQuery,
+    selectedClubId,
+    setSelectedClubId,
+    statusFilterParam,
+  ]);
 
   useEffect(() => {
     loadData();
@@ -248,13 +320,16 @@ export default function ClubAdminLicensesPage() {
     [licenseTypes]
   );
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / Number(pageSize)));
+  const totalPages = Math.max(1, Math.ceil(totalCount / licensesListPageSize));
 
   const allLicenseIds = useMemo(() => licenses.map((license) => license.id), [licenses]);
   const allLicensesSelected =
     allLicenseIds.length > 0 &&
     allLicenseIds.every((licenseId) => selectedLicenseIds.includes(licenseId));
-  const hiddenSelectedCount = Math.max(selectedLicenseIds.length - allLicenseIds.length, 0);
+  const visibleSelectedCount = selectedLicenseIds.filter((licenseId) =>
+    allLicenseIds.includes(licenseId)
+  ).length;
+  const hiddenSelectedCount = Math.max(selectedLicenseIds.length - visibleSelectedCount, 0);
   const selectedQuickPrintPrinterProfileId = useMemo(() => {
     if (selectedQuickPrintPrinterProfileValue === NO_PRINTER_PROFILE_VALUE) {
       return null;
@@ -265,12 +340,7 @@ export default function ClubAdminLicensesPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedClubId, pageSize]);
-
-  useEffect(() => {
-    const validIds = new Set(allLicenseIds);
-    setSelectedLicenseIds((previous) => previous.filter((licenseId) => validIds.has(licenseId)));
-  }, [allLicenseIds]);
+  }, [searchQuery, selectedClubId, pageSize, licenseStatusFilter]);
 
   useEffect(() => {
     setExpandedStateHydrated(false);
@@ -436,135 +506,199 @@ export default function ClubAdminLicensesPage() {
     <ClubAdminLayout title={t("licensesTitle")} subtitle={t("licensesSubtitle")}>
       {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Input
-              className="w-full max-w-xs"
-              placeholder={t("searchLicensesPlaceholder")}
-              value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
-            />
-            <Select value={pageSize} onValueChange={setPageSize}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder={common("rowsPerPageLabel")} />
-              </SelectTrigger>
-              <SelectContent>
-                {pageSizeOptions.map((option) => (
-                  <SelectItem key={option} value={option}>
-                    {option === "all" ? common("rowsPerPageAll") : option}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={expandAllOnPage}
-              disabled={pagedMemberIds.length === 0 || allPagedExpanded}
-            >
-              {t("expandAllMembers")}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={collapseAllOnPage}
-              disabled={!hasExpandedOnPage}
-            >
-              {t("collapseAllMembers")}
-            </Button>
-            {canManageLicenses ? (
-              <>
-                <Select
-                  value={selectedQuickPrintPrinterProfileValue}
-                  onValueChange={setSelectedQuickPrintPrinterProfileValue}
-                >
-                  <SelectTrigger
-                    className="w-[220px]"
-                    aria-label={t("quickPrintEntryPrinterProfileLabel")}
-                  >
-                    <SelectValue placeholder={t("quickPrintEntryPrinterProfilePlaceholder")} />
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-end gap-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm">
+            <div className="flex min-w-[12rem] flex-1 flex-wrap items-end gap-3">
+              <div className="min-w-[10rem] flex-1">
+                <Input
+                  className="w-full max-w-xs"
+                  placeholder={t("searchLicensesPlaceholder")}
+                  aria-label={t("searchLicensesPlaceholder")}
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                />
+              </div>
+              <div>
+                <Select value={pageSize} onValueChange={setPageSize}>
+                  <SelectTrigger className="w-[150px]" aria-label={common("rowsPerPageLabel")}>
+                    <SelectValue placeholder={common("rowsPerPageLabel")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={NO_PRINTER_PROFILE_VALUE}>
-                      {t("quickPrintPrinterProfileNoneOption")}
-                    </SelectItem>
-                    {printerProfiles.map((profile) => (
-                      <SelectItem key={profile.id} value={String(profile.id)}>
-                        {profile.name}
+                    {pageSizeOptions.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option === "all" ? common("rowsPerPageAll") : option}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <Button
-                  variant="outline"
-                  disabled={!selectedClubId || selectedLicenseIds.length === 0}
-                  onClick={openQuickPrintPage}
-                >
-                  {t("quickPrintSelectedCardsAction")}
-                </Button>
-              </>
-            ) : null}
+              </div>
+            </div>
+
+            <div className="min-w-0 flex-1 border-t border-[var(--border)] pt-4 sm:border-t-0 sm:pt-0">
+              <FilterPills
+                ariaLabel={t("licensesStatusFilterAriaLabel")}
+                value={licenseStatusFilter}
+                onChange={setLicenseStatusFilter}
+                options={[
+                  { value: "all", title: t("filterAllTitle"), count: licenseFacetCounts.all },
+                  { value: "active", title: t("filterActiveTitle"), count: licenseFacetCounts.active },
+                  { value: "pending", title: t("filterPendingTitle"), count: licenseFacetCounts.pending },
+                  { value: "expired", title: t("filterExpiredTitle"), count: licenseFacetCounts.expired },
+                ]}
+              />
+            </div>
           </div>
-          {canManageLicenses ? (
-            <div className="space-y-1 text-xs text-muted">
-              <span className="font-medium text-foreground">
-                {t("quickPrintSelectedLicensesCountLabel", { count: selectedLicenseIds.length })}
-              </span>
-              {hiddenSelectedCount > 0 ? (
-                <span className="ml-2 font-medium text-warning">
-                  {t("quickPrintHiddenSelectedLicensesCountLabel", { count: hiddenSelectedCount })}
-                </span>
+
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex min-h-[var(--control-height)] flex-wrap items-center gap-3">
+              <Select
+                value=""
+                onValueChange={(value) => {
+                  if (value === "expand") {
+                    expandAllOnPage();
+                  }
+                  if (value === "collapse") {
+                    collapseAllOnPage();
+                  }
+                }}
+              >
+                <SelectTrigger className="min-w-[11rem]" aria-label={t("licensesMenuLabel")}>
+                  <SelectValue placeholder={t("licensesMenuLabel")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="expand" disabled={pagedMemberIds.length === 0 || allPagedExpanded}>
+                    {t("expandAllMembers")}
+                  </SelectItem>
+                  <SelectItem value="collapse" disabled={!hasExpandedOnPage}>
+                    {t("collapseAllMembers")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+
+              {canManageLicenses ? (
+                <>
+                  <Select
+                    value=""
+                    disabled={selectedLicenseIds.length === 0}
+                    onValueChange={(value) => {
+                      if (value === "print-cards") {
+                        openQuickPrintPage();
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="min-w-[11rem]" aria-label={common("batchActionsLabel")}>
+                      <SelectValue placeholder={common("batchActionsLabel")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="print-cards" disabled={!selectedClubId}>
+                        {t("actionPrintCards")}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={selectedQuickPrintPrinterProfileValue}
+                    onValueChange={setSelectedQuickPrintPrinterProfileValue}
+                  >
+                    <SelectTrigger
+                      className="min-w-[11rem]"
+                      aria-label={t("quickPrintEntryPrinterProfileLabel")}
+                    >
+                      <SelectValue placeholder={t("quickPrintEntryPrinterProfilePlaceholder")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_PRINTER_PROFILE_VALUE}>
+                        {t("quickPrintPrinterProfileNoneOption")}
+                      </SelectItem>
+                      {printerProfiles.map((profile) => (
+                        <SelectItem key={profile.id} value={String(profile.id)}>
+                          {profile.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
               ) : null}
-              {selectedLicenseIds.length > 0 ? (
-                <button
-                  type="button"
-                  className="ml-2 underline underline-offset-2 hover:text-foreground"
-                  onClick={clearSelectedLicenses}
-                >
-                  {t("clearSelection")}
-                </button>
+
+              {canManageLicenses && selectedLicenseIds.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-3 text-sm text-[var(--muted)]">
+                  <span className="font-medium text-[var(--foreground)]">
+                    {t("selectedMembersCountLabel", { count: selectedLicenseIds.length })}
+                  </span>
+                  {hiddenSelectedCount > 0 ? (
+                    <span className="font-medium text-warning">
+                      {t("hiddenSelectedMembersCountLabel", { count: hiddenSelectedCount })}
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="min-h-[var(--control-height)] rounded-[var(--radius-form)] px-2 text-sm font-medium text-[var(--accent)] underline-offset-4 hover:underline"
+                    onClick={clearSelectedLicenses}
+                  >
+                    {t("clearSelection")}
+                  </button>
+                </div>
+              ) : canManageLicenses ? (
+                <div className="group relative">
+                  <button
+                    type="button"
+                    className="inline-flex h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] items-center justify-center rounded-[var(--radius-form)] text-muted transition-colors hover:bg-secondary hover:text-foreground"
+                    aria-label={t("licensesSelectionHintAriaLabel")}
+                    aria-expanded={actionsHintOpen}
+                    onClick={() => setActionsHintOpen((open) => !open)}
+                    onBlur={() => setActionsHintOpen(false)}
+                  >
+                    <CircleAlert className="h-4 w-4" />
+                  </button>
+                  <span
+                    role="tooltip"
+                    className={`absolute left-0 top-full z-20 mt-2 w-max max-w-xs rounded-[var(--radius-form)] border border-border bg-surface px-3 py-2 text-sm text-muted shadow-[var(--shadow-card)] ${
+                      actionsHintOpen ? "visible" : "invisible group-hover:visible group-focus-within:visible"
+                    }`}
+                  >
+                    {t("licensesSelectionHintShort")}
+                  </span>
+                </div>
               ) : null}
             </div>
-          ) : null}
-          <div className="flex items-center gap-2 text-sm text-muted">
-            {t("pageLabel", { current: currentPage, total: totalPages })}
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-            >
-              {t("previousPage")}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-            >
-              {t("nextPage")}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--muted)]">
+              <span>{t("pageLabel", { current: currentPage, total: totalPages })}</span>
+              <Button
+                variant="outline"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              >
+                {t("previousPage")}
+              </Button>
+              <Button
+                variant="outline"
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              >
+                {t("nextPage")}
+              </Button>
+            </div>
           </div>
         </div>
 
         {isLoading ? (
-          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
         ) : memberRows.length === 0 ? (
           <EmptyState title={t("noResultsTitle")} description={t("noLicensesResultsSubtitle")} />
         ) : (
-          <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-card shadow-sm">
+          <div className="app-panel overflow-x-auto">
             <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
+              <thead className="border-b border-border bg-secondary/70 text-xs uppercase tracking-wide text-muted">
                 <tr>
                   {canManageLicenses ? (
                     <th className="w-10 px-4 py-3 font-medium">
-                      <input
-                        type="checkbox"
-                        aria-label={common("selectAllLabel")}
-                        checked={allLicensesSelected}
-                        onChange={toggleSelectAllLicenses}
-                      />
+                      <span className="inline-flex min-h-[var(--control-height)] min-w-[var(--control-height)] items-center justify-center">
+                        <Checkbox
+                          aria-label={common("selectAllLabel")}
+                          checked={allLicensesSelected}
+                          onCheckedChange={() => toggleSelectAllLicenses()}
+                        />
+                      </span>
                     </th>
                   ) : null}
                   <th className="w-10 px-4 py-3 font-medium" />
@@ -575,7 +709,7 @@ export default function ClubAdminLicensesPage() {
                   <th className="px-4 py-3 font-medium">{t("statusExpired")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody className="divide-y divide-border/80">
                 {memberRows.map((row) => {
                   const isExpanded = expandedMemberSet.has(row.member.id);
                   const memberName = `${row.member.first_name} ${row.member.last_name}`;
@@ -585,7 +719,7 @@ export default function ClubAdminLicensesPage() {
                   return (
                     <Fragment key={row.member.id}>
                       <tr
-                        className="cursor-pointer text-foreground hover:bg-secondary"
+                        className="h-[var(--table-row-height)] cursor-pointer text-foreground transition-colors hover:bg-[color-mix(in_oklab,var(--accent)_6%,white)]"
                         onClick={() => toggleMemberExpanded(row.member.id)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
@@ -612,9 +746,6 @@ export default function ClubAdminLicensesPage() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{memberName}</span>
-                            <span className="inline-flex items-center rounded-[var(--radius-form)] border border-border bg-secondary px-2 py-0.5 text-[11px] font-medium text-foreground">
-                              {row.allLicenses.length}
-                            </span>
                           </div>
                         </td>
                         <td className="px-4 py-3">{row.allLicenses.length}</td>
@@ -627,7 +758,7 @@ export default function ClubAdminLicensesPage() {
                           <td colSpan={canManageLicenses ? 7 : 6} className="px-6 py-3">
                             <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-card">
                               <table className="min-w-full text-left text-sm">
-                                <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
+                                <thead className="border-b border-border bg-secondary/70 text-xs uppercase tracking-wide text-muted">
                                   <tr>
                                     {canManageLicenses ? (
                                       <th className="w-10 px-4 py-2 font-medium">
@@ -640,17 +771,25 @@ export default function ClubAdminLicensesPage() {
                                     <th className="px-4 py-2 font-medium">{t("issuedAtLabel")}</th>
                                   </tr>
                                 </thead>
-                                <tbody className="divide-y divide-border">
+                                <tbody className="divide-y divide-border/80">
                                   {row.visibleLicenses.map((license) => (
-                                    <tr key={license.id} className="text-foreground">
+                                    <tr
+                                      key={license.id}
+                                      className="h-[var(--table-row-height)] text-foreground"
+                                    >
                                       {canManageLicenses ? (
                                         <td className="px-4 py-2">
-                                          <input
-                                            type="checkbox"
-                                            aria-label={common("selectRowLabel")}
-                                            checked={selectedLicenseIds.includes(license.id)}
-                                            onChange={() => toggleSelectLicense(license.id)}
-                                          />
+                                          <span
+                                            className="inline-flex min-h-[var(--control-height)] min-w-[var(--control-height)] items-center justify-center"
+                                            onClick={(event) => event.stopPropagation()}
+                                            onKeyDown={(event) => event.stopPropagation()}
+                                          >
+                                            <Checkbox
+                                              aria-label={common("selectRowLabel")}
+                                              checked={selectedLicenseIds.includes(license.id)}
+                                              onCheckedChange={() => toggleSelectLicense(license.id)}
+                                            />
+                                          </span>
                                         </td>
                                       ) : null}
                                       <td className="px-4 py-2">{license.year}</td>
@@ -659,7 +798,10 @@ export default function ClubAdminLicensesPage() {
                                           t("unknownLicenseType")}
                                       </td>
                                       <td className="px-4 py-2">
-                                        <StatusBadge label={getStatusLabel(license.status)} tone={getStatusTone(license.status)} />
+                                        <StatusBadge
+                                          label={getStatusLabel(license.status)}
+                                          tone={getStatusTone(license.status)}
+                                        />
                                       </td>
                                       <td className="px-4 py-2">{formatIssuedAt(license.issued_at)}</td>
                                     </tr>

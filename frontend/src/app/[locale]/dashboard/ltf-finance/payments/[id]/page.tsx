@@ -154,7 +154,7 @@ export default function LtfFinancePaymentDetailPage() {
   if (isLoading) {
     return (
       <LtfFinanceLayout title={t("paymentDetailTitle")} subtitle={t("paymentDetailSubtitle")}>
-        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       </LtfFinanceLayout>
     );
   }

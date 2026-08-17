@@ -1,11 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
+import { AlertTriangle, BadgeEuro, Receipt, ShoppingCart } from "lucide-react";
 
+import { ActionQueue } from "@/components/club-admin/action-queue";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
+import { StatBreakdown } from "@/components/club-admin/stat-breakdown";
 import { SummaryCard } from "@/components/club-admin/summary-card";
 import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { Button } from "@/components/ui/button";
@@ -17,18 +19,11 @@ import {
 
 const AUTO_REFRESH_INTERVAL_MS = 30000;
 
-function getSeverityClasses(severity: "info" | "warning" | "critical") {
-  if (severity === "critical") {
-    return "badge-danger";
-  }
-  if (severity === "warning") {
-    return "badge-warning";
-  }
-  return "badge-info";
-}
+
 
 export default function LtfFinanceDashboardPage() {
   const t = useTranslations("LtfFinance");
+  const common = useTranslations("Common");
   const locale = useLocale();
   const [overview, setOverview] = useState<LtfFinanceOverviewResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -135,13 +130,13 @@ export default function LtfFinanceDashboardPage() {
       {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
 
       {isLoading ? (
-        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       ) : !overview ? (
         <EmptyState title={t("overviewEmptyTitle")} description={t("overviewEmptySubtitle")} />
       ) : (
         <div className="space-y-5">
-          <section className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-border bg-card px-4 py-3 shadow-sm">
-            <p className="text-xs text-muted">
+          <section className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-meta">
               {lastRefreshAt
                 ? t("lastRefreshLabel", { time: formatDisplayDateTime(lastRefreshAt) })
                 : t("lastRefreshNever")}
@@ -157,18 +152,22 @@ export default function LtfFinanceDashboardPage() {
           </section>
 
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <SummaryCard title={t("ordersReceivedCountLabel")} value={String(overview.cards.received_orders)} />
-            <SummaryCard title={t("ordersDeliveredCountLabel")} value={String(overview.cards.delivered_orders)} />
-            <SummaryCard title={t("ordersCancelledCountLabel")} value={String(overview.cards.cancelled_orders)} />
-            <SummaryCard title={t("invoicesIssuedCountLabel")} value={String(overview.cards.issued_invoices_open)} />
-            <SummaryCard title={t("invoicesPaidCountLabel")} value={String(overview.cards.paid_invoices)} />
+            <SummaryCard title={t("ordersReceivedCountLabel")} value={String(overview.cards.received_orders)} icon={ShoppingCart} tone="accent" />
+            <SummaryCard title={t("ordersDeliveredCountLabel")} value={String(overview.cards.delivered_orders)} icon={ShoppingCart} tone="success" />
+            <SummaryCard title={t("ordersCancelledCountLabel")} value={String(overview.cards.cancelled_orders)} icon={AlertTriangle} tone="danger" />
+            <SummaryCard title={t("invoicesIssuedCountLabel")} value={String(overview.cards.issued_invoices_open)} icon={Receipt} tone="warning" />
+            <SummaryCard title={t("invoicesPaidCountLabel")} value={String(overview.cards.paid_invoices)} icon={Receipt} tone="success" />
             <SummaryCard
               title={t("outstandingAmountLabel")}
               value={`${overview.cards.outstanding_amount} ${overview.currency}`}
+              icon={BadgeEuro}
+              tone="danger"
             />
             <SummaryCard
               title={t("collectedThisMonthLabel")}
               value={`${overview.cards.collected_this_month_amount} ${overview.currency}`}
+              icon={BadgeEuro}
+              tone="success"
             />
             <SummaryCard
               title={t("pricingCoverageLabel")}
@@ -176,65 +175,54 @@ export default function LtfFinanceDashboardPage() {
               helper={t("pricingCoverageHelper", {
                 missing: overview.cards.pricing_coverage.missing_active_price,
               })}
+              icon={Receipt}
+              tone={overview.cards.pricing_coverage.missing_active_price > 0 ? "warning" : "success"}
             />
           </section>
 
-          <section className="space-y-3 rounded-[var(--radius-card)] border border-border bg-card p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-foreground">{t("actionQueueTitle")}</h2>
-            {queueWithFindings.length === 0 ? (
-              <p className="text-sm text-muted">{t("actionQueueAllClear")}</p>
-            ) : (
-              <div className="space-y-2">
-                {queueWithFindings.map((item) => (
-                  <div
-                    key={item.key}
-                    className={`flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-form)] border px-3 py-3 ${getSeverityClasses(item.severity)}`}
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium">{actionLabelByKey(item.key)}</p>
-                      <p className="text-xs opacity-90">{t("actionQueueCountLabel", { count: item.count })}</p>
-                    </div>
-                    <Link
-                      className="rounded-[var(--radius-form)] border border-current px-3 py-1 text-xs font-medium"
-                      href={`/${locale}${item.link.path}`}
-                    >
-                      {t("openAction")}
-                    </Link>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
+          <ActionQueue
+            title={t("actionQueueTitle")}
+            emptyLabel={t("actionQueueAllClear")}
+            countLabel={(count) => t("actionQueueCountLabel", { count })}
+            openLabel={t("openAction")}
+            items={queueWithFindings.map((item) => ({
+              id: item.key,
+              label: actionLabelByKey(item.key),
+              count: item.count,
+              severity: item.severity,
+              href: `/${locale}${item.link.path}`,
+            }))}
+          />
 
           <section className="grid gap-4 lg:grid-cols-2">
-            <article className="space-y-3 rounded-[var(--radius-card)] border border-border bg-card p-6 shadow-sm">
-              <h3 className="text-base font-semibold text-foreground">{t("ordersDistributionTitle")}</h3>
-              <div className="grid gap-2 text-sm text-foreground sm:grid-cols-2">
-                <p>{t("statusDraftLabel", { count: overview.distributions.orders_by_status.draft })}</p>
-                <p>{t("statusPendingLabel", { count: overview.distributions.orders_by_status.pending })}</p>
-                <p>{t("statusPaidLabel", { count: overview.distributions.orders_by_status.paid })}</p>
-                <p>
-                  {t("statusCancelledCombinedLabel", {
-                    count:
-                      overview.distributions.orders_by_status.cancelled +
-                      overview.distributions.orders_by_status.refunded,
-                  })}
-                </p>
-              </div>
-            </article>
-            <article className="space-y-3 rounded-[var(--radius-card)] border border-border bg-card p-6 shadow-sm">
-              <h3 className="text-base font-semibold text-foreground">{t("invoicesDistributionTitle")}</h3>
-              <div className="grid gap-2 text-sm text-foreground sm:grid-cols-2">
-                <p>{t("statusDraftLabel", { count: overview.distributions.invoices_by_status.draft })}</p>
-                <p>{t("statusIssuedLabel", { count: overview.distributions.invoices_by_status.issued })}</p>
-                <p>{t("statusPaidLabel", { count: overview.distributions.invoices_by_status.paid })}</p>
-                <p>{t("statusVoidLabel", { count: overview.distributions.invoices_by_status.void })}</p>
-              </div>
-            </article>
+            <StatBreakdown
+              title={t("ordersDistributionTitle")}
+              items={[
+                { label: common("statusDraft"), value: overview.distributions.orders_by_status.draft, tone: "neutral" },
+                { label: common("statusPending"), value: overview.distributions.orders_by_status.pending, tone: "warning" },
+                { label: common("statusPaid"), value: overview.distributions.orders_by_status.paid, tone: "success" },
+                {
+                  label: common("statusCancelled"),
+                  value:
+                    overview.distributions.orders_by_status.cancelled +
+                    overview.distributions.orders_by_status.refunded,
+                  tone: "danger",
+                },
+              ]}
+            />
+            <StatBreakdown
+              title={t("invoicesDistributionTitle")}
+              items={[
+                { label: common("statusDraft"), value: overview.distributions.invoices_by_status.draft, tone: "neutral" },
+                { label: common("statusIssued"), value: overview.distributions.invoices_by_status.issued, tone: "warning" },
+                { label: common("statusPaid"), value: overview.distributions.invoices_by_status.paid, tone: "success" },
+                { label: common("statusVoid"), value: overview.distributions.invoices_by_status.void, tone: "danger" },
+              ]}
+            />
           </section>
 
-          <section className="space-y-3 rounded-[var(--radius-card)] border border-border bg-card p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-foreground">{t("recentActivityTitle")}</h2>
+          <section className="space-y-3">
+            <h2 className="text-section text-foreground">{t("recentActivityTitle")}</h2>
             {overview.recent_activity.length === 0 ? (
               <p className="text-sm text-muted">{t("recentActivityEmpty")}</p>
             ) : (

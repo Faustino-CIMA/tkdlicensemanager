@@ -1,0 +1,25 @@
+OFFICIAL_GRADES = (
+    "10th Kup",
+    "9th Kup",
+    "8th Kup",
+    "7th Kup",
+    "6th Kup",
+    "5th Kup",
+    "4th Kup",
+    "3rd Kup",
+    "2nd Kup",
+    "1st Kup",
+    "1st Poom",
+    "2nd Poom",
+    "1st Dan",
+    "2nd Dan",
+    "3rd Dan",
+    "4th Dan",
+    "5th Dan",
+    "6th Dan",
+    "7th Dan",
+    "8th Dan",
+    "9th Dan",
+)
+
+OFFICIAL_GRADE_SET = frozenset(OFFICIAL_GRADES)

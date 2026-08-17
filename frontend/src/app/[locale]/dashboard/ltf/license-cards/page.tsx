@@ -274,7 +274,7 @@ export default function LtfAdminLicenseCardsPage() {
   if (isRoleLoading) {
     return (
       <LtfAdminLayout title={t("licenseCardsTitle")} subtitle={t("licenseCardsSubtitle")}>
-        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       </LtfAdminLayout>
     );
   }
@@ -312,7 +312,7 @@ export default function LtfAdminLicenseCardsPage() {
         </div>
 
         {isLoading ? (
-          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
         ) : filteredTemplates.length === 0 ? (
           <EmptyState
             title={t("licenseCardsEmptyTitle")}

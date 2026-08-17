@@ -32,6 +32,12 @@ type ProfilePhotoManagerLabels = {
   dragDropLabel: string;
   selectFileButton: string;
   cameraButton: string;
+  cameraCaptureButton?: string;
+  cameraCancelButton?: string;
+  cameraStarting?: string;
+  cameraUnavailable?: string;
+  cameraPermissionDenied?: string;
+  cameraStartError?: string;
   zoomLabel: string;
   backgroundColorLabel: string;
   removeBackgroundButton: string;
@@ -168,19 +174,35 @@ export function ProfilePhotoManager({
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [isStartingCamera, setIsStartingCamera] = useState(false);
 
   const handleCropComplete = useCallback((_area: Area, pixels: Area) => {
     setCroppedAreaPixels(pixels);
   }, []);
 
+  const stopCamera = useCallback(() => {
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraOpen(false);
+    setIsStartingCamera(false);
+  }, []);
+
   const sourceInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
   const workingObjectUrlRef = useRef<string | null>(null);
   const previewObjectUrlRef = useRef<string | null>(null);
   const storedPhotoObjectUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
+      cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = null;
       if (workingObjectUrlRef.current) {
         URL.revokeObjectURL(workingObjectUrlRef.current);
       }
@@ -192,6 +214,16 @@ export function ProfilePhotoManager({
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!isCameraOpen || !videoRef.current || !cameraStreamRef.current) {
+      return;
+    }
+    videoRef.current.srcObject = cameraStreamRef.current;
+    void videoRef.current.play().catch(() => {
+      setErrorMessage(labels.cameraStartError ?? "Unable to start the camera.");
+    });
+  }, [isCameraOpen, labels.cameraStartError]);
 
   useEffect(() => {
     const sources = [thumbnailUrl, imageUrl]
@@ -296,6 +328,7 @@ export function ProfilePhotoManager({
     setCrop({ x: 0, y: 0 });
     setZoom(1);
     setCroppedAreaPixels(null);
+    stopCamera();
     if (workingObjectUrlRef.current) {
       URL.revokeObjectURL(workingObjectUrlRef.current);
       workingObjectUrlRef.current = null;
@@ -332,6 +365,92 @@ export function ProfilePhotoManager({
       return;
     }
     hydrateFile(nextFile);
+  };
+
+  const startCamera = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      cameraInputRef.current?.click();
+      return;
+    }
+
+    setIsStartingCamera(true);
+    setErrorMessage(null);
+    try {
+      const constraintAttempts: MediaStreamConstraints[] = [
+        {
+          video: {
+            facingMode: { ideal: "user" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        },
+        { video: { facingMode: { ideal: "environment" } } },
+        { video: true },
+      ];
+
+      let stream: MediaStream | null = null;
+      let lastError: unknown;
+      for (const constraints of constraintAttempts) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+          break;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      if (!stream) {
+        throw lastError ?? new Error("Unable to start the camera.");
+      }
+
+      cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = stream;
+      setIsCameraOpen(true);
+    } catch (error) {
+      const denied =
+        error instanceof DOMException &&
+        (error.name === "NotAllowedError" || error.name === "PermissionDeniedError");
+      setErrorMessage(
+        denied
+          ? (labels.cameraPermissionDenied ??
+            "Camera access was blocked. Allow camera permission in the browser and try again.")
+          : (labels.cameraStartError ?? "Unable to start the camera.")
+      );
+    } finally {
+      setIsStartingCamera(false);
+    }
+  };
+
+  const capturePhoto = () => {
+    const video = videoRef.current;
+    if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
+      setErrorMessage(labels.cameraStartError ?? "Unable to start the camera.");
+      return;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      setErrorMessage(labels.cameraStartError ?? "Unable to start the camera.");
+      return;
+    }
+
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          setErrorMessage(labels.cameraStartError ?? "Unable to start the camera.");
+          return;
+        }
+        const file = new File([blob], `camera-${Date.now()}.jpg`, { type: "image/jpeg" });
+        hydrateFile(file);
+        stopCamera();
+      },
+      "image/jpeg",
+      0.92
+    );
   };
 
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
@@ -508,11 +627,37 @@ export function ProfilePhotoManager({
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => cameraInputRef.current?.click()}
+            disabled={isStartingCamera}
+            onClick={() => {
+              void startCamera();
+            }}
           >
-            {labels.cameraButton}
+            {isStartingCamera
+              ? (labels.cameraStarting ?? "Starting camera...")
+              : labels.cameraButton}
           </Button>
         </div>
+        {isCameraOpen ? (
+          <div className="mt-4 space-y-3">
+            <div className="relative overflow-hidden rounded-[var(--radius-card)] bg-[#0a0a0a]">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="mx-auto max-h-72 w-full bg-black object-contain"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" onClick={capturePhoto}>
+                {labels.cameraCaptureButton ?? "Take photo"}
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={stopCamera}>
+                {labels.cameraCancelButton ?? "Cancel camera"}
+              </Button>
+            </div>
+          </div>
+        ) : null}
         <input
           ref={sourceInputRef}
           type="file"
@@ -524,7 +669,7 @@ export function ProfilePhotoManager({
           ref={cameraInputRef}
           type="file"
           accept="image/*"
-          capture="environment"
+          capture="user"
           className="hidden"
           onChange={handleFileInput}
         />

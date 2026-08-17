@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
+import { useClubSelection } from "@/components/club-selection-provider";
 import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { Input } from "@/components/ui/input";
@@ -76,6 +77,7 @@ export default function LtfFinancePaymentsPage() {
   const pageSizeOptions = ["10", "25", "50", "100", "150", "200"];
   const expandedClubStorageKey = "ltf_finance_payments_expanded_clubs";
   const expandedYearStorageKey = "ltf_finance_payments_expanded_years";
+  const { selectedClubId } = useClubSelection();
   const statusOptions = ["all", "draft", "issued", "paid", "void"];
   const paymentMethodOptions = [
     { value: "card", label: t("paymentMethodCard") },
@@ -112,6 +114,7 @@ export default function LtfFinancePaymentsPage() {
           pageSize: Number(pageSize),
           q: searchQuery || undefined,
           status: statusFilter === "all" ? undefined : statusFilter,
+          clubId: selectedClubId ?? undefined,
         },
         { signal: controller.signal }
       );
@@ -144,11 +147,15 @@ export default function LtfFinancePaymentsPage() {
         setIsLoading(false);
       }
     }
-  }, [currentPage, pageSize, searchQuery, statusFilter, t]);
+  }, [currentPage, pageSize, searchQuery, selectedClubId, statusFilter, t]);
 
   useEffect(() => {
     void loadInvoices();
   }, [loadInvoices]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedClubId]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -469,7 +476,7 @@ export default function LtfFinancePaymentsPage() {
       </section>
 
       {isLoading ? (
-        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       ) : groupedClubRows.length === 0 ? (
         <EmptyState title={t("noPaymentsTitle")} description={t("noPaymentsSubtitle")} />
       ) : (

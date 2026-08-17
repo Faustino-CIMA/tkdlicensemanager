@@ -174,7 +174,7 @@ export default function LtfAdminLicenseTypesPage() {
         ) : null}
 
         {isLoading ? (
-          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
         ) : filteredTypes.length === 0 ? (
           <EmptyState title={t("noResultsTitle")} description={t("noLicenseTypesResultsSubtitle")} />
         ) : (

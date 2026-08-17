@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useClubSelection } from "@/components/club-selection-provider";
 import {
   Club,
   License,
@@ -74,6 +75,7 @@ export default function LtfAdminLicensesPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const lastSelectedLicenseIdRef = useRef<number | null>(null);
+  const { selectedClubId: headerClubId } = useClubSelection();
 
   const pageSizeOptions = ["10", "25", "50", "100", "150", "200"];
 
@@ -106,6 +108,7 @@ export default function LtfAdminLicensesPage() {
             page: currentPage,
             pageSize: Number(pageSize),
             q: searchQuery || undefined,
+            clubId: headerClubId ?? undefined,
           }),
           getLicenseTypes(),
         ]);
@@ -122,7 +125,9 @@ export default function LtfAdminLicensesPage() {
       setLicenses(licensesResponse.results);
       setTotalCount(licensesResponse.count);
       setLicenseTypes(licenseTypesResponse);
-      if (clubsResponse.length > 0 && !watch("club")) {
+      if (headerClubId) {
+        setValue("club", String(headerClubId));
+      } else if (clubsResponse.length > 0 && !watch("club")) {
         setValue("club", String(clubsResponse[0].id));
       }
       if (licenseTypesResponse.length > 0 && !watch("license_type")) {
@@ -133,11 +138,15 @@ export default function LtfAdminLicensesPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, pageSize, searchQuery, setValue, watch]);
+  }, [currentPage, headerClubId, pageSize, searchQuery, setValue, watch]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [headerClubId]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -522,7 +531,7 @@ export default function LtfAdminLicensesPage() {
         </div>
 
         {isLoading ? (
-          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
         ) : groupedClubRows.length === 0 ? (
           <EmptyState title={t("noResultsTitle")} description={t("noLicensesResultsSubtitle")} />
         ) : (

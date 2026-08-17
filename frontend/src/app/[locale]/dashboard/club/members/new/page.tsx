@@ -57,7 +57,6 @@ const createMemberSchema = z
         },
         "Use date format 29 Nov 2026."
       ),
-    belt_rank: z.string().optional(),
     primary_license_role: z.enum(LICENSE_ROLE_VALUES).or(z.literal("")).optional(),
     secondary_license_role: z.enum(LICENSE_ROLE_VALUES).or(z.literal("")).optional(),
     is_active: z.boolean(),
@@ -115,7 +114,6 @@ export default function ClubAdminMemberCreatePage() {
       wt_licenseid: "",
       ltf_license_prefix: "LTF",
       date_of_birth: "",
-      belt_rank: "",
       primary_license_role: "",
       secondary_license_role: "",
       is_active: true,
@@ -186,7 +184,6 @@ export default function ClubAdminMemberCreatePage() {
         wt_licenseid: values.wt_licenseid.trim() || undefined,
         ltf_license_prefix: values.ltf_license_prefix,
         date_of_birth: dateOfBirthIso,
-        belt_rank: values.belt_rank?.trim() || "",
         primary_license_role: values.primary_license_role ?? "",
         secondary_license_role: values.secondary_license_role ?? "",
         is_active: values.is_active,
@@ -201,7 +198,7 @@ export default function ClubAdminMemberCreatePage() {
   if (isLoading) {
     return (
       <ClubAdminLayout title={t("createMember")} subtitle={t("memberCreatePageSubtitle")}>
-        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       </ClubAdminLayout>
     );
   }
@@ -333,8 +330,8 @@ export default function ClubAdminMemberCreatePage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="member-belt-rank">{t("beltRankLabel")}</Label>
-              <Input id="member-belt-rank" placeholder="1st Dan" {...register("belt_rank")} />
+              <Label>{t("beltRankLabel")}</Label>
+              <p className="text-xs text-muted">{t("beltRankCreateHint")}</p>
             </div>
 
             <div className="space-y-2">

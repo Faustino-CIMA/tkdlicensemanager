@@ -17,9 +17,9 @@ export function EntityTable<T extends { id: number | string }>({
 }: EntityTableProps<T>) {
   const isClickable = Boolean(onRowClick);
   return (
-    <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-card shadow-sm">
+    <div className="app-panel overflow-x-auto">
       <table className="min-w-full text-left text-sm">
-        <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
+        <thead className="border-b border-border bg-secondary/70 text-xs uppercase tracking-wide text-muted">
           <tr>
             {columns.map((column) => (
               <th key={column.key} className="px-4 py-3 font-medium">
@@ -28,11 +28,11 @@ export function EntityTable<T extends { id: number | string }>({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-border">
+        <tbody className="divide-y divide-border/80">
           {rows.map((row) => (
             <tr
               key={row.id}
-              className={`h-[var(--table-row-height)] text-foreground ${isClickable ? "cursor-pointer hover:bg-secondary" : ""}`}
+              className={`h-[var(--table-row-height)] text-foreground transition-colors ${isClickable ? "cursor-pointer hover:bg-[color-mix(in_oklab,var(--accent)_6%,white)]" : "hover:bg-secondary/50"}`}
               onClick={(event) => {
                 if (!onRowClick) {
                   return;

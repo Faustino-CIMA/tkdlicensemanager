@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
+import { useClubSelection } from "@/components/club-selection-provider";
 import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { SummaryCard } from "@/components/club-admin/summary-card";
@@ -68,6 +69,7 @@ export default function LtfFinanceOrdersPage() {
   const pageSizeOptions = ["10", "25", "50", "100", "150", "200"];
   const expandedClubStorageKey = "ltf_finance_orders_expanded_clubs";
   const expandedYearStorageKey = "ltf_finance_orders_expanded_years";
+  const { selectedClubId } = useClubSelection();
 
   const loadOrders = useCallback(async (options?: { silent?: boolean; includeStatic?: boolean }) => {
     const silent = options?.silent ?? false;
@@ -88,6 +90,7 @@ export default function LtfFinanceOrdersPage() {
           page: currentPage,
           pageSize: Number(pageSize),
           q: searchQuery || undefined,
+          clubId: selectedClubId ?? undefined,
         },
         { signal: controller.signal }
       );
@@ -124,11 +127,15 @@ export default function LtfFinanceOrdersPage() {
         setIsLoading(false);
       }
     }
-  }, [currentPage, pageSize, searchQuery, t]);
+  }, [currentPage, pageSize, searchQuery, selectedClubId, t]);
 
   useEffect(() => {
     void loadOrders();
   }, [loadOrders]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedClubId]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -473,7 +480,7 @@ export default function LtfFinanceOrdersPage() {
       </section>
 
       {isLoading ? (
-        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       ) : groupedClubRows.length === 0 ? (
         <EmptyState title={t("noOrdersTitle")} description={t("noOrdersSubtitle")} />
       ) : (

@@ -356,7 +356,7 @@ export default function ClubMembersOrderLicensesPage() {
   if (isLoading) {
     return (
       <ClubAdminLayout title={t("orderLicenseModalTitle")} subtitle={t("orderLicenseModalSubtitle")}>
-        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       </ClubAdminLayout>
     );
   }

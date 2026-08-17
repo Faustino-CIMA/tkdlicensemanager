@@ -398,7 +398,7 @@ DASHBOARD_OVERVIEW_CACHE_TTL_SECONDS = config(
 SPECTACULAR_SETTINGS = {
     "TITLE": "LTF License Manager API",
     "DESCRIPTION": "API for managing LTF Taekwondo licenses",
-    "VERSION": "0.3.6",
+    "VERSION": "0.4.0",
 }
 
 # Required when the browser sends credentialed requests (cookies/CORS) from the SPA, e.g. fetch(..., { credentials: "include" }).

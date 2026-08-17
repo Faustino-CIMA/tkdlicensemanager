@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useClubSelection } from "@/components/club-selection-provider";
 import { Club, deleteClub, getClubs } from "@/lib/ltf-admin-api";
 
 export default function LtfAdminClubsPage() {
@@ -37,6 +38,7 @@ export default function LtfAdminClubsPage() {
   const [pageSize, setPageSize] = useState("25");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { selectedClubId } = useClubSelection();
 
   const pageSizeOptions = ["10", "25", "50", "100", "150", "200", "all"];
 
@@ -58,11 +60,14 @@ export default function LtfAdminClubsPage() {
   }, []);
 
   const searchedClubs = useMemo(() => {
+    const scopedClubs = selectedClubId
+      ? clubs.filter((club) => club.id === selectedClubId)
+      : clubs;
     const normalizedQuery = searchQuery.trim().toLowerCase();
     if (!normalizedQuery) {
-      return clubs;
+      return scopedClubs;
     }
-    return clubs.filter((club) => {
+    return scopedClubs.filter((club) => {
       const name = club.name.toLowerCase();
       const locality = (club.locality || club.city || "").toLowerCase();
       const postalCode = (club.postal_code || "").toLowerCase();
@@ -74,7 +79,7 @@ export default function LtfAdminClubsPage() {
         address.includes(normalizedQuery)
       );
     });
-  }, [clubs, searchQuery]);
+  }, [clubs, searchQuery, selectedClubId]);
 
   const resolvedPageSize =
     pageSize === "all" ? Math.max(searchedClubs.length, 1) : Number(pageSize);
@@ -86,7 +91,7 @@ export default function LtfAdminClubsPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, pageSize]);
+  }, [searchQuery, pageSize, selectedClubId]);
 
   const allFilteredIds = useMemo(() => searchedClubs.map((club) => club.id), [searchedClubs]);
   const allSelected =
@@ -219,7 +224,7 @@ export default function LtfAdminClubsPage() {
         </div>
 
         {isLoading ? (
-          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
         ) : searchedClubs.length === 0 ? (
           <EmptyState title={t("noResultsTitle")} description={t("noClubsResultsSubtitle")} />
         ) : (

@@ -222,7 +222,7 @@ export default function ClubAdminPrinterProfilesPage() {
   if (isRoleLoading) {
     return (
       <ClubAdminLayout title={t("printerProfilesTitle")} subtitle={t("printerProfilesSubtitle")}>
-        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+        <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       </ClubAdminLayout>
     );
   }
@@ -260,7 +260,7 @@ export default function ClubAdminPrinterProfilesPage() {
         </div>
 
         {isLoading ? (
-          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
         ) : filteredProfiles.length === 0 ? (
           <EmptyState
             title={searchQuery.trim() ? t("noResultsTitle") : t("printerProfilesEmptyTitle")}

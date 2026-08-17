@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Pencil, Plus } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DeleteConfirmModal } from "@/components/ui/delete-confirm-modal";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -59,6 +60,10 @@ type HistoryTimelineProps = {
   gradeIssuedByLabel: string;
   addGradeAriaLabel?: string;
   editGradeAriaLabel?: string;
+  deleteGradeAriaLabel?: string;
+  deleteGradeTitle?: string;
+  deleteGradeDescription?: string;
+  deleteConfirmLabel?: string;
   gradeFormTitle?: string;
   editGradeFormTitle?: string;
   promoteToGradeLabel?: string;
@@ -75,6 +80,7 @@ type HistoryTimelineProps = {
   pageLabel?: string;
   onPromote?: (input: GradeFormInput) => Promise<void>;
   onUpdateGrade?: (id: number, input: GradeFormInput) => Promise<void>;
+  onDeleteGrade?: (id: number) => Promise<void>;
   licenseHistory: LicenseHistoryEvent[];
   gradeHistory: GradeHistoryEntry[];
 };
@@ -125,15 +131,8 @@ function resolveCreatedBy(option: IssuedByOption, otherText: string): string {
   return otherText.trim();
 }
 
-function buildGradeOptions(gradeHistory: GradeHistoryEntry[]): string[] {
-  const options = new Set<string>(GRADE_OPTIONS);
-  for (const entry of gradeHistory) {
-    const grade = entry.to_grade?.trim();
-    if (grade) {
-      options.add(grade);
-    }
-  }
-  return Array.from(options);
+function isOfficialGrade(value: string): boolean {
+  return (GRADE_OPTIONS as readonly string[]).includes(value);
 }
 
 function isActiveLicenseStatus(status: string): boolean {
@@ -386,6 +385,10 @@ export function MemberHistoryTimeline({
   gradeIssuedByLabel,
   addGradeAriaLabel,
   editGradeAriaLabel,
+  deleteGradeAriaLabel,
+  deleteGradeTitle,
+  deleteGradeDescription,
+  deleteConfirmLabel,
   gradeFormTitle,
   editGradeFormTitle,
   promoteToGradeLabel,
@@ -401,6 +404,7 @@ export function MemberHistoryTimeline({
   nextPageLabel = "Next page",
   onPromote,
   onUpdateGrade,
+  onDeleteGrade,
   licenseHistory,
   gradeHistory,
 }: HistoryTimelineProps) {
@@ -409,6 +413,7 @@ export function MemberHistoryTimeline({
   const [gradeFormOpen, setGradeFormOpen] = useState(false);
   const [editingGradeId, setEditingGradeId] = useState<number | null>(null);
   const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [toGrade, setToGrade] = useState("");
   const [promotionDate, setPromotionDate] = useState("");
   const [issuedByOption, setIssuedByOption] = useState<IssuedByOption>("club");
@@ -416,7 +421,7 @@ export function MemberHistoryTimeline({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const gradeOptions = useMemo(() => buildGradeOptions(gradeHistory), [gradeHistory]);
+  const gradeOptions = [...GRADE_OPTIONS];
 
   const sortedLicenses = useMemo(
     () =>
@@ -458,7 +463,8 @@ export function MemberHistoryTimeline({
   );
   const paginatedGrades = sortedGrades.slice((gradePage - 1) * ROWS_PER_PAGE, gradePage * ROWS_PER_PAGE);
 
-  const canManageGrades = Boolean(onPromote || onUpdateGrade);
+  const canManageGrades = Boolean(onPromote || onUpdateGrade || onDeleteGrade);
+  const canSelectGrades = Boolean(onUpdateGrade || onDeleteGrade);
 
   const gradeTableColumns = useMemo(() => {
     const columns: Array<HistoryTableColumn<GradeHistoryEntry>> = [
@@ -479,7 +485,7 @@ export function MemberHistoryTimeline({
       },
     ];
 
-    if (onUpdateGrade) {
+    if (canSelectGrades) {
       columns.push({
         key: "select",
         header: <span className="sr-only">Select</span>,
@@ -502,7 +508,7 @@ export function MemberHistoryTimeline({
     }
 
     return columns;
-  }, [gradeDateLabel, gradeIssuedByLabel, gradeLabel, onUpdateGrade, selectedGradeId]);
+  }, [canSelectGrades, gradeDateLabel, gradeIssuedByLabel, gradeLabel, selectedGradeId]);
 
   const resetGradeForm = () => {
     setToGrade("");
@@ -513,6 +519,11 @@ export function MemberHistoryTimeline({
     setErrorMessage(null);
   };
 
+  const closeGradeForm = () => {
+    setGradeFormOpen(false);
+    resetGradeForm();
+  };
+
   const openAddGradeForm = () => {
     resetGradeForm();
     setGradeFormOpen(true);
@@ -521,7 +532,7 @@ export function MemberHistoryTimeline({
   const openEditGradeForm = (entry: GradeHistoryEntry) => {
     const parsedIssuedBy = parseIssuedBy(entry.created_by ?? "");
     setEditingGradeId(entry.id);
-    setToGrade(entry.to_grade);
+    setToGrade(isOfficialGrade(entry.to_grade) ? entry.to_grade : "");
     setPromotionDate(entry.promotion_date);
     setIssuedByOption(parsedIssuedBy.option);
     setIssuedByOther(parsedIssuedBy.otherText);
@@ -539,15 +550,42 @@ export function MemberHistoryTimeline({
     }
   };
 
-  const closeGradeForm = () => {
-    setGradeFormOpen(false);
-    resetGradeForm();
+  const openDeleteSelectedGrade = () => {
+    if (selectedGradeId === null || !onDeleteGrade) {
+      return;
+    }
+    setErrorMessage(null);
+    setPendingDeleteId(selectedGradeId);
+  };
+
+  const confirmDeleteSelectedGrade = async () => {
+    if (pendingDeleteId === null || !onDeleteGrade) {
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await onDeleteGrade(pendingDeleteId);
+      if (editingGradeId === pendingDeleteId) {
+        closeGradeForm();
+      }
+      setSelectedGradeId(null);
+      setPendingDeleteId(null);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to delete grade.");
+      setPendingDeleteId(null);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const submitGradeForm = async () => {
     const createdBy = resolveCreatedBy(issuedByOption, issuedByOther);
     if (!toGrade.trim()) {
       setErrorMessage("Grade is required.");
+      return;
+    }
+    if (!isOfficialGrade(toGrade.trim())) {
+      setErrorMessage("Grade must be a standard belt rank.");
       return;
     }
     if (issuedByOption === "other" && !issuedByOther.trim()) {
@@ -651,9 +689,23 @@ export function MemberHistoryTimeline({
                   <Pencil className="h-4 w-4" />
                 </Button>
               ) : null}
+              {onDeleteGrade ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] shrink-0"
+                  aria-label={deleteGradeAriaLabel}
+                  disabled={selectedGradeId === null}
+                  onClick={openDeleteSelectedGrade}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              ) : null}
             </div>
           ) : null}
         </div>
+        {errorMessage && !gradeFormOpen ? <p className="mt-3 text-sm text-destructive">{errorMessage}</p> : null}
         {gradeFormOpen ? (
           <div className="mt-3">
             <GradeInlineForm
@@ -707,6 +759,17 @@ export function MemberHistoryTimeline({
           </div>
         )}
       </div>
+      <DeleteConfirmModal
+        isOpen={pendingDeleteId !== null}
+        title={deleteGradeTitle ?? "Delete grade"}
+        description={deleteGradeDescription ?? "You are about to delete this grade promotion. This action cannot be undone."}
+        confirmLabel={deleteConfirmLabel ?? "Delete"}
+        cancelLabel={cancelLabel ?? "Cancel"}
+        onConfirm={() => {
+          void confirmDeleteSelectedGrade();
+        }}
+        onCancel={() => setPendingDeleteId(null)}
+      />
     </section>
   );
 }

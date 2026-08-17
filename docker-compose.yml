@@ -86,6 +86,7 @@ services:
       chown -R $$APP_UID:$$APP_GID /app/media /app/staticfiles /app/.cursor /var/lib/celerybeat 2>/dev/null || true &&
       sh /app/scripts/check-env.sh &&
       runuser -u app -- sh -lc 'python manage.py migrate --noinput &&
+      python manage.py seed_card_print_fonts &&
       python manage.py check &&
       python manage.py collectstatic --noinput &&
       gunicorn config.wsgi:application

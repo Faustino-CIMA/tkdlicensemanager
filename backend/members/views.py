@@ -25,6 +25,7 @@ from .serializers import (
 from .services import (
     add_grade_promotion,
     clear_member_profile_picture,
+    delete_grade_promotion,
     process_member_profile_picture,
     update_grade_promotion,
 )
@@ -288,7 +289,7 @@ class MemberViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
 
     @action(
         detail=True,
-        methods=["patch"],
+        methods=["patch", "delete"],
         url_path=r"grade-history/(?P<history_id>[^/.]+)",
     )
     def update_grade_history(self, request, history_id=None, *args, **kwargs):
@@ -303,6 +304,10 @@ class MemberViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
         )
         if not history_entry:
             return Response({"detail": "Grade history entry not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.method == "DELETE":
+            delete_grade_promotion(history_entry)
+            return Response(status=status.HTTP_204_NO_CONTENT)
 
         serializer = GradePromotionUpdateSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)

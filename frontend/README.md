@@ -45,6 +45,8 @@ Print jobs pages support:
 - PDF download when status is `succeeded`.
 
 License Card v2 designer capabilities:
+- Full-height design workspace (no LTF sidebar). Tools, canvas, and inspector stay on screen; preview/print opens from the top bar.
+- Built-in embeddable print fonts (Inter, Source Sans 3, Source Serif 4, IBM Plex Mono, Barlow Condensed). Text style picks a font file, not a free-text family name.
 - Dual-side editing (`front` / `back`) with side switch, flip side, and copy side actions.
 - Side-aware preview requests (`preview-data`, card/sheet PDF, and live simulation HTML).
 - Live print simulation toggle and manual refresh from the designer preview panel.

@@ -1,12 +1,13 @@
 **LTF Taekwondo License Manager — Master Summary (May 2026)**
-Last updated: 2026-05-30
+Last updated: 2026-08-14
 
 Current main branch state:
+- Version: v0.4.0 on `feature/ui-refresh-and-designer` — visual refresh + designer workspace (2026-08-17)
 - Version: v0.3.8 (annotated tag v0.3.8 created and pushed)
 - Version: v0.3.9 on improvements-clean — Member Import Step 3 UX improvement merged
 - Printer Profiles feature fully merged and live (v0.3.6)
 - Docker infrastructure cleanup and stable stack released
-- Full HeroUI v3.0.1 integration with custom ltf_theme + sharp consistent radii completed (v0.3.9)
+- Visual refresh (2026-08-14): sidebar app shell, softer radius scale, brand-cyan KPIs, restyled login/home; HeroUI removed. See CHANGELOG Unreleased.
 - Sticky top bar implemented
 - Navigation tabs stabilized (no more swapping on club dashboard)
 - Club Members page fully cleaned up (RadioGroup filters with total counts, improved Members/Actions Selects, row status confirmation modals, pagination 50/150/300/All)
@@ -27,7 +28,6 @@ Current Stack (locked) — Updated 2026-05-30
 Rules we follow:
 - Always work on dedicated feature branches for new work
 - Always test in Docker (`docker compose up -d --build`)
-- Use oh-my-cursor Team Avatar agents (@toph, @iroh, @appa, @sokka, @escher, ...)
 - Agents must update CHANGELOG.md and README.md after every significant change
 - PROJECT_CONTEXT.md is the single source of truth
 
@@ -85,7 +85,6 @@ Next phase: Finalize and merge Member Detail View + responsive-token work, then 
 Coding & Memory Rules (always follow)
 - Always work on dedicated feature branches for new work
 - Always test in Docker (`docker compose up -d --build`)
-- Use oh-my-cursor Team Avatar agents (@toph, @iroh, @appa, @sokka, @escher, ...)
 - Agents must update CHANGELOG.md and README.md after every significant change
 - PROJECT_CONTEXT.md is the single source of truth
 - Read this file FIRST in every session

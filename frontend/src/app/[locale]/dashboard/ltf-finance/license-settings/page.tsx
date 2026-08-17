@@ -206,7 +206,7 @@ export default function LtfFinanceLicenseSettingsPage() {
         </div>
 
         {isLoading ? (
-          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} />
+          <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
         ) : filteredLicenseTypes.length === 0 ? (
           <EmptyState title={t("noLicenseTypesTitle")} description={t("noLicenseTypesSubtitle")} />
         ) : (
