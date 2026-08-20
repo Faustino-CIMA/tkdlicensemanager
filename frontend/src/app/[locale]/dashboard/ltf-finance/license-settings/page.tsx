@@ -12,6 +12,12 @@ import { Button } from "@/components/ui/button";
 import { DeleteConfirmModal } from "@/components/ui/delete-confirm-modal";
 import { Input } from "@/components/ui/input";
 import {
+  FormPanel,
+  ListActionsRow,
+  ListToolbarPanel,
+  PageNotice,
+} from "@/components/ui/list-page-chrome";
+import {
   FinanceLicenseType,
   LicensePrice,
   createLicensePrice,
@@ -185,26 +191,33 @@ export default function LtfFinanceLicenseSettingsPage() {
 
   return (
     <LtfFinanceLayout title={t("licenseSettingsTitle")} subtitle={t("licenseSettingsSubtitle")}>
-      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
-      {successMessage ? <p className="text-sm text-success">{successMessage}</p> : null}
+      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      {successMessage ? <PageNotice tone="success">{successMessage}</PageNotice> : null}
 
-      <section className="space-y-4 rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-col gap-4">
+        <ListToolbarPanel
+          search={
             <Input
               className="w-full max-w-xs"
               placeholder={t("searchLicenseTypesPlaceholder")}
+              aria-label={t("searchLicenseTypesPlaceholder")}
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
             />
+          }
+        />
+        <ListActionsRow
+          actions={
             <Button
               onClick={() => router.push(`/${locale}/dashboard/ltf-finance/license-settings/new`)}
             >
               {t("createLicenseType")}
             </Button>
-          </div>
-        </div>
+          }
+        />
+      </div>
 
+      <div>
         {isLoading ? (
           <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
         ) : filteredLicenseTypes.length === 0 ? (
@@ -263,12 +276,12 @@ export default function LtfFinanceLicenseSettingsPage() {
             }
           />
         )}
-      </section>
+      </div>
 
-      <section className="space-y-4 rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
+      <FormPanel>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-foreground">{t("priceHistoryTitle")}</h2>
+            <h2 className="text-section text-foreground">{t("priceHistoryTitle")}</h2>
             <p className="mt-1 text-sm text-muted">{t("priceModalSubtitle")}</p>
           </div>
         </div>
@@ -354,7 +367,7 @@ export default function LtfFinanceLicenseSettingsPage() {
             })}
           </div>
         )}
-      </section>
+      </FormPanel>
 
       <DeleteConfirmModal
         isOpen={isDeleteOpen}

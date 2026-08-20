@@ -9,6 +9,7 @@ import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
 import { Button } from "@/components/ui/button";
+import { FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDisplayDateTime } from "@/lib/date-display";
 import {
@@ -169,13 +170,13 @@ export default function LtfFinancePaymentDetailPage() {
 
   return (
     <LtfFinanceLayout title={t("paymentDetailTitle")} subtitle={t("paymentDetailSubtitle")}>
-      <div className="mb-6">
-        <Button asChild variant="outline">
-          <Link href={`/${locale}/dashboard/ltf-finance/payments`}>{t("backToPayments")}</Link>
-        </Button>
-      </div>
+      <Button asChild variant="outline" className="w-fit">
+        <Link href={`/${locale}/dashboard/ltf-finance/payments`}>{t("backToPayments")}</Link>
+      </Button>
 
-      <section className="rounded-[var(--radius-card)] border border-border bg-card p-6 shadow-sm">
+      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+
+      <FormPanel>
         <div className="grid gap-4 text-sm text-foreground md:grid-cols-2">
           <div className="flex flex-col gap-1">
             <span className="text-xs text-muted">{t("invoiceNumberLabel")}</span>
@@ -202,10 +203,10 @@ export default function LtfFinancePaymentDetailPage() {
             </span>
           </div>
         </div>
-      </section>
+      </FormPanel>
 
-      <section className="mt-6">
-        <h2 className="mb-3 text-sm font-semibold text-foreground">
+      <section className="space-y-3">
+        <h2 className="text-section text-foreground">
           {t("paymentHistoryTitle")}
         </h2>
         {paymentRows.length === 0 ? (

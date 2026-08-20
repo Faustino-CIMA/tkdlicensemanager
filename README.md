@@ -4,10 +4,10 @@ Modern, secure Taekwondo license management for the Luxembourg Taekwondo Federat
 
 ## Release Notes
 
-This working tree is **v0.4.0**: sidebar app shell, athletic-fintech theme, club/LTF settings logo manager, and a full-height license-card designer. Millimetre print output is unchanged.
+This working tree is **v0.5.0**: finance books and expenses, LUX- to LTF- import prefix rewrite, 4-digit LTF IDs, pending licenses as current, LTF/Finance list chrome, and a What's new page. Millimetre print output is unchanged.
 
-- See `CHANGELOG.md` **0.4.0** for this release and **0.3.9** for the previous Club Members / import notes.
-- Current tagged release: `v0.4.0`.
+- See `CHANGELOG.md` **0.5.0** for this release and **0.4.0** for the UI refresh and license-card designer.
+- Current tagged release: `v0.5.0`.
 
 ## CI (GitHub Actions)
 

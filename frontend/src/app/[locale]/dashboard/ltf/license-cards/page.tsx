@@ -10,6 +10,7 @@ import { EntityTable } from "@/components/club-admin/entity-table";
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AppTextarea, ListActionsRow, ListToolbarPanel, PageNotice } from "@/components/ui/list-page-chrome";
 import { Modal } from "@/components/ui/modal";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { apiRequest } from "@/lib/api";
@@ -297,18 +298,25 @@ export default function LtfAdminLicenseCardsPage() {
 
   return (
     <LtfAdminLayout title={t("licenseCardsTitle")} subtitle={t("licenseCardsSubtitle")}>
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
-      {successMessage ? <p className="text-sm text-emerald-700">{successMessage}</p> : null}
+      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      {successMessage ? <PageNotice tone="success">{successMessage}</PageNotice> : null}
 
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Input
-            className="w-full max-w-sm"
-            placeholder={t("licenseCardsSearchPlaceholder")}
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4">
+          <ListToolbarPanel
+            search={
+              <Input
+                className="w-full max-w-sm"
+                placeholder={t("licenseCardsSearchPlaceholder")}
+                aria-label={t("licenseCardsSearchPlaceholder")}
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+              />
+            }
           />
-          <Button onClick={startCreateTemplate}>{t("licenseCardsCreateAction")}</Button>
+          <ListActionsRow
+            actions={<Button onClick={startCreateTemplate}>{t("licenseCardsCreateAction")}</Button>}
+          />
         </div>
 
         {isLoading ? (
@@ -439,7 +447,7 @@ export default function LtfAdminLicenseCardsPage() {
       >
         <div className="grid gap-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">
+            <label className="text-sm font-medium text-foreground">
               {t("licenseCardsTemplateNameLabel")}
             </label>
             <Input
@@ -450,11 +458,10 @@ export default function LtfAdminLicenseCardsPage() {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">
+            <label className="text-sm font-medium text-foreground">
               {t("licenseCardsTemplateDescriptionLabel")}
             </label>
-            <textarea
-              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500"
+            <AppTextarea
               placeholder={t("licenseCardsTemplateDescriptionPlaceholder")}
               value={newTemplateDescription}
               onChange={(event) => setNewTemplateDescription(event.target.value)}
@@ -492,7 +499,7 @@ export default function LtfAdminLicenseCardsPage() {
       >
         <div className="grid gap-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">
+            <label className="text-sm font-medium text-foreground">
               {t("licenseCardsTemplateNameLabel")}
             </label>
             <Input
@@ -503,11 +510,10 @@ export default function LtfAdminLicenseCardsPage() {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">
+            <label className="text-sm font-medium text-foreground">
               {t("licenseCardsTemplateDescriptionLabel")}
             </label>
-            <textarea
-              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500"
+            <AppTextarea
               placeholder={t("licenseCardsTemplateDescriptionPlaceholder")}
               value={cloneTemplateDescription}
               onChange={(event) => setCloneTemplateDescription(event.target.value)}
@@ -539,7 +545,7 @@ export default function LtfAdminLicenseCardsPage() {
         onClose={closeDeleteTemplateModal}
       >
         <div className="grid gap-4">
-          <p className="text-sm text-zinc-700">
+          <p className="text-sm text-muted">
             {t("licenseCardsDeleteModalConfirmHint", {
               name: deleteTargetTemplate?.name ?? "",
             })}

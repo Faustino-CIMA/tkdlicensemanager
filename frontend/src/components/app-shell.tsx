@@ -18,6 +18,7 @@ import {
   shouldShowClubSelector,
   useClubSelection,
 } from "@/components/club-selection-provider";
+import { AppVersionLink } from "@/components/app-version-link";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -181,6 +182,9 @@ export function AppShell({ title, subtitle, navItems, children, variant = "defau
           );
         })}
       </nav>
+      <div className="mt-auto border-t border-border px-4 py-3">
+        <AppVersionLink />
+      </div>
     </div>
   );
 

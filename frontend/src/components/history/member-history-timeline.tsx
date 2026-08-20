@@ -101,6 +101,12 @@ function renderLicenseStatusBadge(status: string) {
   if (normalized === "active") {
     return <StatusBadge label={label} tone="success" />;
   }
+  if (normalized === "pending") {
+    return <StatusBadge label={label} tone="warning" />;
+  }
+  if (normalized === "revoked") {
+    return <StatusBadge label={label} tone="danger" />;
+  }
   if (normalized === "expired") {
     return <StatusBadge label={label} tone="neutral" />;
   }

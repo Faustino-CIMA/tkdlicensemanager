@@ -8,7 +8,9 @@ import { useParams } from "next/navigation";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
 import {
   Select,
   SelectContent,
@@ -237,13 +239,11 @@ export default function LtfFinanceLicenseTypeDetailPage() {
   if (!licenseType) {
     return (
       <LtfFinanceLayout title={t("licenseSettingsTitle")} subtitle={t("licenseTypeDetailSubtitle")}>
-        <div className="mb-6">
-          <Button asChild variant="outline">
-            <Link href={`/${locale}/dashboard/ltf-finance/license-settings`}>
-              {t("backToLicenseSettings")}
-            </Link>
-          </Button>
-        </div>
+        <Button asChild variant="outline" className="w-fit">
+          <Link href={`/${locale}/dashboard/ltf-finance/license-settings`}>
+            {t("backToLicenseSettings")}
+          </Link>
+        </Button>
         <EmptyState
           title={t("licenseTypeNotFoundTitle")}
           description={errorMessage ?? t("licenseTypeNotFoundSubtitle")}
@@ -254,19 +254,17 @@ export default function LtfFinanceLicenseTypeDetailPage() {
 
   return (
     <LtfFinanceLayout title={licenseType.name} subtitle={t("licenseTypeDetailSubtitle")}>
-      <div className="mb-6">
-        <Button asChild variant="outline">
-          <Link href={`/${locale}/dashboard/ltf-finance/license-settings`}>
-            {t("backToLicenseSettings")}
-          </Link>
-        </Button>
-      </div>
+      <Button asChild variant="outline" className="w-fit">
+        <Link href={`/${locale}/dashboard/ltf-finance/license-settings`}>
+          {t("backToLicenseSettings")}
+        </Link>
+      </Button>
 
-      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
-      {successMessage ? <p className="text-sm text-success">{successMessage}</p> : null}
+      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      {successMessage ? <PageNotice tone="success">{successMessage}</PageNotice> : null}
 
-      <section className="space-y-4 rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-foreground">{t("licenseTypeLabel")}</h2>
+      <FormPanel className="space-y-4">
+        <h2 className="text-section text-foreground">{t("licenseTypeLabel")}</h2>
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">{t("licenseTypeNameLabel")}</label>
@@ -281,20 +279,19 @@ export default function LtfFinanceLicenseTypeDetailPage() {
             <Input value={licenseType.code} disabled />
           </div>
         </div>
-      </section>
+      </FormPanel>
 
-      <section className="space-y-5 rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-foreground">{t("editPolicyAction")}</h2>
+      <FormPanel className="space-y-5">
+        <h2 className="text-section text-foreground">{t("editPolicyAction")}</h2>
 
         <section className="space-y-3 rounded-[var(--radius-card)] border border-border p-4">
           <label className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={policyForm.allow_current_year_order}
-              onChange={(event) =>
+              onCheckedChange={(checked) =>
                 setPolicyForm((previous) => ({
                   ...previous,
-                  allow_current_year_order: event.target.checked,
+                  allow_current_year_order: checked === true,
                 }))
               }
             />
@@ -390,13 +387,12 @@ export default function LtfFinanceLicenseTypeDetailPage() {
 
         <section className="space-y-3 rounded-[var(--radius-card)] border border-border p-4">
           <label className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={policyForm.allow_next_year_preorder}
-              onChange={(event) =>
+              onCheckedChange={(checked) =>
                 setPolicyForm((previous) => ({
                   ...previous,
-                  allow_next_year_preorder: event.target.checked,
+                  allow_next_year_preorder: checked === true,
                 }))
               }
             />
@@ -500,7 +496,7 @@ export default function LtfFinanceLicenseTypeDetailPage() {
             </Link>
           </Button>
         </div>
-      </section>
+      </FormPanel>
     </LtfFinanceLayout>
   );
 }

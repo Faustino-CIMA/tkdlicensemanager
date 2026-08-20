@@ -12,6 +12,7 @@ import { z } from "zod";
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { MemberHistoryTimeline } from "@/components/history/member-history-timeline";
+import { CurrentLicensesPanel } from "@/components/member/current-licenses-panel";
 import { ProfilePhotoManager } from "@/components/profile-photo/profile-photo-manager";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -649,6 +650,21 @@ export default function ClubMemberDetailPage() {
                 </div>
               )}
             </section>
+
+            <CurrentLicensesPanel
+              licenses={member.current_licenses ?? []}
+              title={t("currentLicensesTitle")}
+              subtitle={t("currentLicensesSubtitle")}
+              emptyLabel={t("currentLicensesEmpty")}
+              pendingHint={t("currentLicensesPendingHint")}
+              yearLabel={t("yearLabel")}
+              typeLabel={t("licenseTypeLabel")}
+              statusLabel={t("statusLabel")}
+              pendingLabel={t("statusPending")}
+              activeLabel={t("statusActive")}
+              expiredLabel={t("statusExpired")}
+              revokedLabel={t("statusRevoked")}
+            />
 
             <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-foreground">{t("memberHistoryTab")}</h2>

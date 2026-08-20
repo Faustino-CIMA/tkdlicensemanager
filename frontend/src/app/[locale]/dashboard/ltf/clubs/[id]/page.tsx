@@ -9,7 +9,10 @@ import { useTranslations } from "next-intl";
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { FilterPills } from "@/components/ui/filter-pills";
 import { Input } from "@/components/ui/input";
+import { FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
 import {
   Select,
   SelectContent,
@@ -336,36 +339,30 @@ export default function LtfClubDetailPage() {
 
   return (
     <LtfAdminLayout title={title} subtitle={t("clubDetailSubtitle")}>
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <Button variant="outline" size="sm" asChild>
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4">
+          <Button variant="outline" className="w-fit" asChild>
             <Link href={`/${locale}/dashboard/ltf/clubs`}>{t("backToClubs")}</Link>
           </Button>
-          <div className="flex items-center gap-2">
-            {tabItems.map((tab) => (
-              <Button
-                key={tab.key}
-                variant={activeTab === tab.key ? "default" : "outline"}
-                size="sm"
-                onClick={() => setActiveTab(tab.key)}
-              >
-                {tab.label}
-              </Button>
-            ))}
-          </div>
+          <FilterPills
+            ariaLabel={t("clubDetailSubtitle")}
+            value={activeTab}
+            onChange={setActiveTab}
+            options={tabItems.map((tab) => ({ value: tab.key, title: tab.label }))}
+          />
         </div>
 
-        {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+        {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
 
         {isLoading ? (
           <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
         ) : !club ? (
           <EmptyState title={t("noResultsTitle")} description={t("noClubsResultsSubtitle")} />
         ) : activeTab === "overview" ? (
-          <div className="space-y-4">
-            <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
+          <div className="space-y-6">
+            <FormPanel>
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold text-foreground">{t("clubOverviewTab")}</h2>
+                <h2 className="text-section text-foreground">{t("clubOverviewTab")}</h2>
                 {!isEditingOverview ? (
                   <Button size="sm" variant="outline" onClick={() => setIsEditingOverview(true)}>
                     {t("editAction")}
@@ -480,10 +477,10 @@ export default function LtfClubDetailPage() {
                   </div>
                 </form>
               )}
-            </section>
+            </FormPanel>
 
-            <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
-              <h2 className="text-lg font-semibold text-foreground">{t("logoSectionTitle")}</h2>
+            <FormPanel>
+              <h2 className="text-section text-foreground">{t("logoSectionTitle")}</h2>
               <p className="mt-1 text-sm text-muted">{t("logoSectionSubtitle")}</p>
 
               <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -527,10 +524,9 @@ export default function LtfClubDetailPage() {
                   {t("chooseLogoFileAction")}
                 </Button>
                 <label className="flex items-center gap-2 text-sm text-muted">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={markUploadedAsSelected}
-                    onChange={(event) => setMarkUploadedAsSelected(event.target.checked)}
+                    onCheckedChange={(checked) => setMarkUploadedAsSelected(checked === true)}
                   />
                   {t("markLogoSelectedLabel")}
                 </label>
@@ -602,11 +598,11 @@ export default function LtfClubDetailPage() {
                   ))}
                 </div>
               )}
-            </section>
+            </FormPanel>
           </div>
         ) : (
-          <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-foreground">{t("clubAdminsTab")}</h2>
+          <FormPanel>
+            <h2 className="text-section text-foreground">{t("clubAdminsTab")}</h2>
             <p className="mt-1 text-sm text-muted">{t("adminsSubtitle")}</p>
 
             <div className="mt-6 grid gap-6">
@@ -666,7 +662,7 @@ export default function LtfClubDetailPage() {
                 )}
               </div>
             </div>
-          </section>
+          </FormPanel>
         )}
       </div>
     </LtfAdminLayout>

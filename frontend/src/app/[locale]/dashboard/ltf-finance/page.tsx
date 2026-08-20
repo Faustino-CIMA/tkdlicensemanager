@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { AlertTriangle, BadgeEuro, Receipt, ShoppingCart } from "lucide-react";
 
@@ -11,6 +12,7 @@ import { StatBreakdown } from "@/components/club-admin/stat-breakdown";
 import { SummaryCard } from "@/components/club-admin/summary-card";
 import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { Button } from "@/components/ui/button";
+import { PageNotice } from "@/components/ui/list-page-chrome";
 import { formatDisplayDateTime } from "@/lib/date-display";
 import {
   LtfFinanceOverviewResponse,
@@ -21,10 +23,19 @@ const AUTO_REFRESH_INTERVAL_MS = 30000;
 
 
 
+function humanizeAuditAction(action: string) {
+  return action
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 export default function LtfFinanceDashboardPage() {
   const t = useTranslations("LtfFinance");
   const common = useTranslations("Common");
   const locale = useLocale();
+  const router = useRouter();
   const [overview, setOverview] = useState<LtfFinanceOverviewResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -110,6 +121,39 @@ export default function LtfFinanceDashboardPage() {
     [overview]
   );
 
+  const recentActivityActionLabel = (
+    action: LtfFinanceOverviewResponse["recent_activity"][number]["action"]
+  ) => {
+    switch (action) {
+      case "order.created":
+        return t("auditActionOrderCreated");
+      case "invoice.created":
+        return t("auditActionInvoiceCreated");
+      case "licenses.created":
+        return t("auditActionLicensesCreated");
+      case "licenses.activated":
+        return t("auditActionLicensesActivated");
+      case "order.paid":
+        return t("auditActionOrderPaid");
+      case "order.payment_blocked":
+        return t("auditActionOrderPaymentBlocked");
+      case "payconiq.created":
+        return t("auditActionPayconiqCreated");
+      case "expense.created":
+        return t("auditActionExpenseCreated");
+      case "expense.updated":
+        return t("auditActionExpenseUpdated");
+      case "expense.paid":
+        return t("auditActionExpensePaid");
+      case "expense.voided":
+        return t("auditActionExpenseVoided");
+      case "finance_opening.updated":
+        return t("auditActionFinanceOpeningUpdated");
+      default:
+        return humanizeAuditAction(action);
+    }
+  };
+
   const actionLabelByKey = (key: LtfFinanceOverviewResponse["action_queue"][number]["key"]) => {
     switch (key) {
       case "issued_invoices_overdue_7d":
@@ -127,22 +171,21 @@ export default function LtfFinanceDashboardPage() {
 
   return (
     <LtfFinanceLayout title={t("overviewTitle")} subtitle={t("overviewSubtitle")}>
-      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
 
       {isLoading ? (
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       ) : !overview ? (
         <EmptyState title={t("overviewEmptyTitle")} description={t("overviewEmptySubtitle")} />
       ) : (
-        <div className="space-y-5">
-          <section className="flex flex-wrap items-center justify-between gap-3">
+        <>
+          <section className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] px-4 py-3 shadow-sm">
             <p className="text-meta">
               {lastRefreshAt
                 ? t("lastRefreshLabel", { time: formatDisplayDateTime(lastRefreshAt) })
                 : t("lastRefreshNever")}
             </p>
             <Button
-              size="sm"
               variant="outline"
               onClick={() => void loadOverview({ mode: "manual" })}
               disabled={isRefreshing}
@@ -221,7 +264,7 @@ export default function LtfFinanceDashboardPage() {
             />
           </section>
 
-          <section className="space-y-3">
+          <section className="space-y-4">
             <h2 className="text-section text-foreground">{t("recentActivityTitle")}</h2>
             {overview.recent_activity.length === 0 ? (
               <p className="text-sm text-muted">{t("recentActivityEmpty")}</p>
@@ -234,32 +277,45 @@ export default function LtfFinanceDashboardPage() {
                     render: (row: LtfFinanceOverviewResponse["recent_activity"][number]) =>
                       formatDisplayDateTime(row.created_at),
                   },
-                  { key: "action", header: t("actionLabel") },
-                  { key: "message", header: t("messageLabel") },
                   {
-                    key: "club_id",
+                    key: "action",
+                    header: t("actionLabel"),
+                    render: (row: LtfFinanceOverviewResponse["recent_activity"][number]) =>
+                      recentActivityActionLabel(row.action),
+                  },
+                  {
+                    key: "club_name",
                     header: t("clubLabel"),
                     render: (row: LtfFinanceOverviewResponse["recent_activity"][number]) =>
-                      row.club_id ?? "-",
+                      row.club_name || "-",
                   },
                   {
-                    key: "order_id",
+                    key: "order_number",
                     header: t("orderLabel"),
                     render: (row: LtfFinanceOverviewResponse["recent_activity"][number]) =>
-                      row.order_id ?? "-",
+                      row.order_number || "-",
                   },
                   {
-                    key: "invoice_id",
+                    key: "invoice_number",
                     header: t("invoiceNumberLabel"),
                     render: (row: LtfFinanceOverviewResponse["recent_activity"][number]) =>
-                      row.invoice_id ?? "-",
+                      row.invoice_number || "-",
                   },
                 ]}
                 rows={overview.recent_activity}
+                onRowClick={(row) => {
+                  if (row.invoice_id) {
+                    router.push(`/${locale}/dashboard/ltf-finance/invoices/${row.invoice_id}`);
+                    return;
+                  }
+                  if (row.order_id) {
+                    router.push(`/${locale}/dashboard/ltf-finance/orders/${row.order_id}`);
+                  }
+                }}
               />
             )}
           </section>
-        </div>
+        </>
       )}
     </LtfFinanceLayout>
   );

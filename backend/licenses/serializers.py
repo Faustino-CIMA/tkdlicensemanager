@@ -11,7 +11,10 @@ from members.models import Member
 
 from .history import log_license_created
 from .models import (
+    Expense,
+    ExpenseCategory,
     FinanceAuditLog,
+    FinanceYearOpening,
     Invoice,
     License,
     LicensePrice,
@@ -624,3 +627,93 @@ class PaymentSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["created_at"]
+
+
+class ExpenseCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ExpenseCategory
+        fields = ["id", "name", "code", "sort_order", "is_active", "created_at", "updated_at"]
+        read_only_fields = ["code", "created_at", "updated_at"]
+
+
+class ExpenseSerializer(serializers.ModelSerializer):
+    category_name = serializers.CharField(source="category.name", read_only=True)
+    category_code = serializers.CharField(source="category.code", read_only=True)
+    club_name = serializers.CharField(source="club.name", read_only=True)
+    mark_paid = serializers.BooleanField(write_only=True, required=False)
+
+    class Meta:
+        model = Expense
+        fields = [
+            "id",
+            "expense_number",
+            "category",
+            "category_name",
+            "category_code",
+            "club",
+            "club_name",
+            "description",
+            "payee",
+            "amount",
+            "currency",
+            "expense_date",
+            "due_date",
+            "paid_at",
+            "status",
+            "payment_method",
+            "reference",
+            "notes",
+            "mark_paid",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "expense_number",
+            "status",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate(self, attrs):
+        mark_paid = attrs.get("mark_paid")
+        paid_at = attrs.get("paid_at", getattr(self.instance, "paid_at", None) if self.instance else None)
+        if mark_paid and not paid_at:
+            attrs["paid_at"] = timezone.now()
+        return attrs
+
+    def create(self, validated_data):
+        mark_paid = validated_data.pop("mark_paid", False)
+        paid_at = validated_data.get("paid_at")
+        if mark_paid or paid_at:
+            validated_data["status"] = Expense.Status.PAID
+            validated_data["paid_at"] = paid_at or timezone.now()
+        else:
+            validated_data["status"] = Expense.Status.RECORDED
+            validated_data["paid_at"] = None
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        validated_data.pop("mark_paid", None)
+        if instance.status == Expense.Status.VOID:
+            raise serializers.ValidationError({"status": "Void expenses cannot be edited."})
+        if instance.status == Expense.Status.PAID:
+            validated_data.pop("paid_at", None)
+        else:
+            validated_data["paid_at"] = None
+            validated_data["status"] = Expense.Status.RECORDED
+        return super().update(instance, validated_data)
+
+
+class FinanceYearOpeningSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FinanceYearOpening
+        fields = ["id", "year", "opening_cash", "notes", "updated_by", "created_at", "updated_at"]
+        read_only_fields = ["updated_by", "created_at", "updated_at"]
+
+    def validate_year(self, value):
+        if value < 2000 or value > 2100:
+            raise serializers.ValidationError("Enter a valid year.")
+        return value
+

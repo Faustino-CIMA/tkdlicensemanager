@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-20
+
+### User-facing
+- **LTF lists:** Club Members chrome (filters, toolbars, pagination, expandable tables) now applies across LTF Admin and LTF Finance lists and forms.
+- **Pending licenses:** Pending licenses are shown as current licenses, with history, member badges, and clearer order-license copy.
+- **License availability:** License types can show an availability countdown. Types that are not sold for a year (for example Annual Standard in 2026) are marked unavailable.
+- **Finance books:** LTF Finance can record expenses, set a year opening, and open year-end books (income statement and a simplified balance sheet), with Excel export for annual meetings.
+- **LTF ID prefix:** LTF Admin can rewrite `LUX-` to `LTF-` on the LTF license ID during member import, and bulk-update existing LTF IDs. WT IDs stay unchanged. Club admins are told whether the rewrite is on.
+- **LTF ID length:** New LTF license IDs use 4 digits (for example `LTF-0001`) and grow automatically when the number needs more digits.
+- **What's new:** Sidebar version link opens `/{locale}/about` with the user-facing history from 0.5.0 back to 0.1.0, plus a GitHub releases link.
+
+### Technical
+- Expense ledger (`ExpenseCategory`, `Expense`) and `FinanceYearOpening`; accrual P&L and cash/AR/AP snapshot in `licenses/finance_reports.py` (Excel via openpyxl).
+- `FederationProfile.rewrite_lux_prefix_on_member_import` and `POST /api/members/ltf-license-prefix-rewrite/`.
+- `format_ltf_license_id` / `_next_available_ltf_license_id` use a 4-digit minimum and skip serials already stored as 6-digit IDs.
+- Frontend `APP_VERSION` / `APP_RELEASES` drive the about page (`en` + `lb`).
+
 ## [0.4.0] - 2026-08-17
 
 ### User-facing

@@ -5,17 +5,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 
 import { EmptyState } from "@/components/club-admin/empty-state";
+import { EntityTable } from "@/components/club-admin/entity-table";
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { Button } from "@/components/ui/button";
+import { FilterPills } from "@/components/ui/filter-pills";
 import { Input } from "@/components/ui/input";
+import { ListActionsRow, ListToolbarPanel, PageNotice } from "@/components/ui/list-page-chrome";
 import { StatusBadge } from "@/components/ui/status-badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { apiRequest } from "@/lib/api";
 import { formatDisplayDateTime } from "@/lib/date-display";
 import { getDashboardRouteForRole } from "@/lib/dashboard-routing";
@@ -34,6 +30,20 @@ type AuthMeResponse = {
   role: string;
 };
 
+type PrintJobStatusFilter = "all" | "open" | "succeeded" | "failed" | "cancelled";
+
+const OPEN_PRINT_JOB_STATUSES: PrintJobStatus[] = ["draft", "queued", "running"];
+
+function jobMatchesStatusFilter(job: PrintJob, filter: PrintJobStatusFilter) {
+  if (filter === "all") {
+    return true;
+  }
+  if (filter === "open") {
+    return OPEN_PRINT_JOB_STATUSES.includes(job.status);
+  }
+  return job.status === filter;
+}
+
 function openBlobInNewTab(blob: Blob) {
   const url = window.URL.createObjectURL(blob);
   window.open(url, "_blank", "noopener,noreferrer");
@@ -50,7 +60,7 @@ export default function LtfAdminLicenseCardPrintJobsPage() {
   const [jobs, setJobs] = useState<PrintJob[]>([]);
   const [clubs, setClubs] = useState<Club[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<PrintJobStatus | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<PrintJobStatusFilter>("all");
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -117,7 +127,7 @@ export default function LtfAdminLicenseCardPrintJobsPage() {
   const filteredJobs = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
     return jobs.filter((job) => {
-      if (statusFilter !== "all" && job.status !== statusFilter) {
+      if (!jobMatchesStatusFilter(job, statusFilter)) {
         return false;
       }
       if (!normalizedQuery) {
@@ -132,6 +142,24 @@ export default function LtfAdminLicenseCardPrintJobsPage() {
       );
     });
   }, [clubNameById, jobs, searchQuery, statusFilter]);
+
+  const printJobFacetCounts = useMemo(() => {
+    const counts = {
+      all: jobs.length,
+      open: 0,
+      succeeded: 0,
+      failed: 0,
+      cancelled: 0,
+    };
+    for (const job of jobs) {
+      if (OPEN_PRINT_JOB_STATUSES.includes(job.status)) {
+        counts.open += 1;
+      } else if (job.status === "succeeded" || job.status === "failed" || job.status === "cancelled") {
+        counts[job.status] += 1;
+      }
+    }
+    return counts;
+  }, [jobs]);
 
   const getStatusMeta = (status: PrintJobStatus) => {
     switch (status) {
@@ -215,37 +243,65 @@ export default function LtfAdminLicenseCardPrintJobsPage() {
 
   return (
     <LtfAdminLayout title={t("licenseCardPrintJobsTitle")} subtitle={t("licenseCardPrintJobsSubtitle")}>
-      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
-      {successMessage ? <p className="text-sm text-emerald-700">{successMessage}</p> : null}
+      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      {successMessage ? <PageNotice tone="success">{successMessage}</PageNotice> : null}
 
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Input
-            className="w-full max-w-sm"
-            placeholder={t("licenseCardPrintJobsSearchPlaceholder")}
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4">
+          <ListToolbarPanel
+            filtersPlacement="below"
+            search={
+              <Input
+                className="w-full max-w-sm"
+                placeholder={t("licenseCardPrintJobsSearchPlaceholder")}
+                aria-label={t("licenseCardPrintJobsSearchPlaceholder")}
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+              />
+            }
+            filters={
+              <FilterPills
+                layout="wrap"
+                ariaLabel={t("printJobsStatusFilterAriaLabel")}
+                value={statusFilter}
+                onChange={setStatusFilter}
+                options={[
+                  {
+                    value: "all",
+                    title: t("filterAllTitle"),
+                    count: printJobFacetCounts.all,
+                  },
+                  {
+                    value: "open",
+                    title: t("printJobFilterOpenTitle"),
+                    count: printJobFacetCounts.open,
+                  },
+                  {
+                    value: "succeeded",
+                    title: t("licenseCardPrintJobStatusSucceeded"),
+                    count: printJobFacetCounts.succeeded,
+                  },
+                  {
+                    value: "failed",
+                    title: t("licenseCardPrintJobStatusFailed"),
+                    count: printJobFacetCounts.failed,
+                  },
+                  {
+                    value: "cancelled",
+                    title: t("licenseCardPrintJobStatusCancelled"),
+                    count: printJobFacetCounts.cancelled,
+                  },
+                ]}
+              />
+            }
           />
-          <Select
-            value={statusFilter}
-            onValueChange={(value) => setStatusFilter(value as PrintJobStatus | "all")}
-          >
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder={t("statusLabel")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("licenseCardPrintJobsStatusFilterAll")}</SelectItem>
-              <SelectItem value="draft">{t("licenseCardPrintJobStatusDraft")}</SelectItem>
-              <SelectItem value="queued">{t("licenseCardPrintJobStatusQueued")}</SelectItem>
-              <SelectItem value="running">{t("licenseCardPrintJobStatusRunning")}</SelectItem>
-              <SelectItem value="succeeded">{t("licenseCardPrintJobStatusSucceeded")}</SelectItem>
-              <SelectItem value="failed">{t("licenseCardPrintJobStatusFailed")}</SelectItem>
-              <SelectItem value="cancelled">{t("licenseCardPrintJobStatusCancelled")}</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button variant="outline" disabled={isLoading} onClick={() => void loadJobs()}>
-            {isLoading ? t("licenseCardPrintJobsRefreshingAction") : t("refreshAction")}
-          </Button>
+          <ListActionsRow
+            actions={
+              <Button variant="outline" disabled={isLoading} onClick={() => void loadJobs()}>
+                {isLoading ? t("licenseCardPrintJobsRefreshingAction") : t("refreshAction")}
+              </Button>
+            }
+          />
         </div>
 
         {isLoading ? (
@@ -256,77 +312,84 @@ export default function LtfAdminLicenseCardPrintJobsPage() {
             description={t("licenseCardPrintJobsEmptySubtitle")}
           />
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-zinc-100 bg-white shadow-sm">
-            <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-zinc-100 bg-zinc-50 text-xs uppercase text-zinc-500">
-                <tr>
-                  <th className="px-4 py-3 font-medium">{t("licenseCardPrintJobLabel")}</th>
-                  <th className="px-4 py-3 font-medium">{t("clubLabel")}</th>
-                  <th className="px-4 py-3 font-medium">{t("licenseCardPrintJobTemplateVersionLabel")}</th>
-                  <th className="px-4 py-3 font-medium">{t("licenseCardPrintJobItemsLabel")}</th>
-                  <th className="px-4 py-3 font-medium">{t("statusLabel")}</th>
-                  <th className="px-4 py-3 font-medium">{t("createdAtLabel")}</th>
-                  <th className="px-4 py-3 font-medium">{t("updatedAtLabel")}</th>
-                  <th className="px-4 py-3 font-medium">{t("actionsLabel")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {filteredJobs.map((job) => {
+          <EntityTable
+            columns={[
+              { key: "job_number", header: t("licenseCardPrintJobLabel") },
+              {
+                key: "club",
+                header: t("clubLabel"),
+                render: (job) => clubNameById[job.club] || String(job.club),
+              },
+              {
+                key: "template_version",
+                header: t("licenseCardPrintJobTemplateVersionLabel"),
+                render: (job) => `#${job.template_version}`,
+              },
+              { key: "total_items", header: t("licenseCardPrintJobItemsLabel") },
+              {
+                key: "status",
+                header: t("statusLabel"),
+                render: (job) => {
                   const statusMeta = getStatusMeta(job.status);
+                  return <StatusBadge label={statusMeta.label} tone={statusMeta.tone} />;
+                },
+              },
+              {
+                key: "created_at",
+                header: t("createdAtLabel"),
+                render: (job) => formatDisplayDateTime(job.created_at),
+              },
+              {
+                key: "updated_at",
+                header: t("updatedAtLabel"),
+                render: (job) => formatDisplayDateTime(job.updated_at),
+              },
+              {
+                key: "actions",
+                header: t("actionsLabel"),
+                render: (job) => {
                   const isJobBusy = activeJobId === job.id;
                   return (
-                    <tr key={job.id} className="text-zinc-700">
-                      <td className="px-4 py-3 font-medium">{job.job_number}</td>
-                      <td className="px-4 py-3">{clubNameById[job.club] || String(job.club)}</td>
-                      <td className="px-4 py-3">#{job.template_version}</td>
-                      <td className="px-4 py-3">{job.total_items}</td>
-                      <td className="px-4 py-3">
-                        <StatusBadge label={statusMeta.label} tone={statusMeta.tone} />
-                      </td>
-                      <td className="px-4 py-3">{formatDisplayDateTime(job.created_at)}</td>
-                      <td className="px-4 py-3">{formatDisplayDateTime(job.updated_at)}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={isJobBusy || !["draft", "failed"].includes(job.status)}
-                            onClick={() => void executeAction(job.id, () => executePrintJob(job.id))}
-                          >
-                            {t("licenseCardPrintJobExecuteAction")}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={isJobBusy || !["failed", "cancelled"].includes(job.status)}
-                            onClick={() => void executeAction(job.id, () => retryPrintJob(job.id))}
-                          >
-                            {t("licenseCardPrintJobRetryAction")}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={isJobBusy || ["succeeded", "cancelled"].includes(job.status)}
-                            onClick={() => void executeAction(job.id, () => cancelPrintJob(job.id))}
-                          >
-                            {t("licenseCardPrintJobCancelAction")}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={isJobBusy || job.status !== "succeeded" || !job.artifact_pdf}
-                            onClick={() => void handleDownloadPdf(job)}
-                          >
-                            {t("licenseCardPrintJobDownloadPdfAction")}
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={isJobBusy || !["draft", "failed"].includes(job.status)}
+                        onClick={() => void executeAction(job.id, () => executePrintJob(job.id))}
+                      >
+                        {t("licenseCardPrintJobExecuteAction")}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={isJobBusy || !["failed", "cancelled"].includes(job.status)}
+                        onClick={() => void executeAction(job.id, () => retryPrintJob(job.id))}
+                      >
+                        {t("licenseCardPrintJobRetryAction")}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={isJobBusy || ["succeeded", "cancelled"].includes(job.status)}
+                        onClick={() => void executeAction(job.id, () => cancelPrintJob(job.id))}
+                      >
+                        {t("licenseCardPrintJobCancelAction")}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={isJobBusy || job.status !== "succeeded" || !job.artifact_pdf}
+                        onClick={() => void handleDownloadPdf(job)}
+                      >
+                        {t("licenseCardPrintJobDownloadPdfAction")}
+                      </Button>
+                    </div>
                   );
-                })}
-              </tbody>
-            </table>
-          </div>
+                },
+              },
+            ]}
+            rows={filteredJobs}
+          />
         )}
       </div>
     </LtfAdminLayout>

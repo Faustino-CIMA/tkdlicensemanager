@@ -14,6 +14,7 @@ import { DeleteConfirmModal } from "@/components/ui/delete-confirm-modal";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ListActionsRow, ListToolbarPanel, PageNotice } from "@/components/ui/list-page-chrome";
 import { apiRequest } from "@/lib/api";
 import {
   LicenseType,
@@ -157,21 +158,31 @@ export default function LtfAdminLicenseTypesPage() {
 
   return (
     <LtfAdminLayout title={t("licenseTypesTitle")} subtitle={t("licenseTypesSubtitle")}>
-      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
 
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Input
-            className="w-full max-w-xs"
-            placeholder={t("searchLicenseTypesPlaceholder")}
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4">
+          <ListToolbarPanel
+            search={
+              <Input
+                className="w-full max-w-xs"
+                placeholder={t("searchLicenseTypesPlaceholder")}
+                aria-label={t("searchLicenseTypesPlaceholder")}
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+              />
+            }
           />
-          {canManageLicenseTypes ? <Button onClick={startCreate}>{t("createLicenseType")}</Button> : null}
+          <ListActionsRow
+            actions={
+              canManageLicenseTypes ? (
+                <Button onClick={startCreate}>{t("createLicenseType")}</Button>
+              ) : (
+                <p className="text-sm text-muted">{t("licenseTypesReadOnlyHint")}</p>
+              )
+            }
+          />
         </div>
-        {!canManageLicenseTypes ? (
-          <p className="text-sm text-muted">{t("licenseTypesReadOnlyHint")}</p>
-        ) : null}
 
         {isLoading ? (
           <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
@@ -188,10 +199,10 @@ export default function LtfAdminLicenseTypesPage() {
                       key: "actions",
                       header: t("actionsLabel"),
                       render: (licenseType: LicenseType) => (
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <Button
                             variant="outline"
-                            size="icon-sm"
+                            className="h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] shrink-0 p-0"
                             aria-label={t("editAction")}
                             onClick={() => startEdit(licenseType)}
                           >
@@ -199,7 +210,7 @@ export default function LtfAdminLicenseTypesPage() {
                           </Button>
                           <Button
                             variant="destructive"
-                            size="icon-sm"
+                            className="h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] shrink-0 p-0"
                             aria-label={t("deleteAction")}
                             onClick={() => handleDelete(licenseType)}
                           >

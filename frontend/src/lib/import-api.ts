@@ -1,12 +1,20 @@
 import { API_URL } from "./api";
 import { getToken } from "./auth";
 
+export type LtfLicensePrefixRewritePolicy = {
+  enabled: boolean;
+  source_prefix: string;
+  target_prefix: string;
+  rewritten_count: number;
+};
+
 type PreviewResponse = {
   headers: string[];
   sample_rows?: string[][];
   rows?: ImportRow[];
   total_rows: number;
   club_id?: number;
+  ltf_license_prefix_rewrite?: LtfLicensePrefixRewritePolicy;
 };
 
 type ImportRow = {
@@ -22,6 +30,7 @@ type ConfirmResponse = {
   skipped: number;
   errors: Array<{ row_index: number; errors: string[] }>;
   club_id?: number;
+  ltf_license_prefix_rewrite?: LtfLicensePrefixRewritePolicy;
 };
 
 type ImportType = "clubs" | "members";

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from licenses.models import LicenseHistoryEvent
+from licenses.models import License, LicenseHistoryEvent
 
 from .grades import OFFICIAL_GRADE_SET
 from .models import Member
@@ -31,6 +31,7 @@ class MemberSerializer(serializers.ModelSerializer):
     )
     profile_picture_url = serializers.SerializerMethodField()
     profile_picture_thumbnail_url = serializers.SerializerMethodField()
+    current_licenses = serializers.SerializerMethodField()
     ltf_license_prefix = serializers.ChoiceField(
         choices=[("LUX", "LUX"), ("LTF", "LTF")],
         write_only=True,
@@ -57,6 +58,7 @@ class MemberSerializer(serializers.ModelSerializer):
             "secondary_license_role",
             "profile_picture_url",
             "profile_picture_thumbnail_url",
+            "current_licenses",
             "photo_edit_metadata",
             "photo_consent_attested_at",
             "photo_consent_attested_by",
@@ -69,6 +71,7 @@ class MemberSerializer(serializers.ModelSerializer):
             "updated_at",
             "profile_picture_url",
             "profile_picture_thumbnail_url",
+            "current_licenses",
             "photo_edit_metadata",
             "photo_consent_attested_at",
             "photo_consent_attested_by",
@@ -176,6 +179,27 @@ class MemberSerializer(serializers.ModelSerializer):
             return None
         path = f"/api/members/{obj.id}/profile-picture/thumbnail/"
         return request.build_absolute_uri(path) if request else path
+
+    def get_current_licenses(self, obj: Member):
+        prefetched = getattr(obj, "current_licenses_prefetched", None)
+        if prefetched is None:
+            licenses = list(
+                obj.licenses.filter(status__in=[License.Status.PENDING, License.Status.ACTIVE])
+                .select_related("license_type")
+                .order_by("-year", "id")
+            )
+        else:
+            licenses = list(prefetched)
+        return [
+            {
+                "id": license_record.id,
+                "year": license_record.year,
+                "status": license_record.status,
+                "license_type": license_record.license_type_id,
+                "license_type_name": license_record.license_type.name,
+            }
+            for license_record in licenses
+        ]
 
 
 class GradePromotionHistorySerializer(serializers.ModelSerializer):

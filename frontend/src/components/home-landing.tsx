@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 
+import { AppVersionLink } from "@/components/app-version-link";
 import { Spinner } from "@/components/ui/spinner";
 import { apiRequest } from "@/lib/api";
 import { clearToken, getToken } from "@/lib/auth";
@@ -115,6 +116,10 @@ export function HomeLanding() {
             </Link>
           </div>
 
+          <div className="mt-8">
+            <AppVersionLink />
+          </div>
+
           <nav aria-label={common("navigationLabel")} className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {navDefs.map((def) => {
               const Icon = def.icon;
@@ -167,6 +172,9 @@ export function HomeLanding() {
             <p className="mt-1 text-2xl font-semibold tabular-nums">{t("tilePrintValue")}</p>
           </div>
         </div>
+      </div>
+      <div className="mx-auto mt-10 w-full max-w-5xl">
+        <AppVersionLink />
       </div>
     </main>
   );

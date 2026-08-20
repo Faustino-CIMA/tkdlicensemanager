@@ -2,7 +2,7 @@ import mimetypes
 from pathlib import Path
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.db.models.deletion import ProtectedError
 from django.http import FileResponse
 from rest_framework import permissions, status, viewsets
@@ -10,6 +10,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from config.pagination import OptionalPaginationListMixin
 from .models import GradePromotionHistory, Member
@@ -22,14 +23,16 @@ from .serializers import (
     MemberProfilePictureUploadSerializer,
     MemberSerializer,
 )
+from accounts.permissions import IsLtfAdmin
 from .services import (
     add_grade_promotion,
     clear_member_profile_picture,
     delete_grade_promotion,
     process_member_profile_picture,
+    rewrite_existing_lux_ltf_license_ids,
     update_grade_promotion,
 )
-from licenses.models import LicenseHistoryEvent
+from licenses.models import License, LicenseHistoryEvent
 
 
 class MemberViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
@@ -112,7 +115,17 @@ class MemberViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
                 | Q(belt_rank__icontains=search_value)
             )
 
-        return queryset.order_by("last_name", "first_name", "id")
+        return queryset.prefetch_related(
+            Prefetch(
+                "licenses",
+                queryset=License.objects.filter(
+                    status__in=[License.Status.PENDING, License.Status.ACTIVE]
+                )
+                .select_related("license_type")
+                .order_by("-year", "id"),
+                to_attr="current_licenses_prefetched",
+            )
+        ).order_by("last_name", "first_name", "id")
 
     def destroy(self, request, *args, **kwargs):
         try:
@@ -462,4 +475,14 @@ class MemberViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
             filename=response_name,
             content_type=content_type,
         )
+
+
+class RewriteLtfLicensePrefixView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsLtfAdmin]
+
+    def get(self, request):
+        return Response(rewrite_existing_lux_ltf_license_ids(apply=False))
+
+    def post(self, request):
+        return Response(rewrite_existing_lux_ltf_license_ids(apply=True))
 

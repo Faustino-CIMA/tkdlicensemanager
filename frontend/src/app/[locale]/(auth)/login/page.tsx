@@ -8,6 +8,7 @@ import { useLocale, useTranslations } from "next-intl";
 
 import { login } from "@/lib/auth-api";
 import { setToken } from "@/lib/auth";
+import { AppVersionLink } from "@/components/app-version-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -136,6 +137,9 @@ export default function LoginPage() {
               {isSubmitting ? t("loading") : t("submit")}
             </Button>
           </form>
+          <div className="mt-6 flex justify-center">
+            <AppVersionLink />
+          </div>
         </div>
       </section>
     </main>

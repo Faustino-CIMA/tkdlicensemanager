@@ -38,6 +38,11 @@ from licenses.views import (
     ClubOrderViewSet,
     FinanceAuditLogViewSet,
     InvoiceViewSet,
+    ExpenseCategoryViewSet,
+    ExpenseViewSet,
+    FinanceReportExportView,
+    FinanceReportView,
+    FinanceYearOpeningView,
     InvoicePdfView,
     LicensePriceViewSet,
     LicenseTypeViewSet,
@@ -63,7 +68,7 @@ from licenses.card_views import (
     PrinterProfileViewSet,
     PrintJobViewSet,
 )
-from members.views import MemberViewSet
+from members.views import MemberViewSet, RewriteLtfLicensePrefixView
 
 router = DefaultRouter()
 router.register(r"clubs", ClubViewSet, basename="club")
@@ -78,6 +83,8 @@ router.register(r"payconiq", PayconiqPaymentViewSet, basename="payconiq")
 router.register(r"club-orders", ClubOrderViewSet, basename="club-order")
 router.register(r"club-invoices", ClubInvoiceViewSet, basename="club-invoice")
 router.register(r"finance-audit-logs", FinanceAuditLogViewSet, basename="finance-audit-log")
+router.register(r"expense-categories", ExpenseCategoryViewSet, basename="expense-category")
+router.register(r"expenses", ExpenseViewSet, basename="expense")
 router.register(r"card-formats", CardFormatPresetViewSet, basename="card-format")
 router.register(r"card-font-assets", CardFontAssetViewSet, basename="card-font-asset")
 router.register(r"card-image-assets", CardImageAssetViewSet, basename="card-image-asset")
@@ -145,6 +152,11 @@ urlpatterns = [
         name="federation-profile-logo-content",
     ),
     path("api/health/", health_check, name="health-check"),
+    path(
+        "api/members/ltf-license-prefix-rewrite/",
+        RewriteLtfLicensePrefixView.as_view(),
+        name="member-ltf-license-prefix-rewrite",
+    ),
     path("api/dashboard/overview/ltf-admin/", LtfAdminOverviewView.as_view(), name="overview-ltf-admin"),
     path(
         "api/dashboard/overview/ltf-finance/",
@@ -153,6 +165,9 @@ urlpatterns = [
     ),
     path("api/stripe/webhook/", StripeWebhookView.as_view(), name="stripe-webhook"),
     path("api/invoices/<int:invoice_id>/pdf/", InvoicePdfView.as_view(), name="invoice-pdf"),
+    path("api/finance-reports/", FinanceReportView.as_view(), name="finance-report"),
+    path("api/finance-reports/export/", FinanceReportExportView.as_view(), name="finance-report-export"),
+    path("api/finance-year-openings/", FinanceYearOpeningView.as_view(), name="finance-year-opening"),
     path("api/merge-fields/", MergeFieldRegistryView.as_view(), name="merge-fields"),
     path(
         "api/card-designer/lookups/members/",

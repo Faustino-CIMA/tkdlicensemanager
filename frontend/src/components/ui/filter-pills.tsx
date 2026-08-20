@@ -14,6 +14,7 @@ type FilterPillsProps<T extends string> = {
   onChange: (value: T) => void;
   disabled?: boolean;
   ariaLabel: string;
+  layout?: "fill" | "wrap";
 };
 
 export function FilterPills<T extends string>({
@@ -22,7 +23,9 @@ export function FilterPills<T extends string>({
   onChange,
   disabled = false,
   ariaLabel,
+  layout = "fill",
 }: FilterPillsProps<T>) {
+  const hugContent = layout === "wrap";
   return (
     <div
       role="radiogroup"
@@ -40,7 +43,10 @@ export function FilterPills<T extends string>({
             disabled={disabled}
             onClick={() => onChange(option.value)}
             className={cn(
-              "flex min-h-[var(--control-height)] min-w-0 flex-1 cursor-pointer items-baseline justify-start gap-1.5 rounded-[var(--radius-chip)] border px-4 py-2 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
+              "inline-flex min-h-[var(--control-height)] cursor-pointer items-baseline gap-1.5 rounded-[var(--radius-chip)] border text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
+              hugContent
+                ? "w-auto shrink-0 px-3 py-1.5"
+                : "min-w-0 flex-1 justify-start px-4 py-2",
               selected
                 ? "border-transparent bg-primary text-primary-foreground shadow-sm"
                 : "border-border bg-surface text-foreground hover:bg-secondary"

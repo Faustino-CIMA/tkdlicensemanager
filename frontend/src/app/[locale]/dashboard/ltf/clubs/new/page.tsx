@@ -11,6 +11,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
 import { deriveBankNameFromIban, isValidIban } from "@/lib/iban";
 import { createClub } from "@/lib/ltf-admin-api";
 
@@ -72,14 +73,14 @@ export default function LtfAdminCreateClubPage() {
 
   return (
     <LtfAdminLayout title={t("createClub")} subtitle={t("clubFormSubtitle")}>
-      <div className="space-y-4">
-        <Button variant="outline" size="sm" asChild>
+      <div className="space-y-6">
+        <Button variant="outline" asChild>
           <Link href={`/${locale}/dashboard/ltf/clubs`}>{t("backToClubs")}</Link>
         </Button>
 
-        {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+        {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
 
-        <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
+        <FormPanel>
           <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
             <div className="space-y-2 md:col-span-2">
               <label className="text-sm font-medium text-foreground">{t("clubNameLabel")}</label>
@@ -127,7 +128,7 @@ export default function LtfAdminCreateClubPage() {
               </Button>
             </div>
           </form>
-        </section>
+        </FormPanel>
       </div>
     </LtfAdminLayout>
   );

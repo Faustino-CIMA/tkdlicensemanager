@@ -75,6 +75,7 @@ class FederationProfile(models.Model):
     locality = models.CharField(max_length=255, blank=True)
     iban = models.CharField(max_length=34, blank=True)
     bank_name = models.CharField(max_length=255, blank=True)
+    rewrite_lux_prefix_on_member_import = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

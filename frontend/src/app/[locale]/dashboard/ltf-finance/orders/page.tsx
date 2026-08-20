@@ -9,15 +9,26 @@ import { useClubSelection } from "@/components/club-selection-provider";
 import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { SummaryCard } from "@/components/club-admin/summary-card";
+import { FilterPills } from "@/components/ui/filter-pills";
 import { Input } from "@/components/ui/input";
-import { StatusBadge } from "@/components/ui/status-badge";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  ExpandableTable,
+  FormPanel,
+  LIST_PAGE_SIZE_CAP,
+  ListActionsRow,
+  ListPagination,
+  ListToolbarPanel,
+  NestedTable,
+  PageNotice,
+  PageSizeSelect,
+  dataRowClickableClass,
+  dataTableClass,
+  dataTdClass,
+  dataThClass,
+  dataTheadClass,
+  resolveListPageSize,
+} from "@/components/ui/list-page-chrome";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Club,
   FinanceLicenseType,
@@ -31,6 +42,21 @@ import {
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/date-display";
 
 const AUTO_REFRESH_INTERVAL_MS = 30000;
+
+type OrderStatusFilter = "all" | "received" | "delivered" | "cancelled";
+
+function orderStatusQuery(filter: OrderStatusFilter) {
+  switch (filter) {
+    case "received":
+      return "draft,pending";
+    case "delivered":
+      return "paid";
+    case "cancelled":
+      return "cancelled,refunded";
+    default:
+      return undefined;
+  }
+}
 
 function getGroupYear(value: string) {
   const parsed = new Date(value);
@@ -55,8 +81,15 @@ export default function LtfFinanceOrdersPage() {
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState("25");
+  const [pageSize, setPageSize] = useState("50");
+  const [statusFilter, setStatusFilter] = useState<OrderStatusFilter>("all");
   const [totalOrderCount, setTotalOrderCount] = useState(0);
+  const [orderFacetCounts, setOrderFacetCounts] = useState({
+    all: 0,
+    received: 0,
+    delivered: 0,
+    cancelled: 0,
+  });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [prices, setPrices] = useState<LicensePrice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -66,7 +99,6 @@ export default function LtfFinanceOrdersPage() {
   const isRefreshingRef = useRef(false);
   const requestAbortRef = useRef<AbortController | null>(null);
 
-  const pageSizeOptions = ["10", "25", "50", "100", "150", "200"];
   const expandedClubStorageKey = "ltf_finance_orders_expanded_clubs";
   const expandedYearStorageKey = "ltf_finance_orders_expanded_years";
   const { selectedClubId } = useClubSelection();
@@ -85,27 +117,60 @@ export default function LtfFinanceOrdersPage() {
       setErrorMessage(null);
     }
     try {
+      const facetParams = {
+        q: searchQuery || undefined,
+        clubId: selectedClubId ?? undefined,
+      };
       const ordersPromise = getFinanceOrdersPage(
         {
           page: currentPage,
-          pageSize: Number(pageSize),
+          pageSize: resolveListPageSize(pageSize, LIST_PAGE_SIZE_CAP),
           q: searchQuery || undefined,
+          status: orderStatusQuery(statusFilter),
           clubId: selectedClubId ?? undefined,
         },
         { signal: controller.signal }
       );
       if (includeStatic) {
-        const [ordersResponse, pricesResponse, clubsResponse, licenseTypesResponse] = await Promise.all([
+        const [
+          ordersResponse,
+          pricesResponse,
+          clubsResponse,
+          licenseTypesResponse,
+          allCountRes,
+          receivedCountRes,
+          deliveredCountRes,
+          cancelledCountRes,
+        ] = await Promise.all([
           ordersPromise,
           getLicensePrices(undefined, { signal: controller.signal }),
           getFinanceClubs({ signal: controller.signal }),
           getFinanceLicenseTypes({ signal: controller.signal }),
+          getFinanceOrdersPage({ page: 1, pageSize: 1, ...facetParams }, { signal: controller.signal }),
+          getFinanceOrdersPage(
+            { page: 1, pageSize: 1, ...facetParams, status: "draft,pending" },
+            { signal: controller.signal }
+          ),
+          getFinanceOrdersPage(
+            { page: 1, pageSize: 1, ...facetParams, status: "paid" },
+            { signal: controller.signal }
+          ),
+          getFinanceOrdersPage(
+            { page: 1, pageSize: 1, ...facetParams, status: "cancelled,refunded" },
+            { signal: controller.signal }
+          ),
         ]);
         setOrders(ordersResponse.results);
         setTotalOrderCount(ordersResponse.count);
         setPrices(pricesResponse);
         setClubs(clubsResponse);
         setLicenseTypes(licenseTypesResponse);
+        setOrderFacetCounts({
+          all: allCountRes.count,
+          received: receivedCountRes.count,
+          delivered: deliveredCountRes.count,
+          cancelled: cancelledCountRes.count,
+        });
       } else {
         const ordersResponse = await ordersPromise;
         setOrders(ordersResponse.results);
@@ -127,7 +192,7 @@ export default function LtfFinanceOrdersPage() {
         setIsLoading(false);
       }
     }
-  }, [currentPage, pageSize, searchQuery, selectedClubId, t]);
+  }, [currentPage, pageSize, searchQuery, selectedClubId, statusFilter, t]);
 
   useEffect(() => {
     void loadOrders();
@@ -206,15 +271,7 @@ export default function LtfFinanceOrdersPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, pageSize]);
-
-  const orderCounts = useMemo(() => {
-    return orders.reduce<Record<string, number>>((acc, order) => {
-      const bucket = getOrderStatusMeta(order.status).bucket;
-      acc[bucket] = (acc[bucket] || 0) + 1;
-      return acc;
-    }, {});
-  }, [orders, getOrderStatusMeta]);
+  }, [searchQuery, pageSize, statusFilter]);
 
   const latestPriceByLicenseType = useMemo(() => {
     const sorted = [...prices].sort((left, right) => {
@@ -324,7 +381,8 @@ export default function LtfFinanceOrdersPage() {
       .sort((left, right) => left.clubName.localeCompare(right.clubName));
   }, [clubNameById, searchedOrders, getOrderStatusMeta]);
 
-  const totalPages = Math.max(1, Math.ceil(totalOrderCount / Number(pageSize)));
+  const resolvedPageSize = resolveListPageSize(pageSize, totalOrderCount);
+  const totalPages = Math.max(1, Math.ceil(totalOrderCount / resolvedPageSize));
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -417,20 +475,22 @@ export default function LtfFinanceOrdersPage() {
 
   return (
     <LtfFinanceLayout title={t("ordersTitle")} subtitle={t("ordersSubtitle")}>
+      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
           title={t("ordersReceivedCountLabel")}
-          value={String(orderCounts.received ?? 0)}
+          value={String(orderFacetCounts.received)}
         />
         <SummaryCard
           title={t("ordersDeliveredCountLabel")}
-          value={String(orderCounts.delivered ?? 0)}
+          value={String(orderFacetCounts.delivered)}
         />
         <SummaryCard
           title={t("ordersCancelledCountLabel")}
-          value={String(orderCounts.cancelled ?? 0)}
+          value={String(orderFacetCounts.cancelled)}
         />
-        <div className="rounded-[var(--radius-card)] border border-border bg-card p-5 shadow-sm">
+        <FormPanel className="p-5">
           <p className="text-sm text-muted">{t("licensePriceLabel")}</p>
           <div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1">
             {priceCardRows.length === 0 ? (
@@ -452,58 +512,93 @@ export default function LtfFinanceOrdersPage() {
               ))
             )}
           </div>
-        </div>
+        </FormPanel>
       </section>
 
-      <section className="flex flex-wrap items-center justify-between gap-3">
-        <Input
-          className="w-full max-w-sm"
-          placeholder={t("searchOrdersPlaceholder")}
-          value={searchInput}
-          onChange={(event) => setSearchInput(event.target.value)}
+      <div className="flex flex-col gap-4">
+        <ListToolbarPanel
+          search={
+            <Input
+              className="w-full max-w-xs"
+              placeholder={t("searchOrdersPlaceholder")}
+              aria-label={t("searchOrdersPlaceholder")}
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+            />
+          }
+          pageSize={
+            <PageSizeSelect
+              value={pageSize}
+              onChange={setPageSize}
+              ariaLabel={common("rowsPerPageLabel")}
+              allLabel={common("rowsPerPageAll")}
+            />
+          }
+          filters={
+            <FilterPills
+              ariaLabel={t("ordersStatusFilterAriaLabel")}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[
+                { value: "all", title: t("filterAllTitle"), count: orderFacetCounts.all },
+                {
+                  value: "received",
+                  title: t("orderStatusReceived"),
+                  count: orderFacetCounts.received,
+                },
+                {
+                  value: "delivered",
+                  title: t("orderStatusDelivered"),
+                  count: orderFacetCounts.delivered,
+                },
+                {
+                  value: "cancelled",
+                  title: t("orderStatusCancelled"),
+                  count: orderFacetCounts.cancelled,
+                },
+              ]}
+            />
+          }
         />
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-muted">{common("rowsPerPageLabel")}</span>
-          <Select value={pageSize} onValueChange={setPageSize}>
-            <SelectTrigger className="w-[120px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {pageSizeOptions.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option === "all" ? common("rowsPerPageAll") : option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </section>
+        <ListActionsRow
+          pagination={
+            <ListPagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPrevious={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              onNext={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              pageLabel={t("pageLabel", { current: currentPage, total: totalPages })}
+              previousLabel={t("previousPage")}
+              nextLabel={t("nextPage")}
+            />
+          }
+        />
+      </div>
 
       {isLoading ? (
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       ) : groupedClubRows.length === 0 ? (
         <EmptyState title={t("noOrdersTitle")} description={t("noOrdersSubtitle")} />
       ) : (
-        <div className="space-y-3">
-          <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-card shadow-sm">
-            <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
+        <ExpandableTable>
+            <table className={dataTableClass}>
+              <thead className={dataTheadClass}>
                 <tr>
-                  <th className="w-10 px-4 py-3 font-medium" />
-                  <th className="px-4 py-3 font-medium">{t("clubLabel")}</th>
-                  <th className="px-4 py-3 font-medium">{t("totalLabel")}</th>
-                  <th className="px-4 py-3 font-medium">{t("ordersReceivedCountLabel")}</th>
-                  <th className="px-4 py-3 font-medium">{t("ordersDeliveredCountLabel")}</th>
-                  <th className="px-4 py-3 font-medium">{t("ordersCancelledCountLabel")}</th>
+                  <th className={`w-10 ${dataThClass}`} />
+                  <th className={dataThClass}>{t("clubLabel")}</th>
+                  <th className={dataThClass}>{t("totalLabel")}</th>
+                  <th className={dataThClass}>{t("ordersReceivedCountLabel")}</th>
+                  <th className={dataThClass}>{t("ordersDeliveredCountLabel")}</th>
+                  <th className={dataThClass}>{t("ordersCancelledCountLabel")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody className="divide-y divide-border/80">
                 {groupedClubRows.map((clubGroup) => {
                   const clubExpanded = expandedClubSet.has(clubGroup.clubId);
                   return (
                     <Fragment key={clubGroup.clubId}>
                       <tr
-                        className="cursor-pointer text-foreground hover:bg-secondary"
+                        className={dataRowClickableClass}
                         onClick={() => toggleClubExpanded(clubGroup.clubId)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
@@ -515,25 +610,25 @@ export default function LtfFinanceOrdersPage() {
                         role="button"
                         aria-expanded={clubExpanded}
                       >
-                        <td className="px-4 py-3 text-muted">
+                        <td className={`${dataTdClass} text-muted`}>
                           {clubExpanded ? (
                             <ChevronDown className="h-4 w-4" />
                           ) : (
                             <ChevronRight className="h-4 w-4" />
                           )}
                         </td>
-                        <td className="px-4 py-3 font-medium">{clubGroup.clubName}</td>
-                        <td className="px-4 py-3">{clubGroup.total}</td>
-                        <td className="px-4 py-3">{clubGroup.receivedCount}</td>
-                        <td className="px-4 py-3">{clubGroup.deliveredCount}</td>
-                        <td className="px-4 py-3">{clubGroup.cancelledCount}</td>
+                        <td className={`${dataTdClass} font-medium`}>{clubGroup.clubName}</td>
+                        <td className={dataTdClass}>{clubGroup.total}</td>
+                        <td className={dataTdClass}>{clubGroup.receivedCount}</td>
+                        <td className={dataTdClass}>{clubGroup.deliveredCount}</td>
+                        <td className={dataTdClass}>{clubGroup.cancelledCount}</td>
                       </tr>
                       {clubExpanded ? (
                         <tr className="bg-secondary/60">
                           <td colSpan={6} className="px-6 py-3">
-                            <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-card">
-                              <table className="min-w-full text-left text-sm">
-                                <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
+                            <NestedTable>
+                              <table className={dataTableClass}>
+                                <thead className={dataTheadClass}>
                                   <tr>
                                     <th className="w-10 px-4 py-2 font-medium" />
                                     <th className="px-4 py-2 font-medium">{t("yearLabel")}</th>
@@ -543,14 +638,14 @@ export default function LtfFinanceOrdersPage() {
                                     <th className="px-4 py-2 font-medium">{t("ordersCancelledCountLabel")}</th>
                                   </tr>
                                 </thead>
-                                <tbody className="divide-y divide-border">
+                                <tbody className="divide-y divide-border/80">
                                   {clubGroup.years.map((yearGroup) => {
                                     const yearKey = getYearKey(clubGroup.clubId, yearGroup.year);
                                     const yearExpanded = expandedYearSet.has(yearKey);
                                     return (
                                       <Fragment key={yearKey}>
                                         <tr
-                                          className="cursor-pointer text-foreground hover:bg-secondary"
+                                          className={dataRowClickableClass}
                                           onClick={() => toggleYearExpanded(clubGroup.clubId, yearGroup.year)}
                                           onKeyDown={(event) => {
                                             if (event.key === "Enter" || event.key === " ") {
@@ -580,9 +675,9 @@ export default function LtfFinanceOrdersPage() {
                                         {yearExpanded ? (
                                           <tr className="bg-secondary/50">
                                             <td colSpan={6} className="px-6 py-3">
-                                              <div className="overflow-x-auto rounded-[var(--radius-form)] border border-border bg-card">
-                                                <table className="min-w-full text-left text-sm">
-                                                  <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
+                                              <NestedTable>
+                                                <table className={dataTableClass}>
+                                                  <thead className={dataTheadClass}>
                                                     <tr>
                                                       <th className="px-4 py-2 font-medium">{t("orderNumberLabel")}</th>
                                                       <th className="px-4 py-2 font-medium">{t("statusLabel")}</th>
@@ -591,13 +686,13 @@ export default function LtfFinanceOrdersPage() {
                                                       <th className="px-4 py-2 font-medium">{t("createdAtLabel")}</th>
                                                     </tr>
                                                   </thead>
-                                                  <tbody className="divide-y divide-border">
+                                                  <tbody className="divide-y divide-border/80">
                                                     {yearGroup.orders.map((order) => {
                                                       const meta = getOrderStatusMeta(order.status);
                                                       return (
                                                         <tr
                                                           key={order.id}
-                                                          className="cursor-pointer text-foreground hover:bg-secondary"
+                                                          className={dataRowClickableClass}
                                                           onClick={() => {
                                                             router.push(
                                                               `/${locale}/dashboard/ltf-finance/orders/${order.id}`
@@ -622,7 +717,7 @@ export default function LtfFinanceOrdersPage() {
                                                     })}
                                                   </tbody>
                                                 </table>
-                                              </div>
+                                              </NestedTable>
                                             </td>
                                           </tr>
                                         ) : null}
@@ -631,7 +726,7 @@ export default function LtfFinanceOrdersPage() {
                                   })}
                                 </tbody>
                               </table>
-                            </div>
+                            </NestedTable>
                           </td>
                         </tr>
                       ) : null}
@@ -640,30 +735,8 @@ export default function LtfFinanceOrdersPage() {
                 })}
               </tbody>
             </table>
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
-            <span>{t("pageLabel", { current: currentPage, total: totalPages })}</span>
-            <div className="flex gap-2">
-              <button
-                className="rounded-[var(--radius-form)] border border-border px-3 py-1"
-                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                disabled={currentPage === 1}
-              >
-                {t("previousPage")}
-              </button>
-              <button
-                className="rounded-[var(--radius-form)] border border-border px-3 py-1"
-                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-                disabled={currentPage === totalPages}
-              >
-                {t("nextPage")}
-              </button>
-            </div>
-          </div>
-        </div>
+        </ExpandableTable>
       )}
-
-      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
     </LtfFinanceLayout>
   );
 }

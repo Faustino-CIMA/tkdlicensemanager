@@ -1,13 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { CheckCircle2 } from "lucide-react";
 
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
 import { Button } from "@/components/ui/button";
+import { InfoHint } from "@/components/ui/info-hint";
+import { FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Select,
@@ -18,12 +22,15 @@ import {
 } from "@/components/ui/select";
 import { Club, Member, getClubs, getMembersList } from "@/lib/club-admin-api";
 import {
+  ClubOrderAvailability,
   ClubOrderEligibleLicenseType,
   ClubOrderIneligibleLicenseType,
   createClubOrdersBatch,
   getClubOrderEligibility,
 } from "@/lib/club-finance-api";
 import { apiRequest } from "@/lib/api";
+import { formatDisplayDate } from "@/lib/date-display";
+import { cn } from "@/lib/utils";
 
 const ORDER_LICENSE_STORAGE_KEY = "club_members_order_license_payload";
 
@@ -34,6 +41,25 @@ type OrderPayload = {
   selectedClubId: number | null;
   year?: number;
 };
+
+type LicenseTypeAvailability = "available" | "needs_review" | "already_licensed" | "unavailable";
+
+type CreatedOrder = {
+  id: number;
+  orderNumber: string;
+  memberCount: number;
+  year: string;
+  licenseTypeName: string;
+};
+
+const STRUCTURAL_REASON_CODES = new Set([
+  "no_active_price",
+  "current_year_disabled",
+  "next_year_disabled",
+  "window_closed",
+  "invalid_target_year",
+  "invalid_policy_configuration",
+]);
 
 function parseOrderPayload(): OrderPayload {
   if (typeof window === "undefined") {
@@ -66,6 +92,158 @@ function parseOrderPayload(): OrderPayload {
   }
 }
 
+function classifyIneligibleType(
+  licenseType: ClubOrderIneligibleLicenseType,
+  selectedCount: number
+): LicenseTypeAvailability {
+  const blockedIds = new Set(licenseType.ineligible_members.map((item) => item.member_id));
+  const allBlocked = selectedCount > 0 && blockedIds.size >= selectedCount;
+  if (!allBlocked && blockedIds.size > 0) {
+    return "needs_review";
+  }
+  const reasonCodes = licenseType.reason_counts.map((reason) => reason.code);
+  if (
+    reasonCodes.length > 0 &&
+    reasonCodes.every((code) => code === "duplicate_pending_or_active")
+  ) {
+    return "already_licensed";
+  }
+  return "unavailable";
+}
+
+function addMonths(source: Date, months: number) {
+  const next = new Date(source.getTime());
+  next.setMonth(next.getMonth() + months);
+  return next;
+}
+
+function remainingCountdownParts(from: Date, to: Date) {
+  let months = (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth());
+  let cursor = addMonths(from, months);
+  if (cursor > to) {
+    months -= 1;
+    cursor = addMonths(from, months);
+  }
+  const remainingMs = Math.max(to.getTime() - cursor.getTime(), 0);
+  return {
+    months: Math.max(months, 0),
+    days: Math.floor(remainingMs / 86_400_000),
+    hours: Math.floor((remainingMs % 86_400_000) / 3_600_000),
+  };
+}
+
+function formatPrice(amount: string, currency: string, locale: string) {
+  const parsed = Number(amount);
+  if (!Number.isFinite(parsed)) {
+    return `${amount} ${currency}`;
+  }
+  try {
+    return new Intl.NumberFormat(locale, { style: "currency", currency }).format(parsed);
+  } catch {
+    return `${amount} ${currency}`;
+  }
+}
+
+function AvailabilityDetails({
+  availability,
+  reason,
+  kind,
+  year,
+}: {
+  availability?: ClubOrderAvailability;
+  reason: string;
+  kind: "already_licensed" | "unavailable";
+  year: string;
+}) {
+  const t = useTranslations("ClubAdmin");
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setNow(new Date());
+    }, 30_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  const windowStart = availability?.window_start ?? null;
+  const windowEnd = availability?.window_end ?? null;
+  const opensAt = availability?.opens_at ?? null;
+  const opensAtDate = opensAt ? new Date(opensAt) : null;
+  const hasValidOpen = Boolean(opensAtDate && !Number.isNaN(opensAtDate.getTime()));
+  const windowIsOpen = availability?.is_open === true;
+
+  const countdownLabel = (() => {
+    if (!hasValidOpen || !opensAtDate) {
+      return null;
+    }
+    if (opensAtDate.getTime() <= now.getTime()) {
+      return t("orderLicenseCountdownSoon");
+    }
+    const parts = remainingCountdownParts(now, opensAtDate);
+    const units: string[] = [];
+    if (parts.months > 0) {
+      units.push(t("orderLicenseCountdownMonths", { count: parts.months }));
+    }
+    if (parts.days > 0) {
+      units.push(t("orderLicenseCountdownDays", { count: parts.days }));
+    }
+    if (parts.hours > 0 || units.length === 0) {
+      units.push(t("orderLicenseCountdownHours", { count: parts.hours }));
+    }
+    return units.join(", ");
+  })();
+
+  if (kind === "already_licensed") {
+    return (
+      <div className="space-y-1.5">
+        <p className="font-medium text-foreground">{reason}</p>
+        <p>{t("orderLicenseAlreadyLicensedHelp", { year })}</p>
+        {windowIsOpen && windowStart && windowEnd ? (
+          <p>
+            {t("orderLicenseWindowOpenNow", {
+              start: formatDisplayDate(windowStart),
+              end: formatDisplayDate(windowEnd),
+            })}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <p className="font-medium text-foreground">{reason}</p>
+      {windowIsOpen && windowStart && windowEnd ? (
+        <p>
+          {t("orderLicenseWindowOpenNow", {
+            start: formatDisplayDate(windowStart),
+            end: formatDisplayDate(windowEnd),
+          })}
+        </p>
+      ) : windowStart && windowEnd ? (
+        <p>
+          {t("orderLicenseWindowLabel", {
+            start: formatDisplayDate(windowStart),
+            end: formatDisplayDate(windowEnd),
+          })}
+        </p>
+      ) : null}
+      {hasValidOpen && opensAtDate ? (
+        <>
+          <p>{t("orderLicenseOpensOn", { date: formatDisplayDate(opensAtDate) })}</p>
+          {countdownLabel ? (
+            <p className="font-semibold text-foreground">
+              {t("orderLicenseOpensIn", { countdown: countdownLabel })}
+            </p>
+          ) : null}
+        </>
+      ) : windowIsOpen ? null : (
+        <p>{t("orderLicenseNotScheduled")}</p>
+      )}
+    </div>
+  );
+}
+
 export default function ClubMembersOrderLicensesPage() {
   const t = useTranslations("ClubAdmin");
   const pathname = usePathname();
@@ -74,9 +252,7 @@ export default function ClubMembersOrderLicensesPage() {
 
   const [payload] = useState<OrderPayload>(() => parseOrderPayload());
   const [workingSelectedIds, setWorkingSelectedIds] = useState<number[]>(() => payload.selectedIds);
-  const [targetYear, setTargetYear] = useState(
-    String(payload.year ?? new Date().getFullYear())
-  );
+  const [targetYear, setTargetYear] = useState(String(payload.year ?? new Date().getFullYear()));
   const [selectedLicenseTypeId, setSelectedLicenseTypeId] = useState("");
 
   const [currentRole, setCurrentRole] = useState<string | null>(null);
@@ -88,7 +264,7 @@ export default function ClubMembersOrderLicensesPage() {
   const [isCheckingEligibility, setIsCheckingEligibility] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [createdOrder, setCreatedOrder] = useState<CreatedOrder | null>(null);
 
   const eligibilityRequestIdRef = useRef(0);
   const canManageMembers = currentRole === "club_admin";
@@ -117,22 +293,45 @@ export default function ClubMembersOrderLicensesPage() {
       .filter((member): member is Member => Boolean(member));
   }, [selectedClubMembers, validSelectedIds]);
 
+  const reviewTypes = useMemo(
+    () =>
+      ineligibleTypes.filter(
+        (licenseType) => classifyIneligibleType(licenseType, validSelectedIds.length) === "needs_review"
+      ),
+    [ineligibleTypes, validSelectedIds.length]
+  );
+  const unavailableTypes = useMemo(
+    () =>
+      ineligibleTypes.filter(
+        (licenseType) => classifyIneligibleType(licenseType, validSelectedIds.length) === "unavailable"
+      ),
+    [ineligibleTypes, validSelectedIds.length]
+  );
+  const alreadyLicensedTypes = useMemo(
+    () =>
+      ineligibleTypes.filter(
+        (licenseType) =>
+          classifyIneligibleType(licenseType, validSelectedIds.length) === "already_licensed"
+      ),
+    [ineligibleTypes, validSelectedIds.length]
+  );
+
   const selectedTypeIdNumber = Number(selectedLicenseTypeId);
   const selectedEligibleType = useMemo(
     () => eligibleTypes.find((item) => item.id === selectedTypeIdNumber) ?? null,
     [eligibleTypes, selectedTypeIdNumber]
   );
-  const selectedIneligibleType = useMemo(
-    () => ineligibleTypes.find((item) => item.id === selectedTypeIdNumber) ?? null,
-    [ineligibleTypes, selectedTypeIdNumber]
+  const selectedReviewType = useMemo(
+    () => reviewTypes.find((item) => item.id === selectedTypeIdNumber) ?? null,
+    [reviewTypes, selectedTypeIdNumber]
   );
 
   const ineligibleByMemberId = useMemo(() => {
     const map = new Map<number, { reasonCodes: string[]; messages: string[] }>();
-    if (!selectedIneligibleType) {
+    if (!selectedReviewType) {
       return map;
     }
-    selectedIneligibleType.ineligible_members.forEach((item) => {
+    selectedReviewType.ineligible_members.forEach((item) => {
       const existing = map.get(item.member_id);
       if (!existing) {
         map.set(item.member_id, { reasonCodes: [item.reason_code], messages: [item.message] });
@@ -146,7 +345,7 @@ export default function ClubMembersOrderLicensesPage() {
       }
     });
     return map;
-  }, [selectedIneligibleType]);
+  }, [selectedReviewType]);
 
   const blockedMemberIds = useMemo(
     () => new Set(Array.from(ineligibleByMemberId.keys())),
@@ -162,10 +361,36 @@ export default function ClubMembersOrderLicensesPage() {
     return new Set(ids);
   }, [ineligibleByMemberId]);
 
-  const hasAnyEligibleType = eligibleTypes.length > 0;
-  const hasSelectedTypeBlockedMembers = selectedIneligibleType
-    ? selectedIneligibleType.ineligible_members.length > 0
-    : false;
+  const reasonLabel = useCallback(
+    (code: string) => {
+      switch (code) {
+        case "no_active_price":
+          return t("orderLicenseUnavailableReasonNoPrice");
+        case "current_year_disabled":
+          return t("orderLicenseUnavailableReasonCurrentYear");
+        case "next_year_disabled":
+          return t("orderLicenseUnavailableReasonNextYear");
+        case "window_closed":
+          return t("orderLicenseUnavailableReasonWindow");
+        case "invalid_target_year":
+          return t("orderLicenseUnavailableReasonYear");
+        case "duplicate_pending_or_active":
+          return t("orderLicenseUnavailableReasonDuplicate");
+        case "invalid_policy_configuration":
+          return t("orderLicenseUnavailableReasonPolicy");
+        default:
+          return t("orderLicenseUnavailableReasonGeneric");
+      }
+    },
+    [t]
+  );
+
+  const unavailableReasonForType = (licenseType: ClubOrderIneligibleLicenseType) => {
+    const preferred = licenseType.reason_counts.find((reason) =>
+      STRUCTURAL_REASON_CODES.has(reason.code)
+    );
+    return reasonLabel(preferred?.code ?? licenseType.reason_counts[0]?.code ?? "not_eligible");
+  };
 
   const loadInitialData = useCallback(async () => {
     setIsLoading(true);
@@ -199,13 +424,11 @@ export default function ClubMembersOrderLicensesPage() {
   }, [loadInitialData]);
 
   useEffect(() => {
-    setWorkingSelectedIds((previous) => Array.from(new Set(previous)));
-  }, []);
-
-  useEffect(() => {
-    if (!payload.selectedClubId || validSelectedIds.length === 0) {
-      setEligibleTypes([]);
-      setIneligibleTypes([]);
+    if (createdOrder || !payload.selectedClubId || validSelectedIds.length === 0) {
+      if (!createdOrder) {
+        setEligibleTypes([]);
+        setIneligibleTypes([]);
+      }
       return;
     }
     const parsedYear = Number(targetYear);
@@ -242,26 +465,25 @@ export default function ClubMembersOrderLicensesPage() {
           setIsCheckingEligibility(false);
         }
       });
-  }, [payload.selectedClubId, targetYear, t, validSelectedIds]);
+  }, [createdOrder, payload.selectedClubId, targetYear, t, validSelectedIds]);
 
   useEffect(() => {
+    if (createdOrder) {
+      return;
+    }
     setSelectedLicenseTypeId((previous) => {
-      if (
-        previous &&
-        (eligibleTypes.some((item) => String(item.id) === previous) ||
-          ineligibleTypes.some((item) => String(item.id) === previous))
-      ) {
+      if (previous && eligibleTypes.some((item) => String(item.id) === previous)) {
         return previous;
       }
-      if (eligibleTypes.length > 0) {
+      if (previous && reviewTypes.some((item) => String(item.id) === previous)) {
+        return previous;
+      }
+      if (eligibleTypes.length === 1 && reviewTypes.length === 0) {
         return String(eligibleTypes[0].id);
       }
-      if (ineligibleTypes.length > 0) {
-        return String(ineligibleTypes[0].id);
-      }
-      return "";
+      return previous && eligibleTypes.some((item) => String(item.id) === previous) ? previous : "";
     });
-  }, [eligibleTypes, ineligibleTypes]);
+  }, [createdOrder, eligibleTypes, reviewTypes]);
 
   const clearOrderPayload = () => {
     if (typeof window === "undefined") {
@@ -286,7 +508,7 @@ export default function ClubMembersOrderLicensesPage() {
 
   const resetSelection = () => {
     setWorkingSelectedIds(payload.selectedIds);
-    setSuccessMessage(null);
+    setCreatedOrder(null);
     setErrorMessage(null);
   };
 
@@ -298,12 +520,10 @@ export default function ClubMembersOrderLicensesPage() {
       setErrorMessage(t("orderLicenseNoMembersAfterFiltering"));
       return;
     }
-    if (!selectedLicenseTypeId) {
-      setErrorMessage(t("licenseTypeRequiredError"));
-      return;
-    }
     if (!selectedEligibleType) {
-      setErrorMessage(t("orderLicenseSelectedTypeBlockedError"));
+      setErrorMessage(
+        selectedReviewType ? t("orderLicenseSelectedTypeBlockedError") : t("licenseTypeRequiredError")
+      );
       return;
     }
     const parsedYear = Number(targetYear);
@@ -313,12 +533,11 @@ export default function ClubMembersOrderLicensesPage() {
     }
 
     setErrorMessage(null);
-    setSuccessMessage(null);
     setIsSubmitting(true);
     try {
-      await createClubOrdersBatch({
+      const order = await createClubOrdersBatch({
         club: payload.selectedClubId,
-        license_type: Number(selectedLicenseTypeId),
+        license_type: selectedEligibleType.id,
         member_ids: validSelectedIds,
         year: parsedYear,
         quantity: 1,
@@ -330,8 +549,13 @@ export default function ClubMembersOrderLicensesPage() {
         );
       }
       clearOrderPayload();
-      setSuccessMessage(t("orderLicenseSuccess", { count: validSelectedIds.length }));
-      setWorkingSelectedIds([]);
+      setCreatedOrder({
+        id: order.id,
+        orderNumber: order.order_number,
+        memberCount: validSelectedIds.length,
+        year: targetYear,
+        licenseTypeName: selectedEligibleType.name,
+      });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : t("orderLicenseError"));
     } finally {
@@ -347,11 +571,16 @@ export default function ClubMembersOrderLicensesPage() {
           id: member.id,
           memberName: `${member.first_name} ${member.last_name}`,
           status: blocked ? "blocked" : "ready",
-          reason: blocked ? blocked.messages.join(" • ") : "—",
+          reason: blocked ? blocked.messages.join(" • ") : t("orderLicenseReadyReason"),
         };
       }),
-    [ineligibleByMemberId, selectedMembers]
+    [ineligibleByMemberId, selectedMembers, t]
   );
+
+  const goToMembers = () => {
+    clearOrderPayload();
+    router.push(`/${locale}/dashboard/club/members`);
+  };
 
   if (isLoading) {
     return (
@@ -380,7 +609,7 @@ export default function ClubMembersOrderLicensesPage() {
           description={t("orderLicenseNoSelectionSubtitle")}
         />
         <div className="mt-4">
-          <Button variant="outline" onClick={() => router.push(`/${locale}/dashboard/club/members`)}>
+          <Button variant="outline" onClick={goToMembers}>
             {t("backToMembers")}
           </Button>
         </div>
@@ -388,32 +617,75 @@ export default function ClubMembersOrderLicensesPage() {
     );
   }
 
+  if (createdOrder) {
+    return (
+      <ClubAdminLayout title={t("orderLicenseModalTitle")} subtitle={t("orderLicensePageSubtitle")}>
+        <FormPanel className="mx-auto max-w-xl text-center">
+          <span className="mx-auto mb-4 inline-flex size-12 items-center justify-center rounded-full bg-[color-mix(in_oklab,var(--success)_16%,white)] text-[color-mix(in_oklab,var(--success)_62%,black)]">
+            <CheckCircle2 className="size-6" aria-hidden />
+          </span>
+          <h2 className="text-section text-foreground">{t("orderLicenseSuccessTitle")}</h2>
+          <p className="mt-2 text-sm text-muted">{t("orderLicenseSuccessSubtitle")}</p>
+          <p className="mt-4 text-sm font-medium text-foreground">
+            {t("orderLicenseSuccess", { count: createdOrder.memberCount })}
+          </p>
+          <p className="mt-1 text-sm text-muted">
+            {createdOrder.licenseTypeName} · {createdOrder.year}
+            {createdOrder.orderNumber ? ` · ${createdOrder.orderNumber}` : ""}
+          </p>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <Button onClick={() => router.push(`/${locale}/dashboard/club/orders/${createdOrder.id}`)}>
+              {t("orderLicenseViewOrderAction")}
+            </Button>
+            <Button variant="outline" onClick={goToMembers}>
+              {t("backToMembers")}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setCreatedOrder(null);
+                setWorkingSelectedIds(payload.selectedIds);
+                setErrorMessage(null);
+              }}
+            >
+              {t("orderLicenseOrderAnotherAction")}
+            </Button>
+          </div>
+        </FormPanel>
+      </ClubAdminLayout>
+    );
+  }
+
+  const canSubmit =
+    Boolean(selectedEligibleType) && validSelectedIds.length > 0 && !isSubmitting && !isCheckingEligibility;
+
   return (
     <ClubAdminLayout title={t("orderLicenseModalTitle")} subtitle={t("orderLicensePageSubtitle")}>
-      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
-      {successMessage ? <p className="text-sm text-success">{successMessage}</p> : null}
+      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
 
-      <div className="space-y-4">
-        <section className="rounded-[var(--radius-card)] border border-border bg-card p-4">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <p className="text-sm text-muted">
-              <span className="font-medium text-foreground">{t("clubLabel")}:</span>{" "}
-              {selectedClub?.name ?? payload.selectedClubId}
-            </p>
-            <p className="text-sm text-muted">
-              <span className="font-medium text-foreground">{t("orderLicenseOriginalSelectionLabel")}:</span>{" "}
-              {payload.selectedIds.length}
-            </p>
-            <p className="text-sm text-muted">
-              <span className="font-medium text-foreground">{t("orderLicenseWorkingSelectionLabel")}:</span>{" "}
-              {validSelectedIds.length}
-            </p>
+      <div className="space-y-6">
+        <FormPanel>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted">{t("clubLabel")}</p>
+              <p className="mt-1 text-sm font-medium text-foreground">
+                {selectedClub?.name ?? payload.selectedClubId}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted">
+                {t("orderLicenseWorkingSelectionLabel")}
+              </p>
+              <p className="mt-1 text-sm font-medium text-foreground">
+                {t("orderLicenseMembersCountLabel", { count: validSelectedIds.length })}
+              </p>
+            </div>
             <div className="space-y-2">
               <label className="text-xs font-medium uppercase tracking-wide text-muted">
                 {t("yearLabel")}
               </label>
               <Select value={targetYear} onValueChange={setTargetYear}>
-                <SelectTrigger>
+                <SelectTrigger aria-label={t("yearLabel")}>
                   <SelectValue placeholder={t("yearLabel")} />
                 </SelectTrigger>
                 <SelectContent>
@@ -424,87 +696,216 @@ export default function ClubMembersOrderLicensesPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted">{t("orderLicenseYearHelp")}</p>
             </div>
           </div>
-        </section>
+        </FormPanel>
 
-        <section className="rounded-[var(--radius-card)] border border-border bg-card p-4">
-          <p className="text-sm font-medium text-foreground">{t("licenseTypeLabel")}</p>
-          <p className="mt-1 text-xs text-muted">{t("orderLicenseTypePickerHelp")}</p>
-          <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-            {eligibleTypes.map((licenseType) => (
-              <button
-                key={`eligible-${licenseType.id}`}
-                type="button"
-                onClick={() => setSelectedLicenseTypeId(String(licenseType.id))}
-                className={`rounded-[var(--radius-form)] border p-3 text-left transition ${
-                  selectedLicenseTypeId === String(licenseType.id)
-                    ? "badge-success"
-                    : "border-border bg-card hover:bg-secondary"
-                }`}
-              >
-                <p className="text-sm font-medium text-foreground">{licenseType.name}</p>
-                <p className="mt-1 text-xs text-success">{t("orderLicenseStatusReady")}</p>
-                <p className="mt-1 text-xs text-muted">
-                  {licenseType.active_price.amount} {licenseType.active_price.currency}
-                </p>
-              </button>
-            ))}
-            {ineligibleTypes.map((licenseType) => (
-              <button
-                key={`ineligible-${licenseType.id}`}
-                type="button"
-                onClick={() => setSelectedLicenseTypeId(String(licenseType.id))}
-                className={`rounded-[var(--radius-form)] border p-3 text-left transition ${
-                  selectedLicenseTypeId === String(licenseType.id)
-                    ? "badge-warning"
-                    : "border-border bg-card hover:bg-secondary"
-                }`}
-              >
-                <p className="text-sm font-medium text-foreground">{licenseType.name}</p>
-                <p className="mt-1 text-xs text-warning">{t("orderLicenseStatusBlocked")}</p>
-                <p className="mt-1 text-xs text-muted">
-                  {licenseType.reason_counts
-                    .slice(0, 2)
-                    .map((reason) => `${reason.message} (${reason.count})`)
-                    .join(" • ")}
-                </p>
-              </button>
-            ))}
-          </div>
+        <FormPanel>
+          <h2 className="text-section text-foreground">{t("orderLicenseAvailableTypesTitle")}</h2>
+          <p className="mt-1 text-sm text-muted">{t("orderLicenseTypePickerHelp")}</p>
+
           {isCheckingEligibility ? (
-            <p className="mt-3 text-sm text-muted">{t("orderEligibilityLoading")}</p>
+            <p className="mt-4 text-sm text-muted">{t("orderEligibilityLoading")}</p>
           ) : null}
-          {!isCheckingEligibility && !hasAnyEligibleType ? (
-            <p className="mt-3 text-sm text-warning">{t("orderEligibilityNoOptions")}</p>
-          ) : null}
-        </section>
 
-        <section className="rounded-[var(--radius-card)] border border-border bg-card p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={removeBlockedMembers}
-              disabled={!hasSelectedTypeBlockedMembers}
-            >
-              {t("orderLicenseResolveBlockedAction")}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={removeDuplicateMembers}
-              disabled={duplicateBlockedMemberIds.size === 0}
-            >
-              {t("orderLicenseResolveDuplicatesAction")}
-            </Button>
-            <Button type="button" variant="ghost" onClick={resetSelection}>
-              {t("orderLicenseResetSelectionAction")}
-            </Button>
+          {!isCheckingEligibility && eligibleTypes.length === 0 && reviewTypes.length === 0 ? (
+            <div className="mt-4">
+              <PageNotice tone="info">
+                {t("orderLicenseNoAvailableTypesSubtitle", { year: targetYear })}
+              </PageNotice>
+            </div>
+          ) : (
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {eligibleTypes.map((licenseType) => {
+                const selected = selectedLicenseTypeId === String(licenseType.id);
+                return (
+                  <button
+                    key={`eligible-${licenseType.id}`}
+                    type="button"
+                    onClick={() => setSelectedLicenseTypeId(String(licenseType.id))}
+                    className={cn(
+                      "rounded-[var(--radius-card)] border p-4 text-left transition-colors",
+                      selected
+                        ? "border-[var(--accent)] bg-[color-mix(in_oklab,var(--accent)_8%,white)] shadow-sm"
+                        : "border-border bg-surface hover:bg-secondary"
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm font-semibold text-foreground">{licenseType.name}</p>
+                      <StatusBadge label={t("orderLicenseStatusAvailable")} tone="success" />
+                    </div>
+                    <p className="mt-3 text-sm font-medium text-foreground">
+                      {formatPrice(
+                        licenseType.active_price.amount,
+                        licenseType.active_price.currency,
+                        locale
+                      )}
+                    </p>
+                  </button>
+                );
+              })}
+              {reviewTypes.map((licenseType) => {
+                const selected = selectedLicenseTypeId === String(licenseType.id);
+                const blockedCount = new Set(licenseType.ineligible_members.map((item) => item.member_id))
+                  .size;
+                const readyCount = Math.max(validSelectedIds.length - blockedCount, 0);
+                return (
+                  <button
+                    key={`review-${licenseType.id}`}
+                    type="button"
+                    onClick={() => setSelectedLicenseTypeId(String(licenseType.id))}
+                    className={cn(
+                      "rounded-[var(--radius-card)] border p-4 text-left transition-colors",
+                      selected
+                        ? "border-[var(--warning)] bg-[color-mix(in_oklab,var(--warning)_12%,white)] shadow-sm"
+                        : "border-border bg-surface hover:bg-secondary"
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm font-semibold text-foreground">{licenseType.name}</p>
+                      <StatusBadge label={t("orderLicenseStatusNeedsReview")} tone="warning" />
+                    </div>
+                    <p className="mt-3 text-xs text-muted">
+                      {t("orderLicenseNeedsReviewHelp", {
+                        ready: readyCount,
+                        total: validSelectedIds.length,
+                      })}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {alreadyLicensedTypes.length > 0 ? (
+            <div className="mt-6 border-t border-border pt-4">
+              <h3 className="text-sm font-semibold text-foreground">
+                {t("orderLicenseAlreadyLicensedTitle")}
+              </h3>
+              <p className="mt-1 text-xs text-muted">
+                {t("orderLicenseAlreadyLicensedHelp", { year: targetYear })}
+              </p>
+              <ul className="mt-3 space-y-2">
+                {alreadyLicensedTypes.map((licenseType) => (
+                  <li
+                    key={`already-${licenseType.id}`}
+                    className="rounded-[var(--radius-form)] border border-border bg-secondary/50 px-3 py-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-medium text-foreground">{licenseType.name}</p>
+                      <div className="flex items-center gap-1">
+                        <InfoHint ariaLabel={t("orderLicenseAvailabilityHintAriaLabel")}>
+                          <AvailabilityDetails
+                            availability={licenseType.availability}
+                            reason={t("orderLicenseUnavailableReasonDuplicate")}
+                            kind="already_licensed"
+                            year={targetYear}
+                          />
+                        </InfoHint>
+                        <StatusBadge label={t("orderLicenseStatusAlreadyLicensed")} tone="info" />
+                      </div>
+                    </div>
+                    <ul className="mt-2 space-y-1">
+                      {licenseType.ineligible_members.map((item) => (
+                        <li key={`${licenseType.id}-${item.member_id}`} className="text-sm text-muted">
+                          {item.license_status === "pending"
+                            ? t("orderLicenseAlreadyLicensedMemberPending", {
+                                name: item.member_name,
+                                type: licenseType.name,
+                                year: targetYear,
+                              })
+                            : t("orderLicenseAlreadyLicensedMemberActive", {
+                                name: item.member_name,
+                                type: licenseType.name,
+                                year: targetYear,
+                              })}{" "}
+                          <Link
+                            href={`/${locale}/dashboard/club/members/${item.member_id}`}
+                            className="font-medium text-[var(--accent)] underline-offset-4 hover:underline"
+                          >
+                            {t("orderLicenseViewMemberAction")}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {unavailableTypes.length > 0 ? (
+            <div className="mt-6 border-t border-border pt-4">
+              <h3 className="text-sm font-semibold text-foreground">
+                {t("orderLicenseUnavailableTypesTitle")}
+              </h3>
+              <p className="mt-1 text-xs text-muted">{t("orderLicenseUnavailableTypesHelp")}</p>
+              <ul className="mt-3 space-y-2">
+                {unavailableTypes.map((licenseType) => (
+                  <li
+                    key={`unavailable-${licenseType.id}`}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-form)] border border-border bg-secondary/50 px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">{licenseType.name}</p>
+                      <p className="text-xs text-muted">{unavailableReasonForType(licenseType)}</p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <InfoHint ariaLabel={t("orderLicenseAvailabilityHintAriaLabel")}>
+                        <AvailabilityDetails
+                          availability={licenseType.availability}
+                          reason={unavailableReasonForType(licenseType)}
+                          kind="unavailable"
+                          year={targetYear}
+                        />
+                      </InfoHint>
+                      <StatusBadge label={t("orderLicenseStatusUnavailable")} tone="neutral" />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </FormPanel>
+
+        <FormPanel>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-section text-foreground">{t("orderLicenseReviewTitle")}</h2>
+              <p className="mt-1 text-sm text-muted">{t("orderLicenseReviewSubtitle")}</p>
+            </div>
+            {selectedReviewType ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={removeBlockedMembers}
+                  disabled={blockedMemberIds.size === 0}
+                >
+                  {t("orderLicenseResolveBlockedAction")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={removeDuplicateMembers}
+                  disabled={duplicateBlockedMemberIds.size === 0}
+                >
+                  {t("orderLicenseResolveDuplicatesAction")}
+                </Button>
+                <Button type="button" variant="ghost" onClick={resetSelection}>
+                  {t("orderLicenseResetSelectionAction")}
+                </Button>
+              </div>
+            ) : validSelectedIds.length !== payload.selectedIds.length ? (
+              <Button type="button" variant="ghost" onClick={resetSelection}>
+                {t("orderLicenseResetSelectionAction")}
+              </Button>
+            ) : null}
           </div>
 
-          {selectedLicenseTypeId ? (
-            <div className="mt-3">
+          {selectedEligibleType || selectedReviewType ? (
+            <div className="mt-4">
               <EntityTable
                 columns={[
                   { key: "memberName", header: t("memberNameLabel") },
@@ -528,34 +929,39 @@ export default function ClubMembersOrderLicensesPage() {
               />
             </div>
           ) : (
-            <p className="mt-3 text-sm text-muted">{t("orderLicenseNoTypeSelected")}</p>
+            <p className="mt-4 text-sm text-muted">{t("orderLicenseNoTypeSelected")}</p>
           )}
-        </section>
+        </FormPanel>
 
-        <div className="sticky bottom-4 flex flex-wrap items-center gap-3 rounded-[var(--radius-card)] border border-border bg-card/95 p-4 backdrop-blur">
-          <Button
-            onClick={handleCreateOrder}
-            disabled={
-              isSubmitting ||
-              isCheckingEligibility ||
-              !selectedEligibleType ||
-              validSelectedIds.length === 0
-            }
-          >
-            {isSubmitting
-              ? t("orderLicenseProcessing")
-              : t("orderLicenseButton", { year: targetYear })}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              clearOrderPayload();
-              router.push(`/${locale}/dashboard/club/members`);
-            }}
-          >
-            {t("backToMembers")}
-          </Button>
+        <div className="sticky bottom-4 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-border bg-[var(--surface)]/95 p-4 shadow-sm backdrop-blur">
+          <div className="min-w-0">
+            {selectedEligibleType ? (
+              <p className="text-sm font-medium text-foreground">
+                {t("orderLicenseCreateActionDetail", {
+                  count: validSelectedIds.length,
+                  type: selectedEligibleType.name,
+                  year: targetYear,
+                })}
+              </p>
+            ) : selectedReviewType ? (
+              <p className="text-sm text-muted">
+                {t("orderLicenseNeedsReviewHelp", {
+                  ready: Math.max(validSelectedIds.length - blockedMemberIds.size, 0),
+                  total: validSelectedIds.length,
+                })}
+              </p>
+            ) : (
+              <p className="text-sm text-muted">{t("orderLicenseSelectTypeFirst")}</p>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="outline" onClick={goToMembers}>
+              {t("backToMembers")}
+            </Button>
+            <Button onClick={handleCreateOrder} disabled={!canSubmit}>
+              {isSubmitting ? t("orderLicenseProcessing") : t("orderLicenseButton", { year: targetYear })}
+            </Button>
+          </div>
         </div>
       </div>
     </ClubAdminLayout>

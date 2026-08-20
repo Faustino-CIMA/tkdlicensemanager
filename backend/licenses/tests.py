@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 import hashlib
 import hmac
 import json
@@ -7,6 +7,7 @@ from unittest.mock import patch
 from decimal import Decimal
 from urllib.error import URLError
 
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.test import TestCase, override_settings
@@ -19,7 +20,10 @@ from clubs.models import Club
 from members.models import Member
 
 from .models import (
+    Expense,
+    ExpenseCategory,
     FinanceAuditLog,
+    FinanceYearOpening,
     Invoice,
     License,
     LicenseHistoryEvent,
@@ -902,6 +906,79 @@ class LicenseOrderingPolicyTests(TestCase):
         self.assertEqual(
             ineligible["ineligible_members"][0]["reason_code"], "current_year_disabled"
         )
+        self.assertIn("availability", ineligible)
+        self.assertFalse(ineligible["availability"]["enabled"])
+        self.assertFalse(ineligible["availability"]["is_open"])
+        self.assertIsNone(ineligible["availability"]["opens_at"])
+
+    def test_club_eligibility_includes_upcoming_window(self):
+        today = timezone.localdate()
+        opens_on = today + timedelta(days=10)
+        if opens_on.year != today.year:
+            self.skipTest("Not enough days remain in the year for a future window.")
+        self.policy.current_start_month = opens_on.month
+        self.policy.current_start_day = opens_on.day
+        self.policy.current_end_month = 12
+        self.policy.current_end_day = 31
+        self.policy.save(
+            update_fields=[
+                "current_start_month",
+                "current_start_day",
+                "current_end_month",
+                "current_end_day",
+                "updated_at",
+            ]
+        )
+
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            "/api/club-orders/eligibility/",
+            self._club_eligibility_payload(year=today.year),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ineligible = next(
+            item for item in response.data["ineligible_license_types"] if item["id"] == self.license_type.id
+        )
+        reason_codes = {reason["code"] for reason in ineligible["reason_counts"]}
+        self.assertIn("window_closed", reason_codes)
+        availability = ineligible["availability"]
+        self.assertTrue(availability["enabled"])
+        self.assertFalse(availability["is_open"])
+        self.assertEqual(availability["window_start"], opens_on.isoformat())
+        self.assertEqual(availability["window_end"], date(today.year, 12, 31).isoformat())
+        self.assertIsNotNone(availability["opens_at"])
+        self.assertTrue(availability["opens_at"].startswith(opens_on.isoformat()))
+
+    def test_club_eligibility_future_price_exposes_opens_at(self):
+        missing_price_type = LicenseType.objects.create(
+            name="Priced Later",
+            code="priced-later",
+        )
+        LicenseTypePolicy.objects.create(license_type=missing_price_type)
+        opens_on = timezone.localdate() + timedelta(days=14)
+        LicensePrice.objects.create(
+            license_type=missing_price_type,
+            amount=Decimal("40.00"),
+            currency="EUR",
+            effective_from=opens_on,
+            created_by=self.ltf_finance,
+        )
+
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            "/api/club-orders/eligibility/",
+            self._club_eligibility_payload(year=timezone.localdate().year),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ineligible = next(
+            item
+            for item in response.data["ineligible_license_types"]
+            if item["id"] == missing_price_type.id
+        )
+        self.assertIsNotNone(ineligible["availability"]["opens_at"])
+        self.assertTrue(ineligible["availability"]["opens_at"].startswith(opens_on.isoformat()))
 
     def test_club_eligibility_flags_license_type_without_active_price(self):
         missing_price_type = LicenseType.objects.create(
@@ -962,6 +1039,9 @@ class LicenseOrderingPolicyTests(TestCase):
         ]
         self.assertEqual(len(duplicate_members), 1)
         self.assertEqual(duplicate_members[0]["member_id"], self.member.id)
+        self.assertEqual(duplicate_members[0]["license_status"], License.Status.ACTIVE)
+        self.assertTrue(ineligible["availability"]["is_open"])
+        self.assertIsNone(ineligible["availability"]["opens_at"])
 
     def test_club_batch_allows_next_year_when_preorder_enabled(self):
         self.policy.allow_current_year_order = False
@@ -997,6 +1077,10 @@ class LicenseOrderingPolicyTests(TestCase):
         ).first()
         self.assertIsNotNone(created_license)
         self.assertEqual(created_license.license_type_id, self.license_type.id)
+        history_event = created_license.history_events.first()
+        self.assertIsNotNone(history_event)
+        self.assertEqual(history_event.status_after, License.Status.PENDING)
+        self.assertEqual(history_event.event_type, LicenseHistoryEvent.EventType.ISSUED)
 
     def test_finance_order_rejects_when_current_year_window_disabled(self):
         self.policy.allow_current_year_order = False
@@ -2147,6 +2231,7 @@ class OverviewApiTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_ltf_finance_overview_contains_finance_metrics(self):
+        cache.clear()
         self.client.force_authenticate(user=self.ltf_finance)
         response = self.client.get("/api/dashboard/overview/ltf-finance/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -2163,4 +2248,216 @@ class OverviewApiTests(TestCase):
                 for item in response.data["action_queue"]
             )
         )
+        activity = response.data["recent_activity"]
+        self.assertGreaterEqual(len(activity), 1)
+        invoice_created = next(item for item in activity if item["action"] == "invoice.created")
+        self.assertEqual(invoice_created["club_name"], self.club_one.name)
+        self.assertEqual(invoice_created["order_number"], self.order_draft.order_number)
+        self.assertEqual(invoice_created["invoice_number"], self.invoice_issued_old.invoice_number)
+        self.assertNotEqual(invoice_created["club_name"], invoice_created["club_id"])
+
+
+class FinanceBooksTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.ltf_finance = User.objects.create_user(
+            username="booksfinance",
+            password="pass12345",
+            role=User.Roles.LTF_FINANCE,
+        )
+        self.club_admin = User.objects.create_user(
+            username="booksclub",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+        )
+        self.club = Club.objects.create(name="Books Club", created_by=self.ltf_finance)
+        self.category, _ = ExpenseCategory.objects.get_or_create(
+            code="competitions",
+            defaults={"name": "Competitions & events", "sort_order": 10},
+        )
+        self.member = Member.objects.create(
+            club=self.club,
+            first_name="Lea",
+            last_name="Weber",
+        )
+        self.license_type = LicenseType.objects.create(
+            name="Books Annual",
+            code="books-annual",
+        )
+        LicensePrice.objects.create(
+            license_type=self.license_type,
+            amount=Decimal("40.00"),
+            currency="EUR",
+            effective_from=date(2026, 1, 1),
+        )
+
+    def _create_paid_invoice(self, total="40.00"):
+        order = Order.objects.create(
+            club=self.club,
+            member=self.member,
+            status=Order.Status.PAID,
+            currency="EUR",
+            subtotal=Decimal(total),
+            total=Decimal(total),
+        )
+        license_record = License.objects.create(
+            member=self.member,
+            club=self.club,
+            license_type=self.license_type,
+            year=2026,
+        )
+        OrderItem.objects.create(
+            order=order,
+            license=license_record,
+            price_snapshot=Decimal(total),
+            quantity=1,
+        )
+        issued_at = timezone.make_aware(datetime(2026, 3, 10))
+        invoice = Invoice.objects.create(
+            order=order,
+            club=self.club,
+            member=self.member,
+            status=Invoice.Status.PAID,
+            currency="EUR",
+            subtotal=Decimal(total),
+            total=Decimal(total),
+            issued_at=issued_at,
+            paid_at=issued_at,
+        )
+        Payment.objects.create(
+            invoice=invoice,
+            order=order,
+            amount=Decimal(total),
+            currency="EUR",
+            status=Payment.Status.PAID,
+            paid_at=issued_at,
+        )
+        return invoice
+
+    def test_finance_can_record_and_pay_expense(self):
+        self.client.force_authenticate(user=self.ltf_finance)
+        create_response = self.client.post(
+            "/api/expenses/",
+            {
+                "category": self.category.id,
+                "description": "ETU championship entry",
+                "payee": "ETU",
+                "amount": "250.00",
+                "expense_date": "2026-04-02",
+                "currency": "EUR",
+            },
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(create_response.data["status"], Expense.Status.RECORDED)
+        self.assertTrue(create_response.data["expense_number"].startswith("EXP-2026-"))
+        expense_id = create_response.data["id"]
+        paid_response = self.client.post(
+            f"/api/expenses/{expense_id}/mark-paid/",
+            {"payment_method": "bank_transfer", "reference": "VIR-44"},
+            format="json",
+        )
+        self.assertEqual(paid_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(paid_response.data["status"], Expense.Status.PAID)
+        self.assertTrue(
+            FinanceAuditLog.objects.filter(action="expense.created").exists()
+        )
+        self.assertTrue(
+            FinanceAuditLog.objects.filter(action="expense.paid").exists()
+        )
+
+    def test_non_finance_cannot_create_expense(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            "/api/expenses/",
+            {
+                "category": self.category.id,
+                "description": "Blocked",
+                "amount": "10.00",
+                "expense_date": "2026-04-02",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_report_balances_and_excel_export(self):
+        self._create_paid_invoice("40.00")
+        unpaid_order = Order.objects.create(
+            club=self.club,
+            status=Order.Status.PENDING,
+            currency="EUR",
+            total=Decimal("80.00"),
+        )
+        Invoice.objects.create(
+            order=unpaid_order,
+            club=self.club,
+            status=Invoice.Status.ISSUED,
+            currency="EUR",
+            total=Decimal("80.00"),
+            issued_at=timezone.make_aware(datetime(2026, 5, 1)),
+        )
+        Expense.objects.create(
+            category=self.category,
+            description="Mats",
+            payee="Supplier",
+            amount=Decimal("25.00"),
+            expense_date=date(2026, 4, 15),
+            status=Expense.Status.PAID,
+            paid_at=timezone.make_aware(datetime(2026, 4, 16)),
+            payment_method=Payment.Method.BANK_TRANSFER,
+        )
+        Expense.objects.create(
+            category=self.category,
+            description="Insurance installment",
+            payee="AXA",
+            amount=Decimal("15.00"),
+            expense_date=date(2026, 6, 1),
+            status=Expense.Status.RECORDED,
+        )
+        FinanceYearOpening.objects.create(year=2026, opening_cash=Decimal("100.00"))
+        self.client.force_authenticate(user=self.ltf_finance)
+        report_response = self.client.get("/api/finance-reports/", {"year": 2026})
+        self.assertEqual(report_response.status_code, status.HTTP_200_OK)
+        data = report_response.data
+        self.assertEqual(data["income_statement"]["revenue_license_fees"], "120.00")
+        self.assertEqual(data["income_statement"]["expenses_total"], "40.00")
+        self.assertEqual(data["income_statement"]["surplus"], "80.00")
+        self.assertEqual(data["cash_movement"]["opening_cash"], "100.00")
+        self.assertEqual(data["cash_movement"]["receipts"], "40.00")
+        self.assertEqual(data["cash_movement"]["disbursements"], "25.00")
+        self.assertEqual(data["cash_movement"]["closing_cash"], "115.00")
+        self.assertEqual(data["balance_sheet"]["assets"]["cash"], "115.00")
+        self.assertEqual(data["balance_sheet"]["assets"]["accounts_receivable"], "80.00")
+        self.assertEqual(data["balance_sheet"]["assets"]["total"], "195.00")
+        self.assertEqual(data["balance_sheet"]["liabilities"]["accounts_payable"], "15.00")
+        self.assertEqual(data["balance_sheet"]["equity"]["net_assets"], "180.00")
+        self.assertEqual(data["balance_sheet"]["liabilities_and_equity_total"], "195.00")
+
+        export_response = self.client.get("/api/finance-reports/export/", {"year": 2026})
+        self.assertEqual(export_response.status_code, status.HTTP_200_OK)
+        self.assertIn(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            export_response["Content-Type"],
+        )
+        self.assertGreater(len(export_response.content), 1000)
+
+    def test_void_expense_excluded_from_books(self):
+        self.client.force_authenticate(user=self.ltf_finance)
+        create_response = self.client.post(
+            "/api/expenses/",
+            {
+                "category": self.category.id,
+                "description": "Duplicate booking",
+                "amount": "99.00",
+                "expense_date": "2026-07-01",
+            },
+            format="json",
+        )
+        expense_id = create_response.data["id"]
+        void_response = self.client.post(f"/api/expenses/{expense_id}/void/", format="json")
+        self.assertEqual(void_response.status_code, status.HTTP_200_OK)
+        report_response = self.client.get("/api/finance-reports/", {"year": 2026})
+        self.assertEqual(report_response.data["income_statement"]["expenses_total"], "0.00")
+        self.assertEqual(report_response.data["balance_sheet"]["liabilities"]["accounts_payable"], "0.00")
+
 

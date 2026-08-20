@@ -46,6 +46,15 @@ export type Member = {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  current_licenses?: CurrentLicense[];
+};
+
+export type CurrentLicense = {
+  id: number;
+  year: number;
+  status: "pending" | "active" | "expired" | "revoked";
+  license_type: number;
+  license_type_name: string;
 };
 
 export type MemberProfilePicture = {
@@ -179,9 +188,29 @@ export type FederationProfile = {
   locality: string;
   iban: string;
   bank_name: string;
+  rewrite_lux_prefix_on_member_import: boolean;
   created_at: string;
   updated_at: string;
 };
+
+export type LtfLicensePrefixRewritePreview = {
+  source_prefix: string;
+  target_prefix: string;
+  candidate_count: number;
+  conflict_count: number;
+  rewritten: number;
+  conflicts: Array<{ member_id: number; current: string; target: string }>;
+};
+
+export function getLtfLicensePrefixRewritePreview() {
+  return apiRequest<LtfLicensePrefixRewritePreview>("/api/members/ltf-license-prefix-rewrite/");
+}
+
+export function applyLtfLicensePrefixRewrite() {
+  return apiRequest<LtfLicensePrefixRewritePreview>("/api/members/ltf-license-prefix-rewrite/", {
+    method: "POST",
+  });
+}
 
 export type LogoUsageType = "general" | "invoice" | "print" | "digital";
 

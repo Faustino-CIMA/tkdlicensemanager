@@ -176,12 +176,21 @@ export type ClubOrderEligibleLicenseType = {
   };
 };
 
+export type ClubOrderAvailability = {
+  enabled: boolean;
+  is_open: boolean;
+  window_start: string | null;
+  window_end: string | null;
+  opens_at: string | null;
+};
+
 export type ClubOrderIneligibleLicenseType = {
   id: number;
   name: string;
   code: string;
   reason_counts: ClubOrderEligibilityReasonCount[];
   ineligible_members: ClubOrderIneligibleMember[];
+  availability?: ClubOrderAvailability;
 };
 
 export type ClubOrderIneligibleMember = {
@@ -189,6 +198,7 @@ export type ClubOrderIneligibleMember = {
   member_name: string;
   reason_code: string;
   message: string;
+  license_status?: "pending" | "active" | "expired" | "revoked" | null;
 };
 
 export type ClubOrderEligibilityResponse = {

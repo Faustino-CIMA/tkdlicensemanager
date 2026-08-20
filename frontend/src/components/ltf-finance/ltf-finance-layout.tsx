@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useMemo } from "react";
-import { BadgeDollarSign, FileText, LayoutDashboard, Receipt, ScrollText, Wallet } from "lucide-react";
+import { BadgeDollarSign, Banknote, FileText, LayoutDashboard, Receipt, Scale, ScrollText, Wallet } from "lucide-react";
 
 import { AppShell, type AppNavItem } from "@/components/app-shell";
 
@@ -18,7 +18,15 @@ type NavMatchMode = "exact" | "prefix";
 type LtfFinanceNavDef = {
   id: string;
   href: (locale: string) => string;
-  labelKey: "navOverview" | "navOrders" | "navInvoices" | "navPayments" | "navAuditLog" | "navLicenseSettings";
+  labelKey:
+    | "navOverview"
+    | "navOrders"
+    | "navInvoices"
+    | "navPayments"
+    | "navExpenses"
+    | "navReports"
+    | "navAuditLog"
+    | "navLicenseSettings";
   matchMode: NavMatchMode;
   icon: AppNavItem["icon"];
 };
@@ -45,6 +53,20 @@ const LTF_FINANCE_NAV_DEFINITIONS: LtfFinanceNavDef[] = [
     labelKey: "navPayments",
     matchMode: "prefix",
     icon: BadgeDollarSign,
+  },
+  {
+    id: "expenses",
+    href: (l) => `/${l}/dashboard/ltf-finance/expenses`,
+    labelKey: "navExpenses",
+    matchMode: "prefix",
+    icon: Banknote,
+  },
+  {
+    id: "reports",
+    href: (l) => `/${l}/dashboard/ltf-finance/reports`,
+    labelKey: "navReports",
+    matchMode: "prefix",
+    icon: Scale,
   },
   {
     id: "audit-log",
@@ -81,7 +103,7 @@ export function LtfFinanceLayout({ title, subtitle, children }: LtfFinanceLayout
 
   return (
     <AppShell title={title} subtitle={subtitle} navItems={navItems}>
-      {children}
+      <div className="space-y-6">{children}</div>
     </AppShell>
   );
 }

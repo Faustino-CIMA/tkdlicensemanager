@@ -920,6 +920,27 @@ export default function ClubAdminMembersPage() {
               { key: "belt_rank", header: t("beltRankLabel") },
               { key: "ltf_licenseid", header: t("ltfLicenseLabel") },
               {
+                key: "current_licenses",
+                header: t("licensesColumnLabel"),
+                render: (member: Member) => {
+                  const licenses = member.current_licenses ?? [];
+                  if (licenses.length === 0) {
+                    return <span className="text-muted">—</span>;
+                  }
+                  return (
+                    <div className="flex flex-wrap gap-1">
+                      {licenses.map((license) => (
+                        <StatusBadge
+                          key={license.id}
+                          label={`${license.license_type_name} ${license.year}`}
+                          tone={license.status === "active" ? "success" : "warning"}
+                        />
+                      ))}
+                    </div>
+                  );
+                },
+              },
+              {
                 key: "date_of_birth",
                 header: t("dobLabel"),
                 render: (member) => formatDisplayDate(member.date_of_birth),

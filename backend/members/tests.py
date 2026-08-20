@@ -17,8 +17,8 @@ from accounts.models import User
 from clubs.models import Club
 from licenses.models import License, LicenseHistoryEvent, LicenseType
 
-from .models import GradePromotionHistory, Member
-from .services import add_grade_promotion, delete_grade_promotion
+from .models import GradePromotionHistory, Member, MemberLicenseIdCounter
+from .services import add_grade_promotion, delete_grade_promotion, generate_next_ltf_license_id
 
 
 class MemberApiTests(TestCase):
@@ -110,6 +110,23 @@ class MemberApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), 2)
 
+    def test_member_detail_includes_current_pending_license(self):
+        License.objects.create(
+            member=self.member,
+            club=self.club,
+            license_type=self.license_type,
+            year=2026,
+            status=License.Status.PENDING,
+        )
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.get(f"/api/members/{self.member.id}/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        current_licenses = response.data["current_licenses"]
+        self.assertEqual(len(current_licenses), 1)
+        self.assertEqual(current_licenses[0]["status"], License.Status.PENDING)
+        self.assertEqual(current_licenses[0]["year"], 2026)
+        self.assertEqual(current_licenses[0]["license_type_name"], self.license_type.name)
+
     def test_coach_sees_club_members(self):
         self.client.force_authenticate(user=self.coach_user)
         response = self.client.get("/api/members/")
@@ -172,7 +189,7 @@ class MemberApiTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         created_id = response.data["id"]
         created_member = Member.objects.get(id=created_id)
-        self.assertTrue(created_member.ltf_licenseid.startswith("LUX-"))
+        self.assertEqual(created_member.ltf_licenseid, "LUX-0001")
         self.assertEqual(created_member.ltf_licenseid, response.data["ltf_licenseid"])
 
     def test_club_admin_create_member_auto_generates_ltf_licenseid_with_default_prefix(self):
@@ -189,7 +206,7 @@ class MemberApiTests(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         created_member = Member.objects.get(id=response.data["id"])
-        self.assertTrue(created_member.ltf_licenseid.startswith("LTF-"))
+        self.assertEqual(created_member.ltf_licenseid, "LTF-0001")
         self.assertEqual(created_member.ltf_licenseid, response.data["ltf_licenseid"])
 
     def test_club_admin_create_member_falls_back_when_counter_table_missing(self):
@@ -211,7 +228,22 @@ class MemberApiTests(TestCase):
             )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         created_member = Member.objects.get(id=response.data["id"])
-        self.assertTrue(created_member.ltf_licenseid.startswith("LTF-"))
+        self.assertEqual(created_member.ltf_licenseid, "LTF-0001")
+
+    def test_generated_ltf_licenseid_expands_beyond_four_digits(self):
+        MemberLicenseIdCounter.objects.create(prefix="LTF", next_value=10000)
+        generated = generate_next_ltf_license_id(prefix="LTF")
+        self.assertEqual(generated, "LTF-10000")
+
+    def test_generated_ltf_licenseid_skips_existing_six_digit_equivalent(self):
+        Member.objects.create(
+            club=self.club,
+            first_name="Old",
+            last_name="Serial",
+            ltf_licenseid="LTF-000001",
+        )
+        generated = generate_next_ltf_license_id(prefix="LTF")
+        self.assertEqual(generated, "LTF-0002")
 
     def test_member_create_rejects_duplicate_wt_licenseid(self):
         self.member.wt_licenseid = "WT-0001"
@@ -1087,3 +1119,148 @@ class MemberImportTests(TestCase):
         created = Member.objects.get(first_name="Ben", last_name="KAY")
         self.assertEqual(created.primary_license_role, "athlete")
         self.assertEqual(created.secondary_license_role, "")
+
+    def test_import_rewrites_ltf_prefix_when_enabled_and_leaves_wt_untouched(self):
+        from clubs.models import FederationProfile
+
+        FederationProfile.objects.create(pk=1, rewrite_lux_prefix_on_member_import=True)
+        self.client.force_authenticate(user=self.club_admin)
+        csv_data = "first_name,last_name,member_id\nAna,Ng,LUX-000321\n"
+        file_obj = BytesIO(csv_data.encode("utf-8"))
+        file_obj.name = "members_prefix.csv"
+        mapping = {
+            "first_name": "first_name",
+            "last_name": "last_name",
+            "wt_licenseid": "member_id",
+            "ltf_licenseid": "member_id",
+        }
+        preview = self.client.post(
+            "/api/imports/members/preview/",
+            {
+                "file": file_obj,
+                "mapping": json.dumps(mapping),
+                "club_id": self.club.id,
+            },
+            format="multipart",
+        )
+        self.assertEqual(preview.status_code, status.HTTP_200_OK)
+        self.assertTrue(preview.data["ltf_license_prefix_rewrite"]["enabled"])
+        self.assertEqual(preview.data["rows"][0]["data"]["wt_licenseid"], "LUX-000321")
+        self.assertEqual(preview.data["rows"][0]["data"]["ltf_licenseid"], "LTF-000321")
+        self.assertEqual(preview.data["ltf_license_prefix_rewrite"]["rewritten_count"], 1)
+
+        file_obj.seek(0)
+        confirm = self.client.post(
+            "/api/imports/members/confirm/",
+            {
+                "file": file_obj,
+                "mapping": json.dumps(mapping),
+                "club_id": self.club.id,
+            },
+            format="multipart",
+        )
+        self.assertEqual(confirm.status_code, status.HTTP_200_OK)
+        self.assertEqual(confirm.data["created"], 1)
+        member = Member.objects.get(first_name="Ana", last_name="NG")
+        self.assertEqual(member.wt_licenseid, "LUX-000321")
+        self.assertEqual(member.ltf_licenseid, "LTF-000321")
+
+    def test_import_keeps_lux_prefix_when_rewrite_disabled(self):
+        self.client.force_authenticate(user=self.club_admin)
+        csv_data = "first_name,last_name,member_id\nAna,Ng,LUX-000321\n"
+        file_obj = BytesIO(csv_data.encode("utf-8"))
+        file_obj.name = "members_prefix_off.csv"
+        mapping = {
+            "first_name": "first_name",
+            "last_name": "last_name",
+            "wt_licenseid": "member_id",
+            "ltf_licenseid": "member_id",
+        }
+        confirm = self.client.post(
+            "/api/imports/members/confirm/",
+            {
+                "file": file_obj,
+                "mapping": json.dumps(mapping),
+                "club_id": self.club.id,
+            },
+            format="multipart",
+        )
+        self.assertEqual(confirm.status_code, status.HTTP_200_OK)
+        self.assertFalse(confirm.data["ltf_license_prefix_rewrite"]["enabled"])
+        member = Member.objects.get(first_name="Ana", last_name="NG")
+        self.assertEqual(member.wt_licenseid, "LUX-000321")
+        self.assertEqual(member.ltf_licenseid, "LUX-000321")
+
+
+class LtfLicensePrefixRewriteTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.ltf_admin = User.objects.create_user(
+            username="prefixadmin",
+            password="pass12345",
+            role=User.Roles.LTF_ADMIN,
+        )
+        self.club_admin = User.objects.create_user(
+            username="prefixclub",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+        )
+        self.club = Club.objects.create(name="Prefix Club", created_by=self.ltf_admin)
+        self.club.admins.add(self.club_admin)
+
+    def test_club_admin_cannot_enable_import_rewrite(self):
+        from clubs.models import FederationProfile
+
+        FederationProfile.objects.create(pk=1, rewrite_lux_prefix_on_member_import=False)
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.patch(
+            "/api/federation-profile/",
+            {"rewrite_lux_prefix_on_member_import": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_ltf_admin_can_rewrite_existing_ltf_ids_and_skip_conflicts(self):
+        Member.objects.create(
+            club=self.club,
+            first_name="Mia",
+            last_name="Lux",
+            wt_licenseid="LUX-000111",
+            ltf_licenseid="LUX-000111",
+        )
+        Member.objects.create(
+            club=self.club,
+            first_name="Leo",
+            last_name="Taken",
+            wt_licenseid="LUX-000222",
+            ltf_licenseid="LTF-000111",
+        )
+        Member.objects.create(
+            club=self.club,
+            first_name="Noa",
+            last_name="Ok",
+            wt_licenseid="LUX-000333",
+            ltf_licenseid="LUX-000333",
+        )
+        self.client.force_authenticate(user=self.ltf_admin)
+        preview = self.client.get("/api/members/ltf-license-prefix-rewrite/")
+        self.assertEqual(preview.status_code, status.HTTP_200_OK)
+        self.assertEqual(preview.data["candidate_count"], 1)
+        self.assertEqual(preview.data["conflict_count"], 1)
+
+        apply_response = self.client.post("/api/members/ltf-license-prefix-rewrite/")
+        self.assertEqual(apply_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(apply_response.data["rewritten"], 1)
+        mia = Member.objects.get(first_name="Mia")
+        leo = Member.objects.get(first_name="Leo")
+        noa = Member.objects.get(first_name="Noa")
+        self.assertEqual(mia.ltf_licenseid, "LUX-000111")
+        self.assertEqual(mia.wt_licenseid, "LUX-000111")
+        self.assertEqual(leo.ltf_licenseid, "LTF-000111")
+        self.assertEqual(noa.ltf_licenseid, "LTF-000333")
+        self.assertEqual(noa.wt_licenseid, "LUX-000333")
+
+    def test_club_admin_cannot_rewrite_existing_ltf_ids(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post("/api/members/ltf-license-prefix-rewrite/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

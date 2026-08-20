@@ -75,6 +75,15 @@ export type Member = {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  current_licenses?: CurrentLicense[];
+};
+
+export type CurrentLicense = {
+  id: number;
+  year: number;
+  status: "pending" | "active" | "expired" | "revoked";
+  license_type: number;
+  license_type_name: string;
 };
 
 export type MemberProfilePicture = {

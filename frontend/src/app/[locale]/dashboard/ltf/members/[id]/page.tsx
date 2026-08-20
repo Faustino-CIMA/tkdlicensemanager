@@ -7,9 +7,11 @@ import { useTranslations } from "next-intl";
 
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { MemberHistoryTimeline } from "@/components/history/member-history-timeline";
+import { CurrentLicensesPanel } from "@/components/member/current-licenses-panel";
 import { ProfilePhotoManager } from "@/components/profile-photo/profile-photo-manager";
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { Button } from "@/components/ui/button";
+import { FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
 import {
   downloadMemberProfilePicture,
   Member,
@@ -79,21 +81,21 @@ export default function LtfMemberDetailPage() {
 
   return (
     <LtfAdminLayout title={title} subtitle={t("memberDetailSubtitle")}>
-      <div className="space-y-4">
-        <Button variant="outline" size="sm" className="h-[var(--control-height)] min-h-[var(--control-height)]" asChild>
+      <div className="space-y-6">
+        <Button variant="outline" asChild>
           <Link href={`/${locale}/dashboard/ltf/members`}>{t("backToMembers")}</Link>
         </Button>
 
-        {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+        {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
 
         {isLoading ? (
           <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
         ) : !member ? (
           <EmptyState title={t("noResultsTitle")} description={t("memberNotFound")} />
         ) : (
-          <div className="space-y-4">
-            <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
-              <h2 className="text-lg font-semibold text-foreground">{t("memberOverviewTab")}</h2>
+          <div className="space-y-6">
+            <FormPanel>
+              <h2 className="text-section text-foreground">{t("memberOverviewTab")}</h2>
               <p className="mt-1 text-sm text-muted">{t("membersReadOnlyHint")}</p>
               <div className="mt-4">
                 <ProfilePhotoManager
@@ -151,10 +153,25 @@ export default function LtfMemberDetailPage() {
                   <span className="font-medium">{member.ltf_licenseid || "-"}</span>
                 </div>
               </div>
-            </section>
+            </FormPanel>
 
-            <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
-              <h2 className="text-lg font-semibold text-foreground">{t("memberHistoryTab")}</h2>
+            <CurrentLicensesPanel
+              licenses={member.current_licenses ?? []}
+              title={t("currentLicensesTitle")}
+              subtitle={t("currentLicensesSubtitle")}
+              emptyLabel={t("currentLicensesEmpty")}
+              pendingHint={t("currentLicensesPendingHint")}
+              yearLabel={t("yearLabel")}
+              typeLabel={t("licenseTypeLabel")}
+              statusLabel={t("statusLabel")}
+              pendingLabel={t("statusPending")}
+              activeLabel={t("statusActive")}
+              expiredLabel={t("statusExpired")}
+              revokedLabel={t("statusRevoked")}
+            />
+
+            <FormPanel>
+              <h2 className="text-section text-foreground">{t("memberHistoryTab")}</h2>
               <p className="mt-1 text-sm text-muted">{t("memberHistorySubtitle")}</p>
               <div className="mt-4">
                 <MemberHistoryTimeline
@@ -175,7 +192,7 @@ export default function LtfMemberDetailPage() {
                   gradeHistory={history?.grade_history ?? []}
                 />
               </div>
-            </section>
+            </FormPanel>
           </div>
         )}
       </div>

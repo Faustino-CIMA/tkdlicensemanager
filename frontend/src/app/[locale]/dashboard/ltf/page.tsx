@@ -10,6 +10,7 @@ import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { SummaryCard } from "@/components/club-admin/summary-card";
 import { Button } from "@/components/ui/button";
+import { PageNotice } from "@/components/ui/list-page-chrome";
 import { formatDisplayDateTime } from "@/lib/date-display";
 import { LtfAdminOverviewResponse, getLtfAdminOverview } from "@/lib/ltf-admin-api";
 
@@ -74,7 +75,7 @@ export default function LtfAdminOverviewPage() {
 
   return (
     <LtfAdminLayout title={t("overviewTitle")} subtitle={t("overviewSubtitle")}>
-      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
 
       {isLoading ? (
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
@@ -82,7 +83,7 @@ export default function LtfAdminOverviewPage() {
         <EmptyState title={t("overviewEmptyTitle")} description={t("overviewEmptySubtitle")} />
       ) : (
         <div className="space-y-6">
-          <section className="flex flex-wrap items-center justify-between gap-3">
+          <section className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] px-4 py-3 shadow-sm">
             <p className="text-meta">
               {lastRefreshAt
                 ? t("lastRefreshLabel", { time: formatDisplayDateTime(lastRefreshAt) })

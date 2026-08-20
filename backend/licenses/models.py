@@ -453,6 +453,141 @@ class FinanceAuditLog(models.Model):
         return f"{self.action} - {self.created_at:%Y-%m-%d}"
 
 
+class ExpenseCategory(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    code = models.SlugField(max_length=50, unique=True)
+    sort_order = models.PositiveSmallIntegerField(default=100)
+    is_active = models.BooleanField(default=True)  # pyright: ignore[reportArgumentType]
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            self.code = slugify(self.name)
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return str(self.name)
+
+
+def generate_expense_number(expense_date: date | None = None) -> str:
+    year = (expense_date or timezone.localdate()).year
+    prefix = f"EXP-{year}-"
+    last = (
+        Expense.objects.filter(expense_number__startswith=prefix)
+        .order_by("-expense_number")
+        .values_list("expense_number", flat=True)
+        .first()
+    )
+    sequence = 1
+    if last:
+        try:
+            sequence = int(str(last).rsplit("-", 1)[-1]) + 1
+        except (TypeError, ValueError):
+            sequence = 1
+    return f"{prefix}{sequence:04d}"
+
+
+class Expense(models.Model):
+    class Status(models.TextChoices):
+        RECORDED = "recorded", "Recorded"
+        PAID = "paid", "Paid"
+        VOID = "void", "Void"
+
+    expense_number = models.CharField(max_length=20, unique=True, editable=False)
+    category = models.ForeignKey(
+        ExpenseCategory, on_delete=models.PROTECT, related_name="expenses"
+    )
+    club = models.ForeignKey(
+        Club,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="expenses",
+    )
+    description = models.CharField(max_length=255)
+    payee = models.CharField(max_length=255, blank=True)
+    amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+    )
+    currency = models.CharField(max_length=3, default="EUR")
+    expense_date = models.DateField()
+    due_date = models.DateField(null=True, blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.RECORDED
+    )
+    payment_method = models.CharField(
+        max_length=20, choices=Payment.Method.choices, blank=True
+    )
+    reference = models.CharField(max_length=255, blank=True)
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="expenses_recorded",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-expense_date", "-created_at"]
+        indexes = [
+            models.Index(fields=["status", "-expense_date"], name="exp_status_date_idx"),
+            models.Index(fields=["category", "-expense_date"], name="exp_cat_date_idx"),
+            models.Index(fields=["-expense_date"], name="exp_date_idx"),
+        ]
+
+    def clean(self):
+        if self.amount is not None and self.amount <= Decimal("0.00"):
+            raise ValidationError({"amount": "Amount must be greater than 0."})
+        if self.status == self.Status.PAID and self.paid_at is None:
+            raise ValidationError({"paid_at": "Paid expenses require a payment date."})
+        if self.status != self.Status.PAID and self.paid_at is not None:
+            raise ValidationError({"paid_at": "Only paid expenses can have a payment date."})
+        if self.status == self.Status.VOID and self.paid_at is not None:
+            raise ValidationError({"status": "Void expenses cannot remain paid."})
+
+    def save(self, *args, **kwargs):
+        if not self.expense_number:
+            self.expense_number = generate_expense_number(self.expense_date)
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return str(self.expense_number)
+
+
+class FinanceYearOpening(models.Model):
+    year = models.PositiveSmallIntegerField(unique=True)
+    opening_cash = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0.00")
+    )
+    notes = models.TextField(blank=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="finance_year_openings_updated",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-year"]
+
+    def __str__(self) -> str:
+        return f"{self.year} opening cash {self.opening_cash}"
+
+
 def generate_print_job_number() -> str:
     return f"PRN-{uuid4().hex[:12].upper()}"
 

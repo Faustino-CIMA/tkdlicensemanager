@@ -1,4 +1,5 @@
-import { apiRequest } from "./api";
+import { API_URL, apiRequest } from "./api";
+import { getToken } from "./auth";
 import { PaginatedResponse, unwrapListResponse } from "./pagination";
 
 type ApiCallOptions = {
@@ -227,8 +228,11 @@ export type LtfFinanceOverviewResponse = {
     action: string;
     message: string;
     club_id: number | null;
+    club_name: string | null;
     order_id: number | null;
+    order_number: string | null;
     invoice_id: number | null;
+    invoice_number: string | null;
   }>;
   links: {
     orders: OverviewLink;
@@ -586,4 +590,265 @@ export function confirmOrderPayment(
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export type ExpenseCategory = {
+  id: number;
+  name: string;
+  code: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FinanceExpense = {
+  id: number;
+  expense_number: string;
+  category: number;
+  category_name: string;
+  category_code: string;
+  club: number | null;
+  club_name: string | null;
+  description: string;
+  payee: string;
+  amount: string;
+  currency: string;
+  expense_date: string;
+  due_date: string | null;
+  paid_at: string | null;
+  status: "recorded" | "paid" | "void";
+  payment_method: string;
+  reference: string;
+  notes: string;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FinanceReportAmountRow = {
+  club_id?: number;
+  club_name?: string;
+  category_id?: number;
+  category_code?: string;
+  category_name?: string;
+  amount: string;
+};
+
+export type FinanceReportResponse = {
+  organization_name: string;
+  currency: string;
+  year: number;
+  period_start: string;
+  as_of: string;
+  generated_at: string;
+  methodology: string;
+  opening: {
+    cash: string;
+    is_manual: boolean;
+    notes: string;
+  };
+  income_statement: {
+    revenue_license_fees: string;
+    expenses_total: string;
+    surplus: string;
+    income_by_club: FinanceReportAmountRow[];
+    expenses_by_category: FinanceReportAmountRow[];
+  };
+  cash_movement: {
+    opening_cash: string;
+    receipts: string;
+    disbursements: string;
+    closing_cash: string;
+  };
+  balance_sheet: {
+    assets: { cash: string; accounts_receivable: string; total: string };
+    liabilities: { accounts_payable: string; total: string };
+    equity: { net_assets: string; total: string };
+    liabilities_and_equity_total: string;
+  };
+  registers: {
+    expenses: Array<{
+      id: number;
+      expense_number: string;
+      expense_date: string;
+      category_name: string;
+      payee: string;
+      description: string;
+      amount: string;
+      status: string;
+      club_name: string;
+      paid_at: string | null;
+      reference: string;
+    }>;
+    receivables: Array<{
+      id: number;
+      invoice_number: string;
+      club_name: string;
+      issued_at: string;
+      amount: string;
+    }>;
+    payables: Array<{
+      id: number;
+      expense_number: string;
+      payee: string;
+      description: string;
+      expense_date: string;
+      amount: string;
+    }>;
+  };
+};
+
+export function getExpenseCategories(options?: ApiCallOptions & { activeOnly?: boolean }) {
+  const search = new URLSearchParams();
+  if (options?.activeOnly) {
+    search.set("active", "1");
+  }
+  const suffix = search.toString();
+  return apiRequest<ExpenseCategory[]>(`/api/expense-categories/${suffix ? `?${suffix}` : ""}`, {
+    signal: options?.signal,
+  });
+}
+
+export function createExpenseCategory(input: { name: string; sort_order?: number }) {
+  return apiRequest<ExpenseCategory>("/api/expense-categories/", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+type ExpenseQueryParams = {
+  q?: string;
+  status?: string;
+  year?: number;
+  category?: number;
+};
+
+type ExpensePageParams = ExpenseQueryParams & {
+  page: number;
+  pageSize: number;
+};
+
+function buildExpenseQuery(params?: ExpenseQueryParams) {
+  const search = new URLSearchParams();
+  if (params?.q) {
+    search.set("q", params.q);
+  }
+  if (params?.status) {
+    search.set("status", params.status);
+  }
+  if (params?.year) {
+    search.set("year", String(params.year));
+  }
+  if (params?.category) {
+    search.set("category", String(params.category));
+  }
+  return search;
+}
+
+export function getFinanceExpensesPage(params: ExpensePageParams, options?: ApiCallOptions) {
+  const search = buildExpenseQuery(params);
+  search.set("page", String(params.page));
+  search.set("page_size", String(params.pageSize));
+  const suffix = search.toString();
+  return apiRequest<PaginatedResponse<FinanceExpense>>(`/api/expenses/${suffix ? `?${suffix}` : ""}`, {
+    signal: options?.signal,
+  });
+}
+
+export function getFinanceExpense(id: number) {
+  return apiRequest<FinanceExpense>(`/api/expenses/${id}/`);
+}
+
+export function createFinanceExpense(input: {
+  category: number;
+  club?: number | null;
+  description: string;
+  payee?: string;
+  amount: string;
+  currency?: string;
+  expense_date: string;
+  due_date?: string;
+  payment_method?: string;
+  reference?: string;
+  notes?: string;
+  mark_paid?: boolean;
+  paid_at?: string;
+}) {
+  return apiRequest<FinanceExpense>("/api/expenses/", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateFinanceExpense(
+  id: number,
+  input: Partial<{
+    category: number;
+    club: number | null;
+    description: string;
+    payee: string;
+    amount: string;
+    expense_date: string;
+    due_date: string | null;
+    payment_method: string;
+    reference: string;
+    notes: string;
+  }>
+) {
+  return apiRequest<FinanceExpense>(`/api/expenses/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function markFinanceExpensePaid(
+  id: number,
+  input?: { paid_at?: string; payment_method?: string; reference?: string }
+) {
+  return apiRequest<FinanceExpense>(`/api/expenses/${id}/mark-paid/`, {
+    method: "POST",
+    body: JSON.stringify(input ?? {}),
+  });
+}
+
+export function voidFinanceExpense(id: number) {
+  return apiRequest<FinanceExpense>(`/api/expenses/${id}/void/`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export function getFinanceReport(year: number, options?: ApiCallOptions) {
+  return apiRequest<FinanceReportResponse>(`/api/finance-reports/?year=${year}`, {
+    signal: options?.signal,
+  });
+}
+
+export function saveFinanceYearOpening(input: { year: number; opening_cash: string; notes?: string }) {
+  return apiRequest<{ year: number; opening_cash: string; notes: string }>("/api/finance-year-openings/", {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function downloadFinanceReportExcel(year: number) {
+  const token = getToken();
+  const response = await fetch(`${API_URL}/api/finance-reports/export/?year=${year}`, {
+    headers: {
+      ...(token ? { Authorization: `Token ${token}` } : {}),
+    },
+  });
+  if (!response.ok) {
+    throw new Error("Failed to download the Excel report.");
+  }
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `LTF_financial_report_${year}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => window.URL.revokeObjectURL(url), 10000);
 }

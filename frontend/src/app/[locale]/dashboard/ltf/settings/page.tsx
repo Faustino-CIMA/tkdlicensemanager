@@ -13,13 +13,19 @@ import {
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
+import { Modal } from "@/components/ui/modal";
 import { deriveBankNameFromIban, isValidIban } from "@/lib/iban";
 import {
   BrandingLogo,
+  LtfLicensePrefixRewritePreview,
+  applyLtfLicensePrefixRewrite,
   deleteFederationLogo,
   getFederationLogos,
   getFederationProfile,
+  getLtfLicensePrefixRewritePreview,
   updateFederationLogo,
   updateFederationProfile,
   uploadFederationLogo,
@@ -47,6 +53,15 @@ export default function LtfAdminSettingsPage() {
   const [logos, setLogos] = useState<BrandingLogo[]>([]);
   const [isLoadingLogos, setIsLoadingLogos] = useState(false);
   const [logosLoadError, setLogosLoadError] = useState<string | null>(null);
+  const [rewriteOnImport, setRewriteOnImport] = useState(false);
+  const [savedRewriteOnImport, setSavedRewriteOnImport] = useState(false);
+  const [importRewriteSuccess, setImportRewriteSuccess] = useState<string | null>(null);
+  const [importRewriteError, setImportRewriteError] = useState<string | null>(null);
+  const [isSavingRewrite, setIsSavingRewrite] = useState(false);
+  const [rewritePreview, setRewritePreview] = useState<LtfLicensePrefixRewritePreview | null>(null);
+  const [isLoadingRewritePreview, setIsLoadingRewritePreview] = useState(false);
+  const [isApplyingRewrite, setIsApplyingRewrite] = useState(false);
+  const [isRewriteConfirmOpen, setIsRewriteConfirmOpen] = useState(false);
 
   const {
     register,
@@ -81,6 +96,9 @@ export default function LtfAdminSettingsPage() {
         locality: profile.locality ?? "",
         iban: profile.iban ?? "",
       });
+      const rewriteEnabled = Boolean(profile.rewrite_lux_prefix_on_member_import);
+      setRewriteOnImport(rewriteEnabled);
+      setSavedRewriteOnImport(rewriteEnabled);
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : t("federationSettingsLoadError")
@@ -110,6 +128,66 @@ export default function LtfAdminSettingsPage() {
   useEffect(() => {
     void loadLogos();
   }, [loadLogos]);
+
+  const loadRewritePreview = useCallback(async () => {
+    setIsLoadingRewritePreview(true);
+    try {
+      const preview = await getLtfLicensePrefixRewritePreview();
+      setRewritePreview(preview);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : t("existingPrefixRewriteLoadError")
+      );
+    } finally {
+      setIsLoadingRewritePreview(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    void loadRewritePreview();
+  }, [loadRewritePreview]);
+
+  const handleSaveImportRewrite = async () => {
+    setImportRewriteError(null);
+    setImportRewriteSuccess(null);
+    setIsSavingRewrite(true);
+    try {
+      await updateFederationProfile({
+        rewrite_lux_prefix_on_member_import: rewriteOnImport,
+      });
+      setSavedRewriteOnImport(rewriteOnImport);
+      setImportRewriteSuccess(t("importPrefixRewriteSaved"));
+    } catch (error) {
+      setImportRewriteError(
+        error instanceof Error ? error.message : t("federationSettingsSaveError")
+      );
+    } finally {
+      setIsSavingRewrite(false);
+    }
+  };
+
+  const handleApplyExistingRewrite = async () => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setIsApplyingRewrite(true);
+    try {
+      const result = await applyLtfLicensePrefixRewrite();
+      setRewritePreview(result);
+      setIsRewriteConfirmOpen(false);
+      setSuccessMessage(
+        t("existingPrefixRewriteSuccess", {
+          rewritten: result.rewritten,
+          skipped: result.conflict_count,
+        })
+      );
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : t("existingPrefixRewriteError")
+      );
+    } finally {
+      setIsApplyingRewrite(false);
+    }
+  };
 
   const onSubmit = async (values: FederationFormValues) => {
     setErrorMessage(null);
@@ -155,9 +233,9 @@ export default function LtfAdminSettingsPage() {
       {isLoading ? (
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       ) : (
-        <div className="space-y-4">
-          <section className="rounded-[var(--radius-card)] border border-border bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-foreground">
+        <div className="space-y-6">
+          <FormPanel>
+          <h2 className="text-section text-foreground">
             {t("federationSettingsFormTitle")}
           </h2>
           <p className="mt-2 text-sm text-muted">
@@ -213,16 +291,84 @@ export default function LtfAdminSettingsPage() {
           </form>
 
           {successMessage ? (
-            <p className="banner-success mt-4 rounded-[var(--radius-form)] border px-3 py-2 text-sm">
-              {successMessage}
-            </p>
+            <div className="mt-4">
+              <PageNotice tone="success">{successMessage}</PageNotice>
+            </div>
           ) : null}
           {errorMessage ? (
-            <p className="banner-danger mt-4 rounded-[var(--radius-form)] border px-3 py-2 text-sm">
-              {errorMessage}
-            </p>
+            <div className="mt-4">
+              <PageNotice tone="danger">{errorMessage}</PageNotice>
+            </div>
           ) : null}
-          </section>
+          </FormPanel>
+
+          <FormPanel className="space-y-4">
+            <h2 className="text-section text-foreground">{t("importPrefixRewriteTitle")}</h2>
+            <p className="text-sm text-muted">{t("importPrefixRewriteHint")}</p>
+            <label className="flex items-start gap-3 text-sm text-foreground">
+              <Checkbox
+                checked={rewriteOnImport}
+                onCheckedChange={(checked) => {
+                  setRewriteOnImport(checked === true);
+                  setImportRewriteSuccess(null);
+                  setImportRewriteError(null);
+                }}
+              />
+              <span>{t("importPrefixRewriteLabel")}</span>
+            </label>
+            {importRewriteSuccess ? <PageNotice tone="success">{importRewriteSuccess}</PageNotice> : null}
+            {importRewriteError ? <PageNotice tone="danger">{importRewriteError}</PageNotice> : null}
+            <Button
+              type="button"
+              onClick={() => void handleSaveImportRewrite()}
+              disabled={isSavingRewrite || rewriteOnImport === savedRewriteOnImport}
+            >
+              {isSavingRewrite ? t("savingAction") : t("saveImportPrefixRewrite")}
+            </Button>
+          </FormPanel>
+
+          <FormPanel className="space-y-4">
+            <h2 className="text-section text-foreground">{t("existingPrefixRewriteTitle")}</h2>
+            <p className="text-sm text-muted">{t("existingPrefixRewriteSubtitle")}</p>
+            {isLoadingRewritePreview ? (
+              <p className="text-sm text-muted">{t("loadingSubtitle")}</p>
+            ) : rewritePreview ? (
+              <p className="text-sm text-foreground">
+                {t("existingPrefixRewritePreview", {
+                  count: rewritePreview.candidate_count,
+                  conflicts: rewritePreview.conflict_count,
+                })}
+              </p>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!rewritePreview || rewritePreview.candidate_count === 0 || isApplyingRewrite}
+              onClick={() => setIsRewriteConfirmOpen(true)}
+            >
+              {t("existingPrefixRewriteAction")}
+            </Button>
+          </FormPanel>
+
+          <Modal
+            title={t("existingPrefixRewriteAction")}
+            isOpen={isRewriteConfirmOpen}
+            onClose={() => setIsRewriteConfirmOpen(false)}
+          >
+            <p className="text-sm text-muted">
+              {t("existingPrefixRewriteConfirm", {
+                count: rewritePreview?.candidate_count ?? 0,
+              })}
+            </p>
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <Button variant="outline" onClick={() => setIsRewriteConfirmOpen(false)}>
+                {t("existingPrefixRewriteCancel")}
+              </Button>
+              <Button onClick={() => void handleApplyExistingRewrite()} disabled={isApplyingRewrite}>
+                {isApplyingRewrite ? t("savingAction") : t("existingPrefixRewriteAction")}
+              </Button>
+            </div>
+          </Modal>
 
           <BrandingLogosManager
             logos={logos}

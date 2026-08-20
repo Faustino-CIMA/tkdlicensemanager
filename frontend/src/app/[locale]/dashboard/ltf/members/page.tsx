@@ -9,7 +9,24 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { Button } from "@/components/ui/button";
+import { FilterPills } from "@/components/ui/filter-pills";
 import { Input } from "@/components/ui/input";
+import {
+  ExpandableTable,
+  ListActionsRow,
+  ListPagination,
+  ListToolbarPanel,
+  NestedTable,
+  PageNotice,
+  PageSizeSelect,
+  dataRowClickableClass,
+  dataTableClass,
+  dataTdClass,
+  dataThClass,
+  dataTheadClass,
+  resolveListPageSize,
+} from "@/components/ui/list-page-chrome";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Select,
   SelectContent,
@@ -28,7 +45,7 @@ import {
   getMembersPage,
 } from "@/lib/ltf-admin-api";
 
-const pageSizeOptions = ["10", "25", "50", "100", "150", "200"];
+type MemberStatusFilter = "all" | "active" | "inactive";
 
 type MemberGroup = {
   member: Member;
@@ -52,17 +69,17 @@ type ClubGroup = {
   revokedCount: number;
 };
 
-function getStatusChipClasses(status: License["status"]): string {
+function getStatusTone(status: License["status"]): "success" | "warning" | "neutral" | "danger" {
   if (status === "active") {
-    return "badge-success";
+    return "success";
   }
   if (status === "pending") {
-    return "badge-warning";
+    return "warning";
   }
   if (status === "expired") {
-    return "border-border bg-secondary text-muted";
+    return "neutral";
   }
-  return "badge-danger";
+  return "danger";
 }
 
 function formatIssuedAt(value: string | null): string {
@@ -85,30 +102,59 @@ export default function LtfAdminMembersPage() {
   const [expandedMemberIds, setExpandedMemberIds] = useState<number[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [memberStatusFilter, setMemberStatusFilter] = useState<MemberStatusFilter>("active");
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState("25");
+  const [pageSize, setPageSize] = useState("50");
   const [totalCount, setTotalCount] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [memberFacetCounts, setMemberFacetCounts] = useState({
+    all: 0,
+    active: 0,
+    inactive: 0,
+  });
   const { selectedClubId } = useClubSelection();
+
+  const membersListPageSize = useMemo(
+    () => resolveListPageSize(pageSize, totalCount),
+    [pageSize, totalCount]
+  );
+
+  const isActiveFilter = useMemo(() => {
+    if (memberStatusFilter === "all") {
+      return undefined;
+    }
+    return memberStatusFilter === "active";
+  }, [memberStatusFilter]);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage(null);
+    const q = searchQuery || undefined;
+    const clubId = selectedClubId ?? undefined;
     try {
-      const [clubsResponse, membersResponse] = await Promise.all([
-        getClubs(),
-        getMembersPage({
-          page: currentPage,
-          pageSize: Number(pageSize),
-          q: searchQuery || undefined,
-          clubId: selectedClubId ?? undefined,
-          isActive: true,
-        }),
-      ]);
+      const [clubsResponse, membersResponse, allCountRes, activeCountRes, inactiveCountRes] =
+        await Promise.all([
+          getClubs(),
+          getMembersPage({
+            page: currentPage,
+            pageSize: membersListPageSize,
+            q,
+            clubId,
+            isActive: isActiveFilter,
+          }),
+          getMembersPage({ page: 1, pageSize: 1, q, clubId, isActive: undefined }),
+          getMembersPage({ page: 1, pageSize: 1, q, clubId, isActive: true }),
+          getMembersPage({ page: 1, pageSize: 1, q, clubId, isActive: false }),
+        ]);
       setClubs(clubsResponse);
       setMembers(membersResponse.results);
       setTotalCount(membersResponse.count);
+      setMemberFacetCounts({
+        all: allCountRes.count,
+        active: activeCountRes.count,
+        inactive: inactiveCountRes.count,
+      });
       const memberIds = membersResponse.results.map((member) => member.id);
       if (memberIds.length > 0) {
         const licensesResponse = await getLicensesList({ memberIds });
@@ -121,7 +167,7 @@ export default function LtfAdminMembersPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, pageSize, searchQuery, selectedClubId]);
+  }, [currentPage, isActiveFilter, membersListPageSize, searchQuery, selectedClubId]);
 
   useEffect(() => {
     loadData();
@@ -236,12 +282,12 @@ export default function LtfAdminMembersPage() {
       .sort((left, right) => left.clubName.localeCompare(right.clubName));
   }, [clubById, licensesByMember, members, t]);
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / Number(pageSize)));
+  const totalPages = Math.max(1, Math.ceil(totalCount / membersListPageSize));
   const pagedClubRows = groupedClubRows;
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [pageSize, searchQuery]);
+  }, [pageSize, searchQuery, isActiveFilter]);
 
   useEffect(() => {
     const validClubIds = new Set(groupedClubRows.map((clubGroup) => clubGroup.clubId));
@@ -327,84 +373,99 @@ export default function LtfAdminMembersPage() {
 
   return (
     <LtfAdminLayout title={t("membersTitle")} subtitle={t("membersSubtitle")}>
-      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
 
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Input
-              className="w-full max-w-xs"
-              placeholder={t("searchMembersPlaceholder")}
-              value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
-            />
-            <Select value={pageSize} onValueChange={setPageSize}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder={common("rowsPerPageLabel")} />
-              </SelectTrigger>
-              <SelectContent>
-                {pageSizeOptions.map((option) => (
-                  <SelectItem key={option} value={option}>
-                    {option === "all" ? common("rowsPerPageAll") : option}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={visibleClubIds.length === 0}
-              onClick={expandAllVisibleClubs}
-            >
-              {t("expandAllClubs")}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={visibleClubIds.length === 0}
-              onClick={collapseAllVisibleClubs}
-            >
-              {t("collapseAllClubs")}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={visibleMemberIds.length === 0}
-              onClick={expandAllVisibleMembers}
-            >
-              {t("expandAllMembers")}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={visibleMemberIds.length === 0}
-              onClick={collapseAllVisibleMembers}
-            >
-              {t("collapseAllMembers")}
-            </Button>
-          </div>
-          <div className="space-y-1 text-xs text-muted">
-            <p>{t("membersReadOnlyHint")}</p>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-muted">
-            {t("pageLabel", { current: currentPage, total: totalPages })}
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((previous) => Math.max(1, previous - 1))}
-            >
-              {t("previousPage")}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage((previous) => Math.min(totalPages, previous + 1))}
-            >
-              {t("nextPage")}
-            </Button>
-          </div>
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4">
+          <ListToolbarPanel
+            search={
+              <Input
+                className="w-full max-w-xs"
+                placeholder={t("searchMembersPlaceholder")}
+                aria-label={t("searchMembersPlaceholder")}
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+              />
+            }
+            pageSize={
+              <PageSizeSelect
+                value={pageSize}
+                onChange={setPageSize}
+                ariaLabel={common("rowsPerPageLabel")}
+                allLabel={common("rowsPerPageAll")}
+              />
+            }
+            filters={
+              <FilterPills
+                ariaLabel={t("membersStatusFilterAriaLabel")}
+                value={memberStatusFilter}
+                onChange={setMemberStatusFilter}
+                options={[
+                  { value: "all", title: t("filterAllTitle"), count: memberFacetCounts.all },
+                  { value: "active", title: t("filterActiveTitle"), count: memberFacetCounts.active },
+                  {
+                    value: "inactive",
+                    title: t("filterInactiveTitle"),
+                    count: memberFacetCounts.inactive,
+                  },
+                ]}
+              />
+            }
+          />
+
+          <ListActionsRow
+            actions={
+              <>
+                <Select
+                  value=""
+                  onValueChange={(value) => {
+                    if (value === "expand-clubs") {
+                      expandAllVisibleClubs();
+                    }
+                    if (value === "collapse-clubs") {
+                      collapseAllVisibleClubs();
+                    }
+                    if (value === "expand-members") {
+                      expandAllVisibleMembers();
+                    }
+                    if (value === "collapse-members") {
+                      collapseAllVisibleMembers();
+                    }
+                  }}
+                >
+                  <SelectTrigger className="min-w-[11rem]" aria-label={t("membersMenuLabel")}>
+                    <SelectValue placeholder={t("membersMenuLabel")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="expand-clubs" disabled={visibleClubIds.length === 0}>
+                      {t("expandAllClubs")}
+                    </SelectItem>
+                    <SelectItem value="collapse-clubs" disabled={visibleClubIds.length === 0}>
+                      {t("collapseAllClubs")}
+                    </SelectItem>
+                    <SelectItem value="expand-members" disabled={visibleMemberIds.length === 0}>
+                      {t("expandAllMembers")}
+                    </SelectItem>
+                    <SelectItem value="collapse-members" disabled={visibleMemberIds.length === 0}>
+                      {t("collapseAllMembers")}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-sm text-muted">{t("membersReadOnlyHint")}</p>
+              </>
+            }
+            pagination={
+              <ListPagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPrevious={() => setCurrentPage((previous) => Math.max(1, previous - 1))}
+                onNext={() => setCurrentPage((previous) => Math.min(totalPages, previous + 1))}
+                pageLabel={t("pageLabel", { current: currentPage, total: totalPages })}
+                previousLabel={t("previousPage")}
+                nextLabel={t("nextPage")}
+              />
+            }
+          />
         </div>
 
         {isLoading ? (
@@ -412,27 +473,27 @@ export default function LtfAdminMembersPage() {
         ) : groupedClubRows.length === 0 ? (
           <EmptyState title={t("noResultsTitle")} description={t("noMembersResultsSubtitle")} />
         ) : (
-          <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-card shadow-sm">
-            <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
+          <ExpandableTable>
+            <table className={dataTableClass}>
+              <thead className={dataTheadClass}>
                 <tr>
-                  <th className="w-10 px-4 py-3 font-medium" />
-                  <th className="px-4 py-3 font-medium">{t("clubLabel")}</th>
-                  <th className="px-4 py-3 font-medium">{t("totalMembers")}</th>
-                  <th className="px-4 py-3 font-medium">{t("licensesTitle")}</th>
-                  <th className="px-4 py-3 font-medium">{t("statusActive")}</th>
-                  <th className="px-4 py-3 font-medium">{t("statusPending")}</th>
-                  <th className="px-4 py-3 font-medium">{t("statusExpired")}</th>
-                  <th className="px-4 py-3 font-medium">{t("statusRevoked")}</th>
+                  <th className={`w-10 ${dataThClass}`} />
+                  <th className={dataThClass}>{t("clubLabel")}</th>
+                  <th className={dataThClass}>{t("totalMembers")}</th>
+                  <th className={dataThClass}>{t("licensesTitle")}</th>
+                  <th className={dataThClass}>{t("statusActive")}</th>
+                  <th className={dataThClass}>{t("statusPending")}</th>
+                  <th className={dataThClass}>{t("statusExpired")}</th>
+                  <th className={dataThClass}>{t("statusRevoked")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody className="divide-y divide-border/80">
                 {pagedClubRows.map((clubGroup) => {
                   const clubExpanded = expandedClubSet.has(clubGroup.clubId);
                   return (
                     <Fragment key={clubGroup.clubId}>
                       <tr
-                        className="cursor-pointer text-foreground hover:bg-secondary"
+                        className={dataRowClickableClass}
                         onClick={() => toggleClubExpanded(clubGroup.clubId)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
@@ -444,27 +505,27 @@ export default function LtfAdminMembersPage() {
                         role="button"
                         aria-expanded={clubExpanded}
                       >
-                        <td className="px-4 py-3 text-muted">
+                        <td className={`${dataTdClass} text-muted`}>
                           {clubExpanded ? (
                             <ChevronDown className="h-4 w-4" />
                           ) : (
                             <ChevronRight className="h-4 w-4" />
                           )}
                         </td>
-                        <td className="px-4 py-3 font-medium">{clubGroup.clubName}</td>
-                        <td className="px-4 py-3">{clubGroup.totalMembers}</td>
-                        <td className="px-4 py-3">{clubGroup.totalLicenses}</td>
-                        <td className="px-4 py-3">{clubGroup.activeCount}</td>
-                        <td className="px-4 py-3">{clubGroup.pendingCount}</td>
-                        <td className="px-4 py-3">{clubGroup.expiredCount}</td>
-                        <td className="px-4 py-3">{clubGroup.revokedCount}</td>
+                        <td className={`${dataTdClass} font-medium`}>{clubGroup.clubName}</td>
+                        <td className={dataTdClass}>{clubGroup.totalMembers}</td>
+                        <td className={dataTdClass}>{clubGroup.totalLicenses}</td>
+                        <td className={dataTdClass}>{clubGroup.activeCount}</td>
+                        <td className={dataTdClass}>{clubGroup.pendingCount}</td>
+                        <td className={dataTdClass}>{clubGroup.expiredCount}</td>
+                        <td className={dataTdClass}>{clubGroup.revokedCount}</td>
                       </tr>
                       {clubExpanded ? (
                         <tr className="bg-secondary/60">
                           <td colSpan={8} className="px-6 py-3">
-                            <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-card">
-                              <table className="min-w-full text-left text-sm">
-                                <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
+                            <NestedTable>
+                              <table className={dataTableClass}>
+                                <thead className={dataTheadClass}>
                                   <tr>
                                     <th className="w-10 px-4 py-2 font-medium" />
                                     <th className="px-4 py-2 font-medium">{t("memberLabel")}</th>
@@ -478,7 +539,7 @@ export default function LtfAdminMembersPage() {
                                     <th className="px-4 py-2 font-medium">{t("actionsLabel")}</th>
                                   </tr>
                                 </thead>
-                                <tbody className="divide-y divide-border">
+                                <tbody className="divide-y divide-border/80">
                                   {clubGroup.members.map((memberGroup) => {
                                     const memberExpanded = expandedMemberSet.has(
                                       memberGroup.member.id
@@ -486,7 +547,7 @@ export default function LtfAdminMembersPage() {
                                     return (
                                       <Fragment key={memberGroup.member.id}>
                                         <tr
-                                          className="cursor-pointer text-foreground hover:bg-secondary"
+                                          className={dataRowClickableClass}
                                           onClick={() => toggleMemberExpanded(memberGroup.member.id)}
                                           onKeyDown={(event) => {
                                             if (event.key === "Enter" || event.key === " ") {
@@ -537,9 +598,9 @@ export default function LtfAdminMembersPage() {
                                                   {t("noMemberLicensesSubtitle")}
                                                 </p>
                                               ) : (
-                                                <div className="overflow-x-auto rounded-[var(--radius-form)] border border-border bg-card">
-                                                  <table className="min-w-full text-left text-sm">
-                                                    <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
+                                                <NestedTable>
+                                                  <table className={dataTableClass}>
+                                                    <thead className={dataTheadClass}>
                                                       <tr>
                                                         <th className="px-4 py-2 font-medium">
                                                           {t("yearLabel")}
@@ -552,18 +613,18 @@ export default function LtfAdminMembersPage() {
                                                         </th>
                                                       </tr>
                                                     </thead>
-                                                    <tbody className="divide-y divide-border">
+                                                    <tbody className="divide-y divide-border/80">
                                                       {memberGroup.licenses.map((license) => (
-                                                        <tr key={license.id} className="text-foreground">
+                                                        <tr
+                                                          key={license.id}
+                                                          className="h-[var(--table-row-height)] text-foreground"
+                                                        >
                                                           <td className="px-4 py-2">{license.year}</td>
                                                           <td className="px-4 py-2">
-                                                            <span
-                                                              className={`inline-flex rounded-[var(--radius-form)] border px-2.5 py-1 text-xs font-medium ${getStatusChipClasses(
-                                                                license.status
-                                                              )}`}
-                                                            >
-                                                              {getStatusLabel(license.status)}
-                                                            </span>
+                                                            <StatusBadge
+                                                              label={getStatusLabel(license.status)}
+                                                              tone={getStatusTone(license.status)}
+                                                            />
                                                           </td>
                                                           <td className="px-4 py-2">
                                                             {formatIssuedAt(license.issued_at)}
@@ -572,7 +633,7 @@ export default function LtfAdminMembersPage() {
                                                       ))}
                                                     </tbody>
                                                   </table>
-                                                </div>
+                                                </NestedTable>
                                               )}
                                             </td>
                                           </tr>
@@ -582,7 +643,7 @@ export default function LtfAdminMembersPage() {
                                   })}
                                 </tbody>
                               </table>
-                            </div>
+                            </NestedTable>
                           </td>
                         </tr>
                       ) : null}
@@ -591,7 +652,7 @@ export default function LtfAdminMembersPage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </ExpandableTable>
         )}
       </div>
     </LtfAdminLayout>

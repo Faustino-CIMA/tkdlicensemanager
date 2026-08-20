@@ -12,7 +12,26 @@ import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { FilterPills } from "@/components/ui/filter-pills";
 import { Input } from "@/components/ui/input";
+import {
+  ExpandableTable,
+  ListActionsRow,
+  ListPagination,
+  ListToolbarPanel,
+  NestedTable,
+  PageNotice,
+  PageSizeSelect,
+  SelectionMeta,
+  dataRowClickableClass,
+  dataTableClass,
+  dataTdClass,
+  dataThClass,
+  dataTheadClass,
+  resolveListPageSize,
+} from "@/components/ui/list-page-chrome";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Select,
   SelectContent,
@@ -44,6 +63,7 @@ const licenseSchema = z.object({
 });
 
 type LicenseFormValues = z.infer<typeof licenseSchema>;
+type LicenseStatusFilter = "all" | "active" | "pending" | "expired";
 
 function getYearKey(clubId: number, year: number) {
   return `${clubId}:${year}`;
@@ -69,15 +89,27 @@ export default function LtfAdminLicensesPage() {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [licenseStatusFilter, setLicenseStatusFilter] = useState<LicenseStatusFilter>("all");
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState("25");
+  const [pageSize, setPageSize] = useState("50");
   const [totalCount, setTotalCount] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [licenseFacetCounts, setLicenseFacetCounts] = useState({
+    all: 0,
+    active: 0,
+    pending: 0,
+    expired: 0,
+  });
   const lastSelectedLicenseIdRef = useRef<number | null>(null);
+  const rowSelectModifierRef = useRef({ shiftKey: false });
   const { selectedClubId: headerClubId } = useClubSelection();
 
-  const pageSizeOptions = ["10", "25", "50", "100", "150", "200"];
+  const licensesListPageSize = useMemo(
+    () => resolveListPageSize(pageSize, totalCount),
+    [pageSize, totalCount]
+  );
+  const statusFilterParam = licenseStatusFilter === "all" ? undefined : licenseStatusFilter;
 
   const {
     handleSubmit,
@@ -101,17 +133,30 @@ export default function LtfAdminLicensesPage() {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const [clubsResponse, licensesResponse, licenseTypesResponse] =
+      const q = searchQuery || undefined;
+      const clubId = headerClubId ?? undefined;
+      const [clubsResponse, licensesResponse, licenseTypesResponse, allCountRes, activeCountRes, pendingCountRes, expiredCountRes] =
         await Promise.all([
           getClubs(),
           getLicensesPage({
             page: currentPage,
-            pageSize: Number(pageSize),
-            q: searchQuery || undefined,
-            clubId: headerClubId ?? undefined,
+            pageSize: licensesListPageSize,
+            q,
+            clubId,
+            status: statusFilterParam,
           }),
           getLicenseTypes(),
+          getLicensesPage({ page: 1, pageSize: 1, q, clubId }),
+          getLicensesPage({ page: 1, pageSize: 1, q, clubId, status: "active" }),
+          getLicensesPage({ page: 1, pageSize: 1, q, clubId, status: "pending" }),
+          getLicensesPage({ page: 1, pageSize: 1, q, clubId, status: "expired" }),
         ]);
+      setLicenseFacetCounts({
+        all: allCountRes.count,
+        active: activeCountRes.count,
+        pending: pendingCountRes.count,
+        expired: expiredCountRes.count,
+      });
 
       const visibleMemberIds = Array.from(
         new Set(licensesResponse.results.map((license) => license.member))
@@ -138,7 +183,7 @@ export default function LtfAdminLicensesPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, headerClubId, pageSize, searchQuery, setValue, watch]);
+  }, [currentPage, headerClubId, licensesListPageSize, searchQuery, setValue, statusFilterParam, watch]);
 
   useEffect(() => {
     loadData();
@@ -266,12 +311,12 @@ export default function LtfAdminLicensesPage() {
       .sort((left, right) => left.clubName.localeCompare(right.clubName));
   }, [clubById, licenses, memberById, t]);
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / Number(pageSize)));
+  const totalPages = Math.max(1, Math.ceil(totalCount / licensesListPageSize));
   const pagedClubRows = groupedClubRows;
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, pageSize]);
+  }, [searchQuery, pageSize, statusFilterParam]);
 
   useEffect(() => {
     const validClubIds = new Set(groupedClubRows.map((clubGroup) => clubGroup.clubId));
@@ -458,6 +503,19 @@ export default function LtfAdminLicensesPage() {
     return status;
   };
 
+  const getStatusTone = (status: License["status"]): "success" | "warning" | "neutral" | "danger" => {
+    if (status === "active") {
+      return "success";
+    }
+    if (status === "pending") {
+      return "warning";
+    }
+    if (status === "expired") {
+      return "neutral";
+    }
+    return "danger";
+  };
+
   const formatIssuedAt = (value: string | null) => {
     if (!value) {
       return "—";
@@ -467,67 +525,100 @@ export default function LtfAdminLicensesPage() {
 
   return (
     <LtfAdminLayout title={t("licensesTitle")} subtitle={t("licensesSubtitle")}>
-      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
 
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Input
-              className="w-full max-w-xs"
-              placeholder={t("searchLicensesPlaceholder")}
-              value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
-            />
-            <Select value={pageSize} onValueChange={setPageSize}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder={common("rowsPerPageLabel")} />
-              </SelectTrigger>
-              <SelectContent>
-                {pageSizeOptions.map((option) => (
-                  <SelectItem key={option} value={option}>
-                    {option === "all" ? common("rowsPerPageAll") : option}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value=""
-              onValueChange={(value) => {
-                if (value === "delete") {
-                  openBatchDeletePage();
-                }
-              }}
-            >
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder={common("batchActionsLabel")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="delete" disabled={selectedIds.length === 0}>
-                  {common("batchDeleteLabel")}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <Button onClick={startCreate}>{t("createLicense")}</Button>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-muted">
-            {t("pageLabel", { current: currentPage, total: totalPages })}
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-            >
-              {t("previousPage")}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-            >
-              {t("nextPage")}
-            </Button>
-          </div>
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4">
+          <ListToolbarPanel
+            search={
+              <Input
+                className="w-full max-w-xs"
+                placeholder={t("searchLicensesPlaceholder")}
+                aria-label={t("searchLicensesPlaceholder")}
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+              />
+            }
+            pageSize={
+              <PageSizeSelect
+                value={pageSize}
+                onChange={setPageSize}
+                ariaLabel={common("rowsPerPageLabel")}
+                allLabel={common("rowsPerPageAll")}
+              />
+            }
+            filters={
+              <FilterPills
+                ariaLabel={t("licensesStatusFilterAriaLabel")}
+                value={licenseStatusFilter}
+                onChange={setLicenseStatusFilter}
+                options={[
+                  { value: "all", title: t("filterAllTitle"), count: licenseFacetCounts.all },
+                  { value: "active", title: t("filterActiveTitle"), count: licenseFacetCounts.active },
+                  { value: "pending", title: t("filterPendingTitle"), count: licenseFacetCounts.pending },
+                  { value: "expired", title: t("filterExpiredTitle"), count: licenseFacetCounts.expired },
+                ]}
+              />
+            }
+          />
+
+          <ListActionsRow
+            actions={
+              <>
+                <Select
+                  value=""
+                  onValueChange={(value) => {
+                    if (value === "create") {
+                      startCreate();
+                    }
+                  }}
+                >
+                  <SelectTrigger className="min-w-[11rem]" aria-label={t("licensesMenuLabel")}>
+                    <SelectValue placeholder={t("licensesMenuLabel")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="create">{t("createLicense")}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select
+                  value=""
+                  disabled={selectedIds.length === 0}
+                  onValueChange={(value) => {
+                    if (value === "delete") {
+                      openBatchDeletePage();
+                    }
+                  }}
+                >
+                  <SelectTrigger className="min-w-[11rem]" aria-label={common("batchActionsLabel")}>
+                    <SelectValue placeholder={common("batchActionsLabel")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="delete">{common("batchDeleteLabel")}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <SelectionMeta
+                  count={selectedIds.length}
+                  countLabel={t("selectedCountLabel", { count: selectedIds.length })}
+                  clearLabel={t("clearSelection")}
+                  onClear={() => {
+                    setSelectedIds([]);
+                    lastSelectedLicenseIdRef.current = null;
+                  }}
+                />
+              </>
+            }
+            pagination={
+              <ListPagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPrevious={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                onNext={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                pageLabel={t("pageLabel", { current: currentPage, total: totalPages })}
+                previousLabel={t("previousPage")}
+                nextLabel={t("nextPage")}
+              />
+            }
+          />
         </div>
 
         {isLoading ? (
@@ -535,25 +626,25 @@ export default function LtfAdminLicensesPage() {
         ) : groupedClubRows.length === 0 ? (
           <EmptyState title={t("noResultsTitle")} description={t("noLicensesResultsSubtitle")} />
         ) : (
-          <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-card shadow-sm">
-            <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
+          <ExpandableTable>
+            <table className={dataTableClass}>
+              <thead className={dataTheadClass}>
                 <tr>
-                  <th className="w-10 px-4 py-3 font-medium" />
-                  <th className="px-4 py-3 font-medium">{t("clubLabel")}</th>
-                  <th className="px-4 py-3 font-medium">{t("totalLabel")}</th>
-                  <th className="px-4 py-3 font-medium">{t("statusActive")}</th>
-                  <th className="px-4 py-3 font-medium">{t("statusPending")}</th>
-                  <th className="px-4 py-3 font-medium">{t("statusExpired")}</th>
+                  <th className={`w-10 ${dataThClass}`} />
+                  <th className={dataThClass}>{t("clubLabel")}</th>
+                  <th className={dataThClass}>{t("totalLabel")}</th>
+                  <th className={dataThClass}>{t("statusActive")}</th>
+                  <th className={dataThClass}>{t("statusPending")}</th>
+                  <th className={dataThClass}>{t("statusExpired")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody className="divide-y divide-border/80">
                 {pagedClubRows.map((clubGroup) => {
                   const clubExpanded = expandedClubSet.has(clubGroup.clubId);
                   return (
                     <Fragment key={clubGroup.clubId}>
                       <tr
-                        className="cursor-pointer text-foreground hover:bg-secondary"
+                        className={dataRowClickableClass}
                         onClick={() => toggleClubExpanded(clubGroup.clubId)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
@@ -565,25 +656,25 @@ export default function LtfAdminLicensesPage() {
                         role="button"
                         aria-expanded={clubExpanded}
                       >
-                        <td className="px-4 py-3 text-muted">
+                        <td className={`${dataTdClass} text-muted`}>
                           {clubExpanded ? (
                             <ChevronDown className="h-4 w-4" />
                           ) : (
                             <ChevronRight className="h-4 w-4" />
                           )}
                         </td>
-                        <td className="px-4 py-3 font-medium">{clubGroup.clubName}</td>
-                        <td className="px-4 py-3">{clubGroup.total}</td>
-                        <td className="px-4 py-3">{clubGroup.activeCount}</td>
-                        <td className="px-4 py-3">{clubGroup.pendingCount}</td>
-                        <td className="px-4 py-3">{clubGroup.expiredCount}</td>
+                        <td className={`${dataTdClass} font-medium`}>{clubGroup.clubName}</td>
+                        <td className={dataTdClass}>{clubGroup.total}</td>
+                        <td className={dataTdClass}>{clubGroup.activeCount}</td>
+                        <td className={dataTdClass}>{clubGroup.pendingCount}</td>
+                        <td className={dataTdClass}>{clubGroup.expiredCount}</td>
                       </tr>
                       {clubExpanded ? (
                         <tr className="bg-secondary/60">
                           <td colSpan={6} className="px-6 py-3">
-                            <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-card">
-                              <table className="min-w-full text-left text-sm">
-                                <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
+                            <NestedTable>
+                              <table className={dataTableClass}>
+                                <thead className={dataTheadClass}>
                                   <tr>
                                     <th className="w-10 px-4 py-2 font-medium" />
                                     <th className="px-4 py-2 font-medium">{t("yearLabel")}</th>
@@ -593,14 +684,14 @@ export default function LtfAdminLicensesPage() {
                                     <th className="px-4 py-2 font-medium">{t("statusExpired")}</th>
                                   </tr>
                                 </thead>
-                                <tbody className="divide-y divide-border">
+                                <tbody className="divide-y divide-border/80">
                                   {clubGroup.years.map((yearGroup) => {
                                     const yearKey = getYearKey(clubGroup.clubId, yearGroup.year);
                                     const yearExpanded = expandedYearSet.has(yearKey);
                                     return (
                                       <Fragment key={yearKey}>
                                         <tr
-                                          className="cursor-pointer text-foreground hover:bg-secondary"
+                                          className={dataRowClickableClass}
                                           onClick={() => toggleYearExpanded(clubGroup.clubId, yearGroup.year)}
                                           onKeyDown={(event) => {
                                             if (event.key === "Enter" || event.key === " ") {
@@ -628,17 +719,18 @@ export default function LtfAdminLicensesPage() {
                                         {yearExpanded ? (
                                           <tr className="bg-secondary/50">
                                             <td colSpan={6} className="px-6 py-3">
-                                              <div className="overflow-x-auto rounded-[var(--radius-form)] border border-border bg-card">
-                                                <table className="min-w-full text-left text-sm">
-                                                  <thead className="border-b border-border bg-secondary text-xs uppercase text-muted">
+                                              <NestedTable>
+                                                <table className={dataTableClass}>
+                                                  <thead className={dataTheadClass}>
                                                     <tr>
                                                       <th className="w-10 px-4 py-2 font-medium">
-                                                        <input
-                                                          type="checkbox"
-                                                          aria-label={common("selectAllLabel")}
-                                                          checked={allSelected}
-                                                          onChange={toggleSelectAll}
-                                                        />
+                                                        <span className="inline-flex min-h-[var(--control-height)] min-w-[var(--control-height)] items-center justify-center">
+                                                          <Checkbox
+                                                            aria-label={common("selectAllLabel")}
+                                                            checked={allSelected}
+                                                            onCheckedChange={() => toggleSelectAll()}
+                                                          />
+                                                        </span>
                                                       </th>
                                                       <th className="px-4 py-2 font-medium">{t("memberLabel")}</th>
                                                       <th className="px-4 py-2 font-medium">{t("licenseTypeLabel")}</th>
@@ -647,27 +739,39 @@ export default function LtfAdminLicensesPage() {
                                                       <th className="px-4 py-2 font-medium">{t("actionsLabel")}</th>
                                                     </tr>
                                                   </thead>
-                                                  <tbody className="divide-y divide-border">
+                                                  <tbody className="divide-y divide-border/80">
                                                     {yearGroup.licenses.map((license) => {
                                                       const member = memberById.get(license.member);
                                                       const licenseType = licenseTypeById.get(
                                                         license.license_type
                                                       );
                                                       return (
-                                                        <tr key={license.id} className="text-foreground">
+                                                        <tr
+                                                          key={license.id}
+                                                          className="h-[var(--table-row-height)] text-foreground"
+                                                        >
                                                           <td className="px-4 py-2">
-                                                            <input
-                                                              type="checkbox"
-                                                              aria-label={common("selectRowLabel")}
-                                                              checked={selectedIds.includes(license.id)}
-                                                              readOnly
-                                                              onClick={(event) => {
-                                                                event.stopPropagation();
-                                                                toggleSelectRow(license.id, {
-                                                                  shiftKey: event.shiftKey,
-                                                                });
-                                                              }}
-                                                            />
+                                                            <span
+                                                              className="inline-flex min-h-[var(--control-height)] min-w-[var(--control-height)] items-center justify-center"
+                                                              onClick={(event) => event.stopPropagation()}
+                                                              onKeyDown={(event) => event.stopPropagation()}
+                                                            >
+                                                              <Checkbox
+                                                                aria-label={common("selectRowLabel")}
+                                                                checked={selectedIds.includes(license.id)}
+                                                                onPointerDown={(event) => {
+                                                                  rowSelectModifierRef.current = {
+                                                                    shiftKey: event.shiftKey,
+                                                                  };
+                                                                }}
+                                                                onCheckedChange={() =>
+                                                                  toggleSelectRow(license.id, {
+                                                                    shiftKey:
+                                                                      rowSelectModifierRef.current.shiftKey,
+                                                                  })
+                                                                }
+                                                              />
+                                                            </span>
                                                           </td>
                                                           <td className="px-4 py-2">
                                                             {member
@@ -680,16 +784,19 @@ export default function LtfAdminLicensesPage() {
                                                               : t("unknownLicenseType")}
                                                           </td>
                                                           <td className="px-4 py-2">
-                                                            {getStatusLabel(license.status)}
+                                                            <StatusBadge
+                                                              label={getStatusLabel(license.status)}
+                                                              tone={getStatusTone(license.status)}
+                                                            />
                                                           </td>
                                                           <td className="px-4 py-2">
                                                             {formatIssuedAt(license.issued_at)}
                                                           </td>
                                                           <td className="px-4 py-2">
-                                                            <div className="flex flex-wrap gap-2">
+                                                            <div className="flex flex-wrap items-center gap-2">
                                                               <Button
                                                                 variant="outline"
-                                                                size="icon-sm"
+                                                                className="h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] shrink-0 p-0"
                                                                 aria-label={t("editAction")}
                                                                 onClick={() => startEdit(license)}
                                                               >
@@ -697,7 +804,7 @@ export default function LtfAdminLicensesPage() {
                                                               </Button>
                                                               <Button
                                                                 variant="destructive"
-                                                                size="icon-sm"
+                                                                className="h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] shrink-0 p-0"
                                                                 aria-label={t("deleteAction")}
                                                                 onClick={() => handleDelete(license)}
                                                               >
@@ -710,7 +817,7 @@ export default function LtfAdminLicensesPage() {
                                                     })}
                                                   </tbody>
                                                 </table>
-                                              </div>
+                                              </NestedTable>
                                             </td>
                                           </tr>
                                         ) : null}
@@ -719,7 +826,7 @@ export default function LtfAdminLicensesPage() {
                                   })}
                                 </tbody>
                               </table>
-                            </div>
+                            </NestedTable>
                           </td>
                         </tr>
                       ) : null}
@@ -728,7 +835,7 @@ export default function LtfAdminLicensesPage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </ExpandableTable>
         )}
       </div>
 

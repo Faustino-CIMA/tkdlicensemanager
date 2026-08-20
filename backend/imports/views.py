@@ -11,6 +11,7 @@ from accounts.permissions import IsClubAdmin, IsLtfAdmin, IsLtfAdminOrClubAdmin
 from clubs.banking import derive_bank_name_from_iban, is_valid_iban, normalize_iban
 from clubs.models import Club
 from members.models import Member
+from members.services import apply_ltf_license_id_import_prefix, ltf_license_prefix_rewrite_policy
 
 from .csv_utils import read_csv, to_row_dict
 from .serializers import (
@@ -19,6 +20,16 @@ from .serializers import (
     ImportDetailResponseSerializer,
     ImportPreviewResponseSerializer,
 )
+
+
+def resolve_import_license_ids(row_data, mapping, rewrite_enabled: bool):
+    wt_licenseid = row_data.get(mapping.get("wt_licenseid", ""), "").strip().upper()
+    raw_ltf_licenseid = row_data.get(mapping.get("ltf_licenseid", ""), "").strip().upper()
+    ltf_licenseid, rewritten = apply_ltf_license_id_import_prefix(
+        raw_ltf_licenseid,
+        enabled=rewrite_enabled,
+    )
+    return wt_licenseid, ltf_licenseid, rewritten
 
 
 def parse_mapping(raw_mapping):
@@ -382,7 +393,12 @@ class MemberImportPreviewView(views.APIView):
 
         if not mapping:
             return response.Response(
-                {"headers": headers, "sample_rows": sample_rows, "total_rows": len(rows)}
+                {
+                    "headers": headers,
+                    "sample_rows": sample_rows,
+                    "total_rows": len(rows),
+                    "ltf_license_prefix_rewrite": ltf_license_prefix_rewrite_policy(),
+                }
             )
 
         first_header = mapping.get("first_name")
@@ -413,6 +429,8 @@ class MemberImportPreviewView(views.APIView):
         }
         seen_wt_ids = set()
         seen_ltf_ids = set()
+        rewrite_enabled = ltf_license_prefix_rewrite_policy()["enabled"]
+        rewritten_count = 0
 
         preview_rows = []
         for index, row in enumerate(rows, start=1):
@@ -463,8 +481,11 @@ class MemberImportPreviewView(views.APIView):
                 if first_name and last_name
                 else None
             )
-            wt_licenseid = row_data.get(mapping.get("wt_licenseid", ""), "").strip().upper()
-            ltf_licenseid = row_data.get(mapping.get("ltf_licenseid", ""), "").strip().upper()
+            wt_licenseid, ltf_licenseid, ltf_rewritten = resolve_import_license_ids(
+                row_data, mapping, rewrite_enabled
+            )
+            if ltf_rewritten:
+                rewritten_count += 1
             if wt_licenseid:
                 if wt_licenseid in existing_wt_ids or wt_licenseid in seen_wt_ids:
                     errors.append("wt_licenseid must be unique")
@@ -502,6 +523,9 @@ class MemberImportPreviewView(views.APIView):
                 "rows": preview_rows,
                 "total_rows": len(rows),
                 "club_id": club_id,
+                "ltf_license_prefix_rewrite": ltf_license_prefix_rewrite_policy(
+                    rewritten_count=rewritten_count
+                ),
             }
         )
 
@@ -562,6 +586,8 @@ class MemberImportConfirmView(views.APIView):
         }
         created_wt_ids = set()
         created_ltf_ids = set()
+        rewrite_enabled = ltf_license_prefix_rewrite_policy()["enabled"]
+        rewritten_count = 0
 
         with transaction.atomic():
             for index, row in enumerate(rows, start=1):
@@ -621,8 +647,9 @@ class MemberImportConfirmView(views.APIView):
                     and primary_license_role == secondary_license_role
                 ):
                     errors.append("secondary_license_role must differ from primary_license_role")
-                wt_licenseid = row_data.get(mapping.get("wt_licenseid", ""), "").strip().upper()
-                ltf_licenseid = row_data.get(mapping.get("ltf_licenseid", ""), "").strip().upper()
+                wt_licenseid, ltf_licenseid, ltf_rewritten = resolve_import_license_ids(
+                    row_data, mapping, rewrite_enabled
+                )
                 if wt_licenseid:
                     if wt_licenseid in existing_wt_ids or wt_licenseid in created_wt_ids:
                         errors.append("wt_licenseid must be unique")
@@ -654,6 +681,8 @@ class MemberImportConfirmView(views.APIView):
                     created_wt_ids.add(wt_licenseid)
                 if ltf_licenseid:
                     created_ltf_ids.add(ltf_licenseid)
+                if ltf_rewritten:
+                    rewritten_count += 1
                 created += 1
 
         return response.Response(
@@ -662,5 +691,8 @@ class MemberImportConfirmView(views.APIView):
                 "skipped": skipped,
                 "errors": row_errors,
                 "club_id": club_id,
+                "ltf_license_prefix_rewrite": ltf_license_prefix_rewrite_policy(
+                    rewritten_count=rewritten_count
+                ),
             }
         )

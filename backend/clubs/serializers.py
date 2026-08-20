@@ -80,6 +80,7 @@ class FederationProfileSerializer(serializers.ModelSerializer):
             "locality",
             "iban",
             "bank_name",
+            "rewrite_lux_prefix_on_member_import",
             "created_at",
             "updated_at",
         ]

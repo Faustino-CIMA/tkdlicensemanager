@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
+import { PageNotice } from "@/components/ui/list-page-chrome";
 import { Modal } from "@/components/ui/modal";
 import {
   Select,
@@ -16,6 +17,7 @@ import {
 import {
   ConfirmResponse,
   ImportRow,
+  LtfLicensePrefixRewritePolicy,
   confirmImport,
   previewImport,
 } from "@/lib/import-api";
@@ -508,6 +510,7 @@ export function ImportWizardPage({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [result, setResult] = useState<ConfirmResponse | null>(null);
   const [hasPreviewRun, setHasPreviewRun] = useState(false);
+  const [rewritePolicy, setRewritePolicy] = useState<LtfLicensePrefixRewritePolicy | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const canSwitchType = allowedTypes.length > 1;
@@ -658,6 +661,7 @@ export function ImportWizardPage({
     setHasPreviewRun(false);
     setErrorMessage(null);
     setResult(null);
+    setRewritePolicy(null);
     setIsLoading(false);
   };
 
@@ -676,6 +680,7 @@ export function ImportWizardPage({
     setHasPreviewRun(false);
     setErrorMessage(null);
     setResult(null);
+    setRewritePolicy(null);
     if (fixedClubId) {
       setSelectedClubId(fixedClubId);
     } else if (clubOptions.length > 0) {
@@ -760,6 +765,7 @@ export function ImportWizardPage({
       );
       setHeaders(preview.headers ?? []);
       setSampleRows(preview.sample_rows ?? []);
+      setRewritePolicy(isMembersImport ? preview.ltf_license_prefix_rewrite ?? null : null);
       setMapping(buildAutoMapping(currentFields, preview.headers ?? []));
       setPreviewRows([]);
       setActions({});
@@ -830,6 +836,7 @@ export function ImportWizardPage({
       }, {});
       setPreviewRows(rows);
       setActions(defaultActions);
+      setRewritePolicy(isMembersImport ? preview.ltf_license_prefix_rewrite ?? null : null);
       setRoleOverrides({}); // Clear role overrides on new preview
       setPreviewFilter("all");
       setHasPreviewRun(true);
@@ -874,6 +881,7 @@ export function ImportWizardPage({
         rowOverrides
       );
       setResult(importResult);
+      setRewritePolicy(isMembersImport ? importResult.ltf_license_prefix_rewrite ?? rewritePolicy : null);
       setStep("result");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : t("importFailed"));
@@ -1031,6 +1039,25 @@ export function ImportWizardPage({
     ? "stale"
     : "current";
 
+  const prefixNotice =
+    isMembersImport && rewritePolicy ? (
+      <PageNotice tone="info">
+        {rewritePolicy.enabled
+          ? t("ltfPrefixRewriteEnabledNotice", {
+              source: rewritePolicy.source_prefix,
+              target: rewritePolicy.target_prefix,
+            })
+          : t("ltfPrefixRewriteDisabledNotice")}
+        {rewritePolicy.enabled && rewritePolicy.rewritten_count > 0
+          ? ` ${t("ltfPrefixRewriteAppliedCount", {
+              count: rewritePolicy.rewritten_count,
+              source: rewritePolicy.source_prefix,
+              target: rewritePolicy.target_prefix,
+            })}`
+          : null}
+      </PageNotice>
+    ) : null;
+
   return (
     <div className="space-y-4">
       {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
@@ -1067,6 +1094,7 @@ export function ImportWizardPage({
                 <h2 className="text-lg font-semibold text-foreground">{t("sourceStepTitle")}</h2>
                 <p className="text-sm text-muted">{t("sourceStepSubtitle")}</p>
               </div>
+              {prefixNotice}
 
               {canSwitchType ? (
                 <div className="space-y-2">
@@ -1212,6 +1240,7 @@ export function ImportWizardPage({
                 <h2 className="text-lg font-semibold text-foreground">{t("mappingStepTitle")}</h2>
                 <p className="text-sm text-muted">{t("mappingStepSubtitle")}</p>
               </div>
+              {prefixNotice}
 
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" size="sm" onClick={handleAutoMap} disabled={headers.length === 0}>
@@ -1283,6 +1312,7 @@ export function ImportWizardPage({
                 <h2 className="text-lg font-semibold text-foreground">{t("previewStepTitle")}</h2>
                 <p className="text-sm text-muted">{t("previewStepSubtitle")}</p>
               </div>
+              {prefixNotice}
 
               {isPreviewDirty ? (
                 <p className="rounded-[var(--radius-form)] border px-3 py-2 text-sm banner-warning">
@@ -1602,6 +1632,7 @@ export function ImportWizardPage({
                 <h2 className="text-lg font-semibold text-foreground">{t("confirmStepTitle")}</h2>
                 <p className="text-sm text-muted">{t("confirmStepSubtitle")}</p>
               </div>
+              {prefixNotice}
 
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="rounded-[var(--radius-form)] border border-border bg-secondary px-3 py-2 text-sm text-foreground">
@@ -1649,6 +1680,7 @@ export function ImportWizardPage({
                 <h2 className="text-lg font-semibold text-foreground">{t("resultStepTitle")}</h2>
                 <p className="text-sm text-muted">{t("resultStepSubtitle")}</p>
               </div>
+              {prefixNotice}
 
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="rounded-[var(--radius-form)] border px-3 py-2 text-sm banner-success">

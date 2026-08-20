@@ -16,6 +16,7 @@ class ImportPreviewResponseSerializer(serializers.Serializer):
     rows = serializers.ListField(child=serializers.DictField(), required=False)
     total_rows = serializers.IntegerField()
     club_id = serializers.IntegerField(required=False)
+    ltf_license_prefix_rewrite = serializers.DictField(required=False)
 
 
 class ImportConfirmResponseSerializer(serializers.Serializer):
@@ -23,6 +24,7 @@ class ImportConfirmResponseSerializer(serializers.Serializer):
     skipped = serializers.IntegerField()
     errors = serializers.ListField(child=serializers.DictField())
     club_id = serializers.IntegerField(required=False)
+    ltf_license_prefix_rewrite = serializers.DictField(required=False)
 
 
 class ImportDetailResponseSerializer(serializers.Serializer):
