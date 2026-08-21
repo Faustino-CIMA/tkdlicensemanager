@@ -224,6 +224,13 @@ export default function ClubInvoiceDetailPage() {
             <span className="font-medium">{formatDisplayDateTime(invoice.paid_at)}</span>
           </div>
         </div>
+        {order ? (
+          <div className="mt-4">
+            <Button asChild variant="outline">
+              <Link href={`/${locale}/dashboard/club/orders/${order.id}`}>{t("openOrderAction")}</Link>
+            </Button>
+          </div>
+        ) : null}
       </section>
 
       <section className="mt-6">

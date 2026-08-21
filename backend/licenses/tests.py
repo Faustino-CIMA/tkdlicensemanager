@@ -1552,6 +1552,162 @@ class ClubOrderCheckoutTests(TestCase):
         self.assertNotIn("items", row)
         self.assertNotIn("stripe_payment_intent_id", row)
 
+    @patch("licenses.views.stripe.checkout.Session.create")
+    def test_club_checkout_success_url_includes_session_id(self, session_create_mock):
+        session_create_mock.return_value = type(
+            "Session",
+            (),
+            {"id": "cs_test_123", "url": "https://stripe.test/session", "payment_intent": "pi_test"},
+        )()
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            f"/api/club-orders/{self.order.id}/create-checkout-session/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        success_url = session_create_mock.call_args.kwargs["success_url"]
+        self.assertIn("session_id={CHECKOUT_SESSION_ID}", success_url)
+
+
+class StripeConfirmCheckoutTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.ltf_admin = User.objects.create_user(
+            username="ltfadmin-confirm",
+            password="pass12345",
+            role=User.Roles.LTF_ADMIN,
+        )
+        self.club_admin = User.objects.create_user(
+            username="clubadmin-confirm",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+        )
+        self.other_admin = User.objects.create_user(
+            username="clubadmin-other",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+        )
+        self.club = Club.objects.create(name="Confirm Club", created_by=self.ltf_admin)
+        self.club.admins.add(self.club_admin)
+        self.member = Member.objects.create(
+            club=self.club,
+            first_name="Ivy",
+            last_name="Beck",
+        )
+        self.license_type = LicenseType.objects.create(
+            name="Confirm Annual",
+            code="confirm-annual",
+        )
+        today = timezone.localdate()
+        self.license_record = License.objects.create(
+            member=self.member,
+            club=self.club,
+            license_type=self.license_type,
+            year=today.year,
+            status=License.Status.PENDING,
+            start_date=today,
+            end_date=today + timedelta(days=30),
+        )
+        self.order = Order.objects.create(
+            club=self.club,
+            member=self.member,
+            status=Order.Status.PENDING,
+            subtotal=Decimal("25.00"),
+            tax_total=Decimal("5.00"),
+            total=Decimal("30.00"),
+            stripe_checkout_session_id="cs_confirm_123",
+        )
+        OrderItem.objects.create(
+            order=self.order,
+            license=self.license_record,
+            price_snapshot=Decimal("30.00"),
+            quantity=1,
+        )
+        self.invoice = Invoice.objects.create(
+            order=self.order,
+            club=self.club,
+            member=self.member,
+            status=Invoice.Status.ISSUED,
+            subtotal=Decimal("25.00"),
+            tax_total=Decimal("5.00"),
+            total=Decimal("30.00"),
+        )
+
+    @override_settings(STRIPE_SECRET_KEY="sk_test_confirm")
+    @patch("licenses.stripe_checkout.stripe.checkout.Session.retrieve")
+    def test_confirm_checkout_marks_paid_and_activates_license(self, retrieve_mock):
+        retrieve_mock.return_value = {
+            "id": "cs_confirm_123",
+            "payment_status": "paid",
+            "payment_intent": "pi_confirm_123",
+            "customer": "cus_confirm_123",
+            "metadata": {"order_id": str(self.order.id)},
+        }
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            "/api/stripe/confirm-checkout/",
+            {"session_id": "cs_confirm_123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "paid")
+        self.assertEqual(response.data["order_id"], self.order.id)
+        self.order.refresh_from_db()
+        self.invoice.refresh_from_db()
+        self.license_record.refresh_from_db()
+        self.assertEqual(self.order.status, Order.Status.PAID)
+        self.assertEqual(self.invoice.status, Invoice.Status.PAID)
+        self.assertEqual(self.license_record.status, License.Status.ACTIVE)
+
+    @override_settings(STRIPE_SECRET_KEY="sk_test_confirm")
+    @patch("licenses.stripe_checkout.stripe.checkout.Session.retrieve")
+    def test_confirm_checkout_pending_when_stripe_not_paid(self, retrieve_mock):
+        retrieve_mock.return_value = {
+            "id": "cs_confirm_123",
+            "payment_status": "unpaid",
+            "payment_intent": "pi_confirm_123",
+            "metadata": {"order_id": str(self.order.id)},
+        }
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            "/api/stripe/confirm-checkout/",
+            {"session_id": "cs_confirm_123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "pending")
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, Order.Status.PENDING)
+
+    @override_settings(STRIPE_SECRET_KEY="sk_test_confirm")
+    def test_confirm_checkout_is_idempotent_when_already_paid(self):
+        self.order.status = Order.Status.PAID
+        self.order.save(update_fields=["status", "updated_at"])
+        self.invoice.status = Invoice.Status.PAID
+        self.invoice.save(update_fields=["status", "updated_at"])
+        self.license_record.status = License.Status.ACTIVE
+        self.license_record.save(update_fields=["status", "updated_at"])
+        self.client.force_authenticate(user=self.club_admin)
+        with patch("licenses.stripe_checkout.stripe.checkout.Session.retrieve") as retrieve_mock:
+            response = self.client.post(
+                "/api/stripe/confirm-checkout/",
+                {"session_id": "cs_confirm_123"},
+                format="json",
+            )
+            retrieve_mock.assert_not_called()
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "paid")
+
+    def test_confirm_checkout_rejects_other_club_admin(self):
+        self.client.force_authenticate(user=self.other_admin)
+        response = self.client.post(
+            "/api/stripe/confirm-checkout/",
+            {"session_id": "cs_confirm_123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
 
 class StripeWebhookSignatureTests(TestCase):
     def setUp(self):

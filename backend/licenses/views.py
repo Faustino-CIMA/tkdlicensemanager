@@ -50,6 +50,8 @@ from .serializers import (
     ClubOrderEligibilitySerializer,
     CheckoutSessionSerializer,
     CheckoutSessionRequestSerializer,
+    ConfirmCheckoutResultSerializer,
+    ConfirmCheckoutSessionSerializer,
     ConfirmPaymentSerializer,
     ExpenseCategorySerializer,
     ExpenseSerializer,
@@ -77,6 +79,7 @@ from .policy import (
     validate_member_license_order,
 )
 from .services import apply_payment_and_activate
+from .stripe_checkout import checkout_success_url, fulfill_checkout_session
 from .tasks import process_stripe_webhook_event
 from .payconiq import PayconiqServiceError, create_payment, get_status
 
@@ -491,7 +494,7 @@ class OrderViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
         reference_number = invoice.invoice_number if invoice else order.order_number
         session_kwargs = {
             "mode": "payment",
-            "success_url": settings.STRIPE_CHECKOUT_SUCCESS_URL,
+            "success_url": checkout_success_url(),
             "cancel_url": settings.STRIPE_CHECKOUT_CANCEL_URL,
             "client_reference_id": reference_number,
             "payment_intent_data": {
@@ -1720,7 +1723,7 @@ class ClubOrderViewSet(OptionalPaginationListMixin, viewsets.ReadOnlyModelViewSe
         reference_number = invoice.invoice_number if invoice else order.order_number
         session_kwargs = {
             "mode": "payment",
-            "success_url": settings.STRIPE_CHECKOUT_SUCCESS_URL,
+            "success_url": checkout_success_url(),
             "cancel_url": settings.STRIPE_CHECKOUT_CANCEL_URL,
             "client_reference_id": reference_number,
             "payment_intent_data": {
@@ -2168,3 +2171,41 @@ class StripeWebhookView(APIView):
         process_stripe_webhook_event.delay(event_payload)
 
         return Response(status=status.HTTP_200_OK)
+
+
+class StripeConfirmCheckoutView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        request=ConfirmCheckoutSessionSerializer,
+        responses=ConfirmCheckoutResultSerializer,
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = ConfirmCheckoutSessionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        session_id = serializer.validated_data["session_id"].strip()
+
+        try:
+            fulfillment = fulfill_checkout_session(session_id, actor=request.user)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=HTTP_400_BAD_REQUEST)
+        except RuntimeError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except PermissionError:
+            return Response({"detail": "Checkout session not found."}, status=status.HTTP_404_NOT_FOUND)
+        except stripe.error.StripeError as exc:  # type: ignore[attr-defined]
+            return Response({"detail": str(exc)}, status=HTTP_400_BAD_REQUEST)
+
+        order = fulfillment.order
+        if order is None:
+            return Response({"detail": "Checkout session not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        invoice = fulfillment.invoice
+        payload = {
+            "status": fulfillment.status,
+            "order_id": order.id,
+            "invoice_id": invoice.id if invoice else None,
+            "order_status": order.status,
+            "invoice_status": invoice.status if invoice else None,
+        }
+        return Response(ConfirmCheckoutResultSerializer(payload).data, status=status.HTTP_200_OK)

@@ -384,6 +384,18 @@ class CheckoutSessionSerializer(serializers.Serializer):
     url = serializers.URLField()
 
 
+class ConfirmCheckoutSessionSerializer(serializers.Serializer):
+    session_id = serializers.CharField(max_length=255)
+
+
+class ConfirmCheckoutResultSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=["paid", "pending", "unpaid"])
+    order_id = serializers.IntegerField(allow_null=True)
+    invoice_id = serializers.IntegerField(allow_null=True)
+    order_status = serializers.CharField(allow_null=True, required=False)
+    invoice_status = serializers.CharField(allow_null=True, required=False)
+
+
 class ActivateLicensesSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True)
 

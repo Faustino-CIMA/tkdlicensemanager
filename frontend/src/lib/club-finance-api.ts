@@ -133,6 +133,21 @@ export function createClubCheckoutSession(
   });
 }
 
+export type ConfirmStripeCheckoutResult = {
+  status: "paid" | "pending" | "unpaid";
+  order_id: number | null;
+  invoice_id: number | null;
+  order_status?: string | null;
+  invoice_status?: string | null;
+};
+
+export function confirmStripeCheckout(sessionId: string) {
+  return apiRequest<ConfirmStripeCheckoutResult>("/api/stripe/confirm-checkout/", {
+    method: "POST",
+    body: JSON.stringify({ session_id: sessionId }),
+  });
+}
+
 export function createPayconiqPayment(invoiceId: number) {
   return apiRequest<PayconiqPayment>("/api/payconiq/create/", {
     method: "POST",

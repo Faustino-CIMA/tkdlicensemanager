@@ -52,6 +52,7 @@ from licenses.views import (
     OrderViewSet,
     PayconiqPaymentViewSet,
     PaymentViewSet,
+    StripeConfirmCheckoutView,
     StripeWebhookView,
 )
 from licenses.card_views import (
@@ -164,6 +165,11 @@ urlpatterns = [
         name="overview-ltf-finance",
     ),
     path("api/stripe/webhook/", StripeWebhookView.as_view(), name="stripe-webhook"),
+    path(
+        "api/stripe/confirm-checkout/",
+        StripeConfirmCheckoutView.as_view(),
+        name="stripe-confirm-checkout",
+    ),
     path("api/invoices/<int:invoice_id>/pdf/", InvoicePdfView.as_view(), name="invoice-pdf"),
     path("api/finance-reports/", FinanceReportView.as_view(), name="finance-report"),
     path("api/finance-reports/export/", FinanceReportExportView.as_view(), name="finance-report-export"),

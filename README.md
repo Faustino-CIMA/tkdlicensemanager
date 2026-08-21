@@ -233,7 +233,7 @@ Stripe + payments:
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
 - `STRIPE_API_VERSION` (default `2026-01-28.clover`)
-- `STRIPE_CHECKOUT_SUCCESS_URL`
+- `STRIPE_CHECKOUT_SUCCESS_URL` (session id is appended automatically if missing)
 - `STRIPE_CHECKOUT_CANCEL_URL`
 
 Payconiq (mock + aggregator):

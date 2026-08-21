@@ -8,18 +8,11 @@ import { useParams } from "next/navigation";
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
-import { PayconiqPaymentCard } from "@/components/club-admin/payconiq-payment-card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Member, getMembers } from "@/lib/club-admin-api";
 import { formatDisplayDateTime } from "@/lib/date-display";
-import {
-  FinanceOrder,
-  PayconiqPayment,
-  createPayconiqPayment,
-  getClubOrder,
-  getPayconiqPaymentStatus,
-} from "@/lib/club-finance-api";
+import { FinanceOrder, getClubOrder } from "@/lib/club-finance-api";
 
 type OrderItemRow = {
   id: number;
@@ -35,9 +28,6 @@ export default function ClubOrderDetailPage() {
   const params = useParams();
   const [order, setOrder] = useState<FinanceOrder | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
-  const [payconiqPayment, setPayconiqPayment] = useState<PayconiqPayment | null>(null);
-  const [payconiqError, setPayconiqError] = useState<string | null>(null);
-  const [isPayconiqBusy, setIsPayconiqBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -113,38 +103,6 @@ export default function ClubOrderDetailPage() {
     { key: "quantity", header: t("qtyLabel") },
   ];
 
-  const handleCreatePayconiqPayment = async () => {
-    if (!order.invoice) {
-      return;
-    }
-    setIsPayconiqBusy(true);
-    setPayconiqError(null);
-    try {
-      const payment = await createPayconiqPayment(order.invoice.id);
-      setPayconiqPayment(payment);
-    } catch (error) {
-      setPayconiqError(error instanceof Error ? error.message : t("payconiqError"));
-    } finally {
-      setIsPayconiqBusy(false);
-    }
-  };
-
-  const handleRefreshPayconiqPayment = async () => {
-    if (!payconiqPayment) {
-      return;
-    }
-    setIsPayconiqBusy(true);
-    setPayconiqError(null);
-    try {
-      const payment = await getPayconiqPaymentStatus(payconiqPayment.id);
-      setPayconiqPayment(payment);
-    } catch (error) {
-      setPayconiqError(error instanceof Error ? error.message : t("payconiqError"));
-    } finally {
-      setIsPayconiqBusy(false);
-    }
-  };
-
   if (isLoading) {
     return (
       <ClubAdminLayout title={t("orderDetailTitle")} subtitle={t("orderDetailSubtitle")}>
@@ -187,23 +145,28 @@ export default function ClubOrderDetailPage() {
             <span className="text-xs text-muted">{t("createdAtLabel")}</span>
             <span className="font-medium">{formatDisplayDateTime(order.created_at)}</span>
           </div>
+          {order.invoice ? (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-muted">{t("invoiceNumberLabel")}</span>
+              <span className="font-medium">{order.invoice.invoice_number}</span>
+            </div>
+          ) : null}
         </div>
+        {order.invoice ? (
+          <div className="mt-4">
+            <Button asChild>
+              <Link href={`/${locale}/dashboard/club/invoices/${order.invoice.id}`}>
+                {t("openInvoiceAction")}
+              </Link>
+            </Button>
+          </div>
+        ) : null}
       </section>
 
       <section className="mt-6">
         <h2 className="mb-3 text-sm font-semibold text-foreground">{t("orderItemsTitle")}</h2>
         <EntityTable columns={columns} rows={items} />
       </section>
-
-      {order.invoice ? (
-        <PayconiqPaymentCard
-          payment={payconiqPayment}
-          errorMessage={payconiqError}
-          isBusy={isPayconiqBusy}
-          onCreate={handleCreatePayconiqPayment}
-          onRefresh={handleRefreshPayconiqPayment}
-        />
-      ) : null}
     </ClubAdminLayout>
   );
 }

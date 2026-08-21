@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### User-facing
+- **Checkout return:** After Stripe payment, the success page confirms the session and activates licenses before **Go to dashboard**, so the dashboard should already show a paid invoice and current licenses.
+
 ## [0.5.0] - 2026-08-20
 
 ### User-facing
