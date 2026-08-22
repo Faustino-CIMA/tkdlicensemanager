@@ -35,6 +35,8 @@ from .models import (
     ExpenseCategory,
     FinanceAuditLog,
     FinanceYearOpening,
+    Income,
+    IncomeCategory,
     Invoice,
     License,
     LicensePrice,
@@ -56,6 +58,8 @@ from .serializers import (
     ExpenseCategorySerializer,
     ExpenseSerializer,
     FinanceAuditLogSerializer,
+    IncomeCategorySerializer,
+    IncomeSerializer,
     FinanceYearOpeningSerializer,
     InvoiceListSerializer,
     InvoiceSerializer,
@@ -920,7 +924,7 @@ class LtfFinanceOverviewView(APIView):
     permission_classes = [IsLtfFinance]
 
     def get(self, request):
-        cache_key = "dashboard:overview:ltf_finance:v2"
+        cache_key = "dashboard:overview:ltf_finance:v3"
         cached_payload = cache.get(cache_key)
         if cached_payload is not None:
             return Response(cached_payload, status=status.HTTP_200_OK)
@@ -983,6 +987,10 @@ class LtfFinanceOverviewView(APIView):
             paid_at__gte=month_start_dt,
             paid_at__lt=next_month_start_dt,
         ).aggregate(total=Sum("amount"))["total"]
+        other_income_this_year = Income.objects.filter(
+            status=Income.Status.RECEIVED,
+            income_date__year=today.year,
+        ).aggregate(total=Sum("amount"))["total"]
 
         currency = (
             Invoice.objects.exclude(currency="")
@@ -1027,6 +1035,7 @@ class LtfFinanceOverviewView(APIView):
                 "paid_invoices": int(invoice_counts.get("paid") or 0),
                 "outstanding_amount": _decimal_string(outstanding_amount),
                 "collected_this_month_amount": _decimal_string(collected_this_month_amount),
+                "other_income_this_year": _decimal_string(other_income_this_year),
                 "pricing_coverage": {
                     "total_license_types": total_license_types,
                     "with_active_price": with_active_price,
@@ -2038,6 +2047,102 @@ class ExpenseViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
             metadata={"expense_id": expense.id, "expense_number": expense.expense_number},
         )
         return Response(self.get_serializer(expense).data)
+
+
+class IncomeCategoryViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
+    serializer_class = IncomeCategorySerializer
+    permission_classes = [IsLtfFinance]
+    http_method_names = ["get", "post", "patch", "head", "options"]
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return IncomeCategory.objects.none()
+        queryset = IncomeCategory.objects.all()
+        active_param = self.request.query_params.get("active")
+        if active_param == "1":
+            queryset = queryset.filter(is_active=True)
+        return queryset
+
+
+class IncomeViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
+    serializer_class = IncomeSerializer
+    permission_classes = [IsLtfFinance]
+    http_method_names = ["get", "post", "patch", "head", "options"]
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return Income.objects.none()
+        queryset = Income.objects.select_related("category", "club", "created_by")
+        status_param = self.request.query_params.get("status")
+        if status_param:
+            statuses = [value.strip() for value in status_param.split(",") if value.strip()]
+            queryset = queryset.filter(status__in=statuses)
+        year_param = self.request.query_params.get("year")
+        if year_param:
+            try:
+                queryset = queryset.filter(income_date__year=int(year_param))
+            except (TypeError, ValueError):
+                queryset = queryset.none()
+        category_id = self.request.query_params.get("category")
+        if category_id:
+            queryset = queryset.filter(category_id=category_id)
+        search_value = self.request.query_params.get("q", "").strip()
+        if search_value:
+            queryset = queryset.filter(
+                Q(income_number__icontains=search_value)
+                | Q(description__icontains=search_value)
+                | Q(payer__icontains=search_value)
+                | Q(reference__icontains=search_value)
+                | Q(category__name__icontains=search_value)
+            )
+        return queryset.order_by("-income_date", "-id")
+
+    def perform_create(self, serializer):
+        income = serializer.save(created_by=self.request.user)
+        FinanceAuditLog.objects.create(
+            action="income.created",
+            message=f"Income {income.income_number} recorded.",
+            actor=self.request.user,
+            club=income.club,
+            metadata={
+                "income_id": income.id,
+                "income_number": income.income_number,
+                "amount": str(income.amount),
+                "status": income.status,
+            },
+        )
+
+    def perform_update(self, serializer):
+        income = serializer.save()
+        FinanceAuditLog.objects.create(
+            action="income.updated",
+            message=f"Income {income.income_number} updated.",
+            actor=self.request.user,
+            club=income.club,
+            metadata={
+                "income_id": income.id,
+                "income_number": income.income_number,
+                "amount": str(income.amount),
+                "status": income.status,
+            },
+        )
+
+    @action(detail=True, methods=["post"])
+    def void(self, request, pk=None):
+        income = self.get_object()
+        if income.status == Income.Status.VOID:
+            return Response(self.get_serializer(income).data)
+        income.status = Income.Status.VOID
+        income.received_at = None
+        income.save()
+        FinanceAuditLog.objects.create(
+            action="income.voided",
+            message=f"Income {income.income_number} voided.",
+            actor=request.user,
+            club=income.club,
+            metadata={"income_id": income.id, "income_number": income.income_number},
+        )
+        return Response(self.get_serializer(income).data)
 
 
 class FinanceYearOpeningView(APIView):

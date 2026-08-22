@@ -565,6 +565,118 @@ class Expense(models.Model):
         return str(self.expense_number)
 
 
+def generate_income_number(income_date: date | None = None) -> str:
+    year = (income_date or timezone.localdate()).year
+    prefix = f"INC-{year}-"
+    last = (
+        Income.objects.filter(income_number__startswith=prefix)
+        .order_by("-income_number")
+        .values_list("income_number", flat=True)
+        .first()
+    )
+    sequence = 1
+    if last:
+        try:
+            sequence = int(str(last).rsplit("-", 1)[-1]) + 1
+        except (TypeError, ValueError):
+            sequence = 1
+    return f"{prefix}{sequence:04d}"
+
+
+class IncomeCategory(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    code = models.SlugField(max_length=50, unique=True)
+    sort_order = models.PositiveSmallIntegerField(default=100)
+    is_active = models.BooleanField(default=True)  # pyright: ignore[reportArgumentType]
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            self.code = slugify(self.name)
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return str(self.name)
+
+
+class Income(models.Model):
+    class Status(models.TextChoices):
+        RECEIVED = "received", "Received"
+        VOID = "void", "Void"
+
+    income_number = models.CharField(max_length=20, unique=True, editable=False)
+    category = models.ForeignKey(
+        IncomeCategory, on_delete=models.PROTECT, related_name="incomes"
+    )
+    club = models.ForeignKey(
+        Club,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="incomes",
+    )
+    description = models.CharField(max_length=255)
+    payer = models.CharField(max_length=255, blank=True)
+    amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+    )
+    currency = models.CharField(max_length=3, default="EUR")
+    income_date = models.DateField()
+    received_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.RECEIVED
+    )
+    payment_method = models.CharField(
+        max_length=20, choices=Payment.Method.choices, blank=True
+    )
+    reference = models.CharField(max_length=255, blank=True)
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="incomes_recorded",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-income_date", "-created_at"]
+        indexes = [
+            models.Index(fields=["status", "-income_date"], name="inc_status_date_idx"),
+            models.Index(fields=["category", "-income_date"], name="inc_cat_date_idx"),
+            models.Index(fields=["-income_date"], name="inc_date_idx"),
+        ]
+
+    def clean(self):
+        if self.amount is not None and self.amount <= Decimal("0.00"):
+            raise ValidationError({"amount": "Amount must be greater than 0."})
+        if self.status == self.Status.RECEIVED and self.received_at is None:
+            raise ValidationError({"received_at": "Received income requires a received date."})
+        if self.status == self.Status.VOID and self.received_at is not None:
+            raise ValidationError({"status": "Void income cannot remain received."})
+
+    def save(self, *args, **kwargs):
+        if not self.income_number:
+            self.income_number = generate_income_number(self.income_date)
+        if self.status == self.Status.RECEIVED and self.received_at is None:
+            self.received_at = timezone.now()
+        if self.status == self.Status.VOID:
+            self.received_at = None
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return str(self.income_number)
+
+
 class FinanceYearOpening(models.Model):
     year = models.PositiveSmallIntegerField(unique=True)
     opening_cash = models.DecimalField(

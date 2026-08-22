@@ -179,6 +179,12 @@ export default function LtfFinanceReportsPage() {
                   </dd>
                 </div>
                 <div className="flex items-center justify-between gap-3">
+                  <dt className="text-muted">{t("otherIncomeLabel")}</dt>
+                  <dd className="font-medium">
+                    {moneyLabel(report.income_statement.other_income, report.currency)}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
                   <dt className="text-muted">{t("operatingExpensesLabel")}</dt>
                   <dd className="font-medium">
                     {moneyLabel(report.income_statement.expenses_total, report.currency)}
@@ -228,7 +234,7 @@ export default function LtfFinanceReportsPage() {
 
           <FormPanel>
             <h2 className="text-section text-foreground">{t("cashMovementTitle")}</h2>
-            <dl className="mt-4 grid gap-3 text-sm md:grid-cols-4">
+            <dl className="mt-4 grid gap-3 text-sm md:grid-cols-5">
               <div>
                 <dt className="text-muted">{t("openingCashLabel")}</dt>
                 <dd className="font-medium">{moneyLabel(report.cash_movement.opening_cash, report.currency)}</dd>
@@ -236,6 +242,10 @@ export default function LtfFinanceReportsPage() {
               <div>
                 <dt className="text-muted">{t("receiptsLabel")}</dt>
                 <dd className="font-medium">{moneyLabel(report.cash_movement.receipts, report.currency)}</dd>
+              </div>
+              <div>
+                <dt className="text-muted">{t("otherIncomeLabel")}</dt>
+                <dd className="font-medium">{moneyLabel(report.cash_movement.other_income, report.currency)}</dd>
               </div>
               <div>
                 <dt className="text-muted">{t("disbursementsLabel")}</dt>

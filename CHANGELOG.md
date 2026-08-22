@@ -6,6 +6,8 @@ All notable changes to this project are documented in this file.
 
 ### User-facing
 - **Checkout return:** After Stripe payment, the success page confirms the session and activates licenses before **Go to dashboard**, so the dashboard should already show a paid invoice and current licenses.
+- **Record payment:** LTF Finance records a payment on a full page instead of a modal. Transaction communication is pre-filled with the invoice number and the payment date defaults to today.
+- **Fund inflows:** LTF Finance can record other income (subsidies, donations, sponsoring, grants) on a dedicated Income register. These amounts appear on the finance overview, income statement, cash movement, and Excel export.
 
 ## [0.5.0] - 2026-08-20
 

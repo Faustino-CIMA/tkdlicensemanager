@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { AlertTriangle, BadgeEuro, Receipt, ShoppingCart } from "lucide-react";
+import { AlertTriangle, BadgeEuro, HandCoins, Receipt, ShoppingCart } from "lucide-react";
 
 import { ActionQueue } from "@/components/club-admin/action-queue";
 import { EmptyState } from "@/components/club-admin/empty-state";
@@ -147,6 +147,12 @@ export default function LtfFinanceDashboardPage() {
         return t("auditActionExpensePaid");
       case "expense.voided":
         return t("auditActionExpenseVoided");
+      case "income.created":
+        return t("auditActionIncomeCreated");
+      case "income.updated":
+        return t("auditActionIncomeUpdated");
+      case "income.voided":
+        return t("auditActionIncomeVoided");
       case "finance_opening.updated":
         return t("auditActionFinanceOpeningUpdated");
       default:
@@ -211,6 +217,12 @@ export default function LtfFinanceDashboardPage() {
               value={`${overview.cards.collected_this_month_amount} ${overview.currency}`}
               icon={BadgeEuro}
               tone="success"
+            />
+            <SummaryCard
+              title={t("otherIncomeThisYearLabel")}
+              value={`${overview.cards.other_income_this_year} ${overview.currency}`}
+              icon={HandCoins}
+              tone="accent"
             />
             <SummaryCard
               title={t("pricingCoverageLabel")}

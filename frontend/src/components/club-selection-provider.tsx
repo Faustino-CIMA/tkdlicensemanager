@@ -66,6 +66,9 @@ export function shouldShowClubSelector(pathname: string | null | undefined): boo
     const hiddenPrefixes = [
       "/dashboard/ltf-finance/audit-log",
       "/dashboard/ltf-finance/license-settings",
+      "/dashboard/ltf-finance/expenses",
+      "/dashboard/ltf-finance/income",
+      "/dashboard/ltf-finance/reports",
     ];
     return !hiddenPrefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
   }

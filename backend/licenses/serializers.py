@@ -15,6 +15,8 @@ from .models import (
     ExpenseCategory,
     FinanceAuditLog,
     FinanceYearOpening,
+    Income,
+    IncomeCategory,
     Invoice,
     License,
     LicensePrice,
@@ -715,6 +717,63 @@ class ExpenseSerializer(serializers.ModelSerializer):
         else:
             validated_data["paid_at"] = None
             validated_data["status"] = Expense.Status.RECORDED
+        return super().update(instance, validated_data)
+
+
+class IncomeCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IncomeCategory
+        fields = ["id", "name", "code", "sort_order", "is_active", "created_at", "updated_at"]
+        read_only_fields = ["code", "created_at", "updated_at"]
+
+
+class IncomeSerializer(serializers.ModelSerializer):
+    category_name = serializers.CharField(source="category.name", read_only=True)
+    category_code = serializers.CharField(source="category.code", read_only=True)
+    club_name = serializers.CharField(source="club.name", read_only=True)
+
+    class Meta:
+        model = Income
+        fields = [
+            "id",
+            "income_number",
+            "category",
+            "category_name",
+            "category_code",
+            "club",
+            "club_name",
+            "description",
+            "payer",
+            "amount",
+            "currency",
+            "income_date",
+            "received_at",
+            "status",
+            "payment_method",
+            "reference",
+            "notes",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "income_number",
+            "status",
+            "received_at",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+
+    def create(self, validated_data):
+        validated_data["status"] = Income.Status.RECEIVED
+        if not validated_data.get("received_at"):
+            validated_data["received_at"] = timezone.now()
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        if instance.status == Income.Status.VOID:
+            raise serializers.ValidationError({"status": "Void income cannot be edited."})
         return super().update(instance, validated_data)
 
 

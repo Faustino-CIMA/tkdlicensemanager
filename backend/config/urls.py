@@ -40,6 +40,8 @@ from licenses.views import (
     InvoiceViewSet,
     ExpenseCategoryViewSet,
     ExpenseViewSet,
+    IncomeCategoryViewSet,
+    IncomeViewSet,
     FinanceReportExportView,
     FinanceReportView,
     FinanceYearOpeningView,
@@ -86,6 +88,8 @@ router.register(r"club-invoices", ClubInvoiceViewSet, basename="club-invoice")
 router.register(r"finance-audit-logs", FinanceAuditLogViewSet, basename="finance-audit-log")
 router.register(r"expense-categories", ExpenseCategoryViewSet, basename="expense-category")
 router.register(r"expenses", ExpenseViewSet, basename="expense")
+router.register(r"income-categories", IncomeCategoryViewSet, basename="income-category")
+router.register(r"incomes", IncomeViewSet, basename="income")
 router.register(r"card-formats", CardFormatPresetViewSet, basename="card-format")
 router.register(r"card-font-assets", CardFontAssetViewSet, basename="card-font-asset")
 router.register(r"card-image-assets", CardImageAssetViewSet, basename="card-image-asset")

@@ -22,6 +22,8 @@ from members.models import Member
 from .models import (
     Expense,
     ExpenseCategory,
+    Income,
+    IncomeCategory,
     FinanceAuditLog,
     FinanceYearOpening,
     Invoice,
@@ -2522,6 +2524,30 @@ class FinanceBooksTests(TestCase):
             FinanceAuditLog.objects.filter(action="expense.paid").exists()
         )
 
+    def test_finance_can_record_other_income(self):
+        self.client.force_authenticate(user=self.ltf_finance)
+        category, _ = IncomeCategory.objects.get_or_create(
+            code="donations",
+            defaults={"name": "Donations", "sort_order": 30},
+        )
+        response = self.client.post(
+            "/api/incomes/",
+            {
+                "category": category.id,
+                "description": "Club anniversary donation",
+                "payer": "Private donor",
+                "amount": "75.00",
+                "income_date": "2026-04-10",
+                "payment_method": "bank_transfer",
+                "reference": "DON-2026-01",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["status"], Income.Status.RECEIVED)
+        self.assertTrue(response.data["income_number"].startswith("INC-2026-"))
+        self.assertTrue(FinanceAuditLog.objects.filter(action="income.created").exists())
+
     def test_non_finance_cannot_create_expense(self):
         self.client.force_authenticate(user=self.club_admin)
         response = self.client.post(
@@ -2570,24 +2596,39 @@ class FinanceBooksTests(TestCase):
             expense_date=date(2026, 6, 1),
             status=Expense.Status.RECORDED,
         )
+        income_category, _ = IncomeCategory.objects.get_or_create(
+            code="subsidies",
+            defaults={"name": "Government subsidies", "sort_order": 10},
+        )
+        Income.objects.create(
+            category=income_category,
+            description="Ministry of Sport annual subsidy",
+            payer="Ministry of Sport",
+            amount=Decimal("50.00"),
+            income_date=date(2026, 4, 1),
+            status=Income.Status.RECEIVED,
+            received_at=timezone.make_aware(datetime(2026, 4, 1)),
+        )
         FinanceYearOpening.objects.create(year=2026, opening_cash=Decimal("100.00"))
         self.client.force_authenticate(user=self.ltf_finance)
         report_response = self.client.get("/api/finance-reports/", {"year": 2026})
         self.assertEqual(report_response.status_code, status.HTTP_200_OK)
         data = report_response.data
         self.assertEqual(data["income_statement"]["revenue_license_fees"], "120.00")
+        self.assertEqual(data["income_statement"]["other_income"], "50.00")
         self.assertEqual(data["income_statement"]["expenses_total"], "40.00")
-        self.assertEqual(data["income_statement"]["surplus"], "80.00")
+        self.assertEqual(data["income_statement"]["surplus"], "130.00")
         self.assertEqual(data["cash_movement"]["opening_cash"], "100.00")
         self.assertEqual(data["cash_movement"]["receipts"], "40.00")
+        self.assertEqual(data["cash_movement"]["other_income"], "50.00")
         self.assertEqual(data["cash_movement"]["disbursements"], "25.00")
-        self.assertEqual(data["cash_movement"]["closing_cash"], "115.00")
-        self.assertEqual(data["balance_sheet"]["assets"]["cash"], "115.00")
+        self.assertEqual(data["cash_movement"]["closing_cash"], "165.00")
+        self.assertEqual(data["balance_sheet"]["assets"]["cash"], "165.00")
         self.assertEqual(data["balance_sheet"]["assets"]["accounts_receivable"], "80.00")
-        self.assertEqual(data["balance_sheet"]["assets"]["total"], "195.00")
+        self.assertEqual(data["balance_sheet"]["assets"]["total"], "245.00")
         self.assertEqual(data["balance_sheet"]["liabilities"]["accounts_payable"], "15.00")
-        self.assertEqual(data["balance_sheet"]["equity"]["net_assets"], "180.00")
-        self.assertEqual(data["balance_sheet"]["liabilities_and_equity_total"], "195.00")
+        self.assertEqual(data["balance_sheet"]["equity"]["net_assets"], "230.00")
+        self.assertEqual(data["balance_sheet"]["liabilities_and_equity_total"], "245.00")
 
         export_response = self.client.get("/api/finance-reports/export/", {"year": 2026})
         self.assertEqual(export_response.status_code, status.HTTP_200_OK)

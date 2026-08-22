@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useMemo } from "react";
-import { BadgeDollarSign, Banknote, FileText, LayoutDashboard, Receipt, Scale, ScrollText, Wallet } from "lucide-react";
+import { BadgeDollarSign, Banknote, FileText, HandCoins, LayoutDashboard, Receipt, Scale, ScrollText, Wallet } from "lucide-react";
 
 import { AppShell, type AppNavItem } from "@/components/app-shell";
 
@@ -23,6 +23,7 @@ type LtfFinanceNavDef = {
     | "navOrders"
     | "navInvoices"
     | "navPayments"
+    | "navIncome"
     | "navExpenses"
     | "navReports"
     | "navAuditLog"
@@ -53,6 +54,13 @@ const LTF_FINANCE_NAV_DEFINITIONS: LtfFinanceNavDef[] = [
     labelKey: "navPayments",
     matchMode: "prefix",
     icon: BadgeDollarSign,
+  },
+  {
+    id: "income",
+    href: (l) => `/${l}/dashboard/ltf-finance/income`,
+    labelKey: "navIncome",
+    matchMode: "prefix",
+    icon: HandCoins,
   },
   {
     id: "expenses",

@@ -170,9 +170,18 @@ export default function LtfFinancePaymentDetailPage() {
 
   return (
     <LtfFinanceLayout title={t("paymentDetailTitle")} subtitle={t("paymentDetailSubtitle")}>
-      <Button asChild variant="outline" className="w-fit">
-        <Link href={`/${locale}/dashboard/ltf-finance/payments`}>{t("backToPayments")}</Link>
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button asChild variant="outline" className="w-fit">
+          <Link href={`/${locale}/dashboard/ltf-finance/payments`}>{t("backToPayments")}</Link>
+        </Button>
+        {invoice.status !== "paid" && invoice.status !== "void" ? (
+          <Button asChild>
+            <Link href={`/${locale}/dashboard/ltf-finance/payments/${invoice.id}/record`}>
+              {t("recordPaymentButton")}
+            </Link>
+          </Button>
+        ) : null}
+      </div>
 
       {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
 

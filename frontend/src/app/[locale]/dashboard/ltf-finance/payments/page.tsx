@@ -27,19 +27,10 @@ import {
   dataTheadClass,
   resolveListPageSize,
 } from "@/components/ui/list-page-chrome";
-import { Modal } from "@/components/ui/modal";
 import { StatusBadge } from "@/components/ui/status-badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Club,
   FinanceInvoice,
-  confirmOrderPayment,
   getFinanceClubs,
   getFinanceInvoicesPage,
 } from "@/lib/ltf-finance-api";
@@ -85,15 +76,7 @@ export default function LtfFinancePaymentsPage() {
   });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [activeInvoiceId, setActiveInvoiceId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
-  const [recordInvoice, setRecordInvoice] = useState<FinanceInvoice | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState("offline");
-  const [paymentProvider, setPaymentProvider] = useState("manual");
-  const [paymentReference, setPaymentReference] = useState("");
-  const [paymentNotes, setPaymentNotes] = useState("");
-  const [paymentDate, setPaymentDate] = useState("");
   const [expandedClubIds, setExpandedClubIds] = useState<number[]>([]);
   const [expandedYearKeys, setExpandedYearKeys] = useState<string[]>([]);
   const [expandedStateHydrated, setExpandedStateHydrated] = useState(false);
@@ -103,20 +86,6 @@ export default function LtfFinancePaymentsPage() {
   const expandedClubStorageKey = "ltf_finance_payments_expanded_clubs";
   const expandedYearStorageKey = "ltf_finance_payments_expanded_years";
   const { selectedClubId } = useClubSelection();
-  const paymentMethodOptions = [
-    { value: "card", label: t("paymentMethodCard") },
-    { value: "bank_transfer", label: t("paymentMethodBankTransfer") },
-    { value: "cash", label: t("paymentMethodCash") },
-    { value: "offline", label: t("paymentMethodOffline") },
-    { value: "other", label: t("paymentMethodOther") },
-  ];
-  const paymentProviderOptions = [
-    { value: "stripe", label: t("paymentProviderStripe") },
-    { value: "payconiq", label: t("paymentProviderPayconiq") },
-    { value: "paypal", label: t("paymentProviderPaypal") },
-    { value: "manual", label: t("paymentProviderManual") },
-    { value: "other", label: t("paymentProviderOther") },
-  ];
 
   const loadInvoices = useCallback(async (options?: { silent?: boolean; includeStatic?: boolean }) => {
     const silent = options?.silent ?? false;
@@ -282,46 +251,6 @@ export default function LtfFinancePaymentsPage() {
         return { label: common("statusVoid"), tone: "danger" as const };
       default:
         return { label: status, tone: "neutral" as const };
-    }
-  };
-
-  const openRecordModal = (invoice: FinanceInvoice) => {
-    setActionError(null);
-    setRecordInvoice(invoice);
-    setPaymentMethod("offline");
-    setPaymentProvider("manual");
-    setPaymentReference("");
-    setPaymentNotes("");
-    setPaymentDate("");
-    setIsRecordModalOpen(true);
-  };
-
-  const handleRecordPayment = async () => {
-    if (!recordInvoice) {
-      return;
-    }
-    if (!recordInvoice.order) {
-      setActionError(common("paymentMissingOrder"));
-      return;
-    }
-    setActionError(null);
-    setActiveInvoiceId(recordInvoice.id);
-    try {
-      await confirmOrderPayment(recordInvoice.order, {
-        payment_method: paymentMethod,
-        payment_provider: paymentProvider,
-        payment_reference: paymentReference || undefined,
-        payment_notes: paymentNotes || undefined,
-        paid_at: paymentDate ? new Date(paymentDate).toISOString() : undefined,
-      });
-      await loadInvoices();
-      setIsRecordModalOpen(false);
-    } catch (error) {
-      setActionError(
-        error instanceof Error ? error.message : common("paymentFailed")
-      );
-    } finally {
-      setActiveInvoiceId(null);
     }
   };
 
@@ -729,13 +658,12 @@ export default function LtfFinancePaymentsPage() {
                                                                 size="sm"
                                                                 onClick={(event) => {
                                                                   event.stopPropagation();
-                                                                  openRecordModal(invoice);
+                                                                  router.push(
+                                                                    `/${locale}/dashboard/ltf-finance/payments/${invoice.id}/record`
+                                                                  );
                                                                 }}
-                                                                disabled={activeInvoiceId === invoice.id}
                                                               >
-                                                                {activeInvoiceId === invoice.id
-                                                                  ? common("paymentProcessing")
-                                                                  : t("recordPaymentButton")}
+                                                                {t("recordPaymentButton")}
                                                               </Button>
                                                             ) : null}
                                                           </td>
@@ -764,88 +692,6 @@ export default function LtfFinancePaymentsPage() {
             </table>
         </ExpandableTable>
       )}
-
-      <Modal
-        title={t("recordPaymentTitle")}
-        description={t("recordPaymentSubtitle")}
-        isOpen={isRecordModalOpen}
-        onClose={() => setIsRecordModalOpen(false)}
-      >
-        <div className="grid gap-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">
-              {t("paymentMethodLabel")}
-            </label>
-            <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {paymentMethodOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">
-              {t("paymentProviderLabel")}
-            </label>
-            <Select value={paymentProvider} onValueChange={setPaymentProvider}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {paymentProviderOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">
-              {t("paymentReferenceLabel")}
-            </label>
-            <Input
-              value={paymentReference}
-              onChange={(event) => setPaymentReference(event.target.value)}
-              placeholder={t("paymentReferencePlaceholder")}
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">
-              {t("paymentNotesLabel")}
-            </label>
-            <Input
-              value={paymentNotes}
-              onChange={(event) => setPaymentNotes(event.target.value)}
-              placeholder={t("paymentNotesPlaceholder")}
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">
-              {t("paymentDateLabel")}
-            </label>
-            <Input
-              type="datetime-local"
-              value={paymentDate}
-              onChange={(event) => setPaymentDate(event.target.value)}
-            />
-          </div>
-          <div className="flex items-center gap-3">
-            <Button onClick={handleRecordPayment} disabled={activeInvoiceId !== null}>
-              {activeInvoiceId ? common("paymentProcessing") : t("recordPaymentButton")}
-            </Button>
-            <Button variant="outline" onClick={() => setIsRecordModalOpen(false)}>
-              {t("paymentCancelButton")}
-            </Button>
-          </div>
-        </div>
-      </Modal>
     </LtfFinanceLayout>
   );
 }

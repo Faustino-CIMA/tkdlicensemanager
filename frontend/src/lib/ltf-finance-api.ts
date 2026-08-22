@@ -191,6 +191,7 @@ export type LtfFinanceOverviewResponse = {
     paid_invoices: number;
     outstanding_amount: string;
     collected_this_month_amount: string;
+    other_income_this_year: string;
     pricing_coverage: {
       total_license_types: number;
       with_active_price: number;
@@ -650,14 +651,17 @@ export type FinanceReportResponse = {
   };
   income_statement: {
     revenue_license_fees: string;
+    other_income: string;
     expenses_total: string;
     surplus: string;
     income_by_club: FinanceReportAmountRow[];
+    other_income_by_category: FinanceReportAmountRow[];
     expenses_by_category: FinanceReportAmountRow[];
   };
   cash_movement: {
     opening_cash: string;
     receipts: string;
+    other_income: string;
     disbursements: string;
     closing_cash: string;
   };
@@ -668,6 +672,17 @@ export type FinanceReportResponse = {
     liabilities_and_equity_total: string;
   };
   registers: {
+    other_income: Array<{
+      id: number;
+      income_number: string;
+      income_date: string;
+      category_name: string;
+      payer: string;
+      description: string;
+      amount: string;
+      status: string;
+      reference: string;
+    }>;
     expenses: Array<{
       id: number;
       expense_number: string;
@@ -814,6 +829,138 @@ export function markFinanceExpensePaid(
 
 export function voidFinanceExpense(id: number) {
   return apiRequest<FinanceExpense>(`/api/expenses/${id}/void/`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export type IncomeCategory = {
+  id: number;
+  name: string;
+  code: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FinanceIncome = {
+  id: number;
+  income_number: string;
+  category: number;
+  category_name: string;
+  category_code: string;
+  club: number | null;
+  club_name: string | null;
+  description: string;
+  payer: string;
+  amount: string;
+  currency: string;
+  income_date: string;
+  received_at: string | null;
+  status: "received" | "void";
+  payment_method: string;
+  reference: string;
+  notes: string;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type IncomeQueryParams = {
+  q?: string;
+  status?: string;
+  year?: number;
+  category?: number;
+};
+
+type IncomePageParams = IncomeQueryParams & {
+  page: number;
+  pageSize: number;
+};
+
+function buildIncomeQuery(params?: IncomeQueryParams) {
+  const search = new URLSearchParams();
+  if (params?.q) {
+    search.set("q", params.q);
+  }
+  if (params?.status) {
+    search.set("status", params.status);
+  }
+  if (params?.year) {
+    search.set("year", String(params.year));
+  }
+  if (params?.category) {
+    search.set("category", String(params.category));
+  }
+  return search;
+}
+
+export function getIncomeCategories(options?: ApiCallOptions & { activeOnly?: boolean }) {
+  const search = new URLSearchParams();
+  if (options?.activeOnly) {
+    search.set("active", "1");
+  }
+  const suffix = search.toString();
+  return apiRequest<IncomeCategory[]>(`/api/income-categories/${suffix ? `?${suffix}` : ""}`, {
+    signal: options?.signal,
+  });
+}
+
+export function getFinanceIncomesPage(params: IncomePageParams, options?: ApiCallOptions) {
+  const search = buildIncomeQuery(params);
+  search.set("page", String(params.page));
+  search.set("page_size", String(params.pageSize));
+  const suffix = search.toString();
+  return apiRequest<PaginatedResponse<FinanceIncome>>(`/api/incomes/${suffix ? `?${suffix}` : ""}`, {
+    signal: options?.signal,
+  });
+}
+
+export function getFinanceIncome(id: number) {
+  return apiRequest<FinanceIncome>(`/api/incomes/${id}/`);
+}
+
+export function createFinanceIncome(input: {
+  category: number;
+  club?: number | null;
+  description: string;
+  payer?: string;
+  amount: string;
+  currency?: string;
+  income_date: string;
+  payment_method?: string;
+  reference?: string;
+  notes?: string;
+}) {
+  return apiRequest<FinanceIncome>("/api/incomes/", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateFinanceIncome(
+  id: number,
+  input: Partial<{
+    category: number;
+    club: number | null;
+    description: string;
+    payer: string;
+    amount: string;
+    income_date: string;
+    payment_method: string;
+    reference: string;
+    notes: string;
+  }>
+) {
+  return apiRequest<FinanceIncome>(`/api/incomes/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function voidFinanceIncome(id: number) {
+  return apiRequest<FinanceIncome>(`/api/incomes/${id}/void/`, {
     method: "POST",
     body: JSON.stringify({}),
   });

@@ -152,6 +152,12 @@ export default function LtfFinanceAuditLogPage() {
         return t("auditActionExpensePaid");
       case "expense.voided":
         return t("auditActionExpenseVoided");
+      case "income.created":
+        return t("auditActionIncomeCreated");
+      case "income.updated":
+        return t("auditActionIncomeUpdated");
+      case "income.voided":
+        return t("auditActionIncomeVoided");
       case "finance_opening.updated":
         return t("auditActionFinanceOpeningUpdated");
       default:

@@ -10,7 +10,7 @@ from openpyxl.utils import get_column_letter
 
 from clubs.models import FederationProfile
 
-from .models import Expense, FinanceYearOpening, Invoice, Payment
+from .models import Expense, FinanceYearOpening, Income, Invoice, Payment
 
 ZERO = Decimal("0.00")
 MONEY_QUANT = Decimal("0.01")
@@ -75,17 +75,22 @@ def _sum(queryset, field="amount"):
     return money(queryset.aggregate(total=Sum(field))["total"])
 
 
-def computed_opening_cash(start_dt) -> Decimal:
+def computed_opening_cash(start_dt, start: date | None = None) -> Decimal:
     receipts_before = Payment.objects.filter(status=Payment.Status.PAID).filter(_paid_at_before(start_dt))
+    other_income_before = Income.objects.filter(status=Income.Status.RECEIVED)
+    if start is not None:
+        other_income_before = other_income_before.filter(income_date__lt=start)
+    else:
+        other_income_before = other_income_before.filter(received_at__lt=start_dt)
     expenses_before = Expense.objects.filter(status=Expense.Status.PAID).filter(_paid_at_before(start_dt))
-    return _sum(receipts_before) - _sum(expenses_before)
+    return _sum(receipts_before) + _sum(other_income_before) - _sum(expenses_before)
 
 
 def resolve_opening_cash(year: int, start_dt):
     stored = FinanceYearOpening.objects.filter(year=year).first()
     if stored:
         return money(stored.opening_cash), True, stored.notes
-    return computed_opening_cash(start_dt), False, ""
+    return computed_opening_cash(start_dt, start=date(year, 1, 1)), False, ""
 
 
 def build_finance_report(year: int, today: date | None = None) -> dict:
@@ -143,16 +148,49 @@ def build_finance_report(year: int, today: date | None = None) -> dict:
         for expense in period_expenses.order_by("expense_date", "id")
     ]
 
-    surplus = revenue_total - expense_total
+    period_other_income = Income.objects.filter(
+        status=Income.Status.RECEIVED,
+        income_date__gte=start,
+        income_date__lte=as_of,
+    ).select_related("category", "club")
+    other_income_total = _sum(period_other_income)
+    other_income_by_category = [
+        {
+            "category_id": row["category_id"],
+            "category_code": row["category__code"],
+            "category_name": row["category__name"],
+            "amount": money_str(row["total"]),
+        }
+        for row in period_other_income.values("category_id", "category__code", "category__name")
+        .annotate(total=Sum("amount"))
+        .order_by("category__sort_order", "category__name")
+    ]
+    income_register = [
+        {
+            "id": income.id,
+            "income_number": income.income_number,
+            "income_date": income.income_date.isoformat(),
+            "category_name": income.category.name,
+            "payer": income.payer,
+            "description": income.description,
+            "amount": money_str(income.amount),
+            "status": income.status,
+            "reference": income.reference,
+        }
+        for income in period_other_income.order_by("income_date", "id")
+    ]
+
+    surplus = revenue_total + other_income_total - expense_total
 
     opening_cash, opening_is_manual, opening_notes = resolve_opening_cash(year, start_dt)
     receipts = _sum(
         Payment.objects.filter(status=Payment.Status.PAID).filter(_paid_at_in_period(start_dt, as_of_end_dt))
     )
+    other_income_cash = other_income_total
     disbursements = _sum(
         Expense.objects.filter(status=Expense.Status.PAID).filter(_paid_at_in_period(start_dt, as_of_end_dt))
     )
-    closing_cash = opening_cash + receipts - disbursements
+    closing_cash = opening_cash + receipts + other_income_cash - disbursements
 
     receivables_qs = (
         Invoice.objects.filter(_invoice_recognized_by(as_of_end_dt))
@@ -201,10 +239,11 @@ def build_finance_report(year: int, today: date | None = None) -> dict:
         "generated_at": timezone.now().isoformat().replace("+00:00", "Z"),
         "methodology": (
             "Accrual books for the selected calendar year. License income is recognized when "
-            "an invoice is issued. Expenses are recognized on their expense date. The balance "
-            "sheet cash figure is opening cash plus receipts minus paid expenses through the "
-            "as-of date. Receivables are issued invoices still unpaid at that date. Payables "
-            "are recorded expenses still unpaid at that date."
+            "an invoice is issued. Other income (subsidies, donations, sponsoring) is recognized "
+            "on the income date. Expenses are recognized on their expense date. The balance "
+            "sheet cash figure is opening cash plus license receipts plus other income minus paid "
+            "expenses through the as-of date. Receivables are issued invoices still unpaid at that "
+            "date. Payables are recorded expenses still unpaid at that date."
         ),
         "opening": {
             "cash": money_str(opening_cash),
@@ -213,14 +252,17 @@ def build_finance_report(year: int, today: date | None = None) -> dict:
         },
         "income_statement": {
             "revenue_license_fees": money_str(revenue_total),
+            "other_income": money_str(other_income_total),
             "expenses_total": money_str(expense_total),
             "surplus": money_str(surplus),
             "income_by_club": income_by_club,
+            "other_income_by_category": other_income_by_category,
             "expenses_by_category": expenses_by_category,
         },
         "cash_movement": {
             "opening_cash": money_str(opening_cash),
             "receipts": money_str(receipts),
+            "other_income": money_str(other_income_cash),
             "disbursements": money_str(disbursements),
             "closing_cash": money_str(closing_cash),
         },
@@ -242,6 +284,7 @@ def build_finance_report(year: int, today: date | None = None) -> dict:
         },
         "registers": {
             "expenses": expense_register,
+            "other_income": income_register,
             "receivables": receivables,
             "payables": payables,
         },
@@ -338,24 +381,38 @@ def render_finance_report_xlsx(report: dict) -> bytes:
     _write_header_row(pnl, 4, ["Line", "Amount (EUR)"])
     _text_cell(pnl, 5, 1, "License fee income")
     _money_cell(pnl, 5, 2, report["income_statement"]["revenue_license_fees"])
-    _text_cell(pnl, 6, 1, "Operating expenses")
-    _money_cell(pnl, 6, 2, report["income_statement"]["expenses_total"])
-    _text_cell(pnl, 7, 1, "Surplus / (deficit)", bold=True)
-    total_cell = _money_cell(pnl, 7, 2, report["income_statement"]["surplus"])
+    _text_cell(pnl, 6, 1, "Other income (subsidies, donations, sponsoring)")
+    _money_cell(pnl, 6, 2, report["income_statement"]["other_income"])
+    _text_cell(pnl, 7, 1, "Operating expenses")
+    _money_cell(pnl, 7, 2, report["income_statement"]["expenses_total"])
+    _text_cell(pnl, 8, 1, "Surplus / (deficit)", bold=True)
+    total_cell = _money_cell(pnl, 8, 2, report["income_statement"]["surplus"])
     total_cell.font = BOLD_FONT
     pnl["A5"].fill = PatternFill("solid", fgColor="F6F8FA")
-    pnl["A7"].fill = TOTAL_FILL
-    pnl["B7"].fill = TOTAL_FILL
-    pnl["A9"] = "Income by club"
-    pnl["A9"].font = SECTION_FONT
-    _write_header_row(pnl, 10, ["Club", "Amount (EUR)"])
-    row = 11
+    pnl["A8"].fill = TOTAL_FILL
+    pnl["B8"].fill = TOTAL_FILL
+    pnl["A10"] = "License income by club"
+    pnl["A10"].font = SECTION_FONT
+    _write_header_row(pnl, 11, ["Club", "Amount (EUR)"])
+    row = 12
     for item in report["income_statement"]["income_by_club"]:
         _text_cell(pnl, row, 1, item["club_name"])
         _money_cell(pnl, row, 2, item["amount"])
         row += 1
     if not report["income_statement"]["income_by_club"]:
         _text_cell(pnl, row, 1, "No license income in this period")
+        row += 1
+    row += 1
+    pnl.cell(row=row, column=1, value="Other income by category").font = SECTION_FONT
+    row += 1
+    _write_header_row(pnl, row, ["Category", "Amount (EUR)"])
+    row += 1
+    for item in report["income_statement"]["other_income_by_category"]:
+        _text_cell(pnl, row, 1, item["category_name"])
+        _money_cell(pnl, row, 2, item["amount"])
+        row += 1
+    if not report["income_statement"]["other_income_by_category"]:
+        _text_cell(pnl, row, 1, "No other income in this period")
         row += 1
     row += 1
     pnl.cell(row=row, column=1, value="Expenses by category").font = SECTION_FONT
@@ -400,12 +457,14 @@ def render_finance_report_xlsx(report: dict) -> bytes:
     _write_header_row(bs, 19, ["Line", "Amount (EUR)"])
     _text_cell(bs, 20, 1, "Opening cash")
     _money_cell(bs, 20, 2, report["cash_movement"]["opening_cash"])
-    _text_cell(bs, 21, 1, "Receipts (payments received)")
+    _text_cell(bs, 21, 1, "Receipts (license payments)")
     _money_cell(bs, 21, 2, report["cash_movement"]["receipts"])
-    _text_cell(bs, 22, 1, "Disbursements (expenses paid)")
-    _money_cell(bs, 22, 2, report["cash_movement"]["disbursements"])
-    _text_cell(bs, 23, 1, "Closing cash", bold=True)
-    _money_cell(bs, 23, 2, report["cash_movement"]["closing_cash"]).font = BOLD_FONT
+    _text_cell(bs, 22, 1, "Other income received")
+    _money_cell(bs, 22, 2, report["cash_movement"]["other_income"])
+    _text_cell(bs, 23, 1, "Disbursements (expenses paid)")
+    _money_cell(bs, 23, 2, report["cash_movement"]["disbursements"])
+    _text_cell(bs, 24, 1, "Closing cash", bold=True)
+    _money_cell(bs, 24, 2, report["cash_movement"]["closing_cash"]).font = BOLD_FONT
     _autosize(bs)
 
     expenses_sheet = wb.create_sheet("Expense register")
@@ -433,6 +492,31 @@ def render_finance_report_xlsx(report: dict) -> bytes:
     expenses_sheet.auto_filter.ref = f"A3:I{max(row - 1, 3)}"
     expenses_sheet.freeze_panes = "A4"
     _autosize(expenses_sheet)
+
+    income_sheet = wb.create_sheet("Other income")
+    income_sheet["A1"] = "Other income register"
+    income_sheet["A1"].font = TITLE_FONT
+    _write_header_row(
+        income_sheet,
+        3,
+        ["Date", "Number", "Category", "Source", "Description", "Amount (EUR)", "Status", "Reference"],
+    )
+    row = 4
+    for item in report["registers"]["other_income"]:
+        _text_cell(income_sheet, row, 1, item["income_date"])
+        _text_cell(income_sheet, row, 2, item["income_number"])
+        _text_cell(income_sheet, row, 3, item["category_name"])
+        _text_cell(income_sheet, row, 4, item["payer"])
+        _text_cell(income_sheet, row, 5, item["description"])
+        _money_cell(income_sheet, row, 6, item["amount"])
+        _text_cell(income_sheet, row, 7, item["status"])
+        _text_cell(income_sheet, row, 8, item["reference"])
+        row += 1
+    if not report["registers"]["other_income"]:
+        _text_cell(income_sheet, row, 1, "No other income in this period")
+    income_sheet.auto_filter.ref = f"A3:H{max(row - 1, 3)}"
+    income_sheet.freeze_panes = "A4"
+    _autosize(income_sheet)
 
     ar_sheet = wb.create_sheet("Receivables")
     ar_sheet["A1"] = "Open receivables"
