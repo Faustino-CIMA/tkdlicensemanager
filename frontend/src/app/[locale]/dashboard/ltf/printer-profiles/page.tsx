@@ -259,7 +259,7 @@ export default function LtfAdminPrinterProfilesPage() {
           <ListToolbarPanel
             search={
               <Input
-                className="w-full max-w-xs"
+                className="w-full min-w-0 max-w-xl"
                 placeholder={t("printerProfilesSearchPlaceholder")}
                 aria-label={t("printerProfilesSearchPlaceholder")}
                 value={searchQuery}

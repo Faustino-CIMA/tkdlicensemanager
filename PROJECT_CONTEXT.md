@@ -19,11 +19,11 @@ Status: Member Import Step 3 UX improvement merged on improvements-clean (v0.3.9
 Status: Member Detail View UX overhaul implemented on `feature/member-detail-view-redo` (commit 7d986ab, 2026-05-29); single scroll view, simplified Licenses/Grades tables with pagination, inline grade form, pencil edit actions — Club and LTF member detail pages
 Status: Hybrid responsive design-token refinements in progress on `feature/member-detail-view-redo` (14 files modified, uncommitted): `--control-height`, `--table-row-height`, `--control-padding-x`, `--checkbox-border`; shared Button/Input/Select/Modal and Club Members page migrated off hardcoded heights
 
-Current Stack (locked) — Updated 2026-05-30
-- Backend: python:3.13-slim-bookworm + Django 6.0.3 + DRF 3.17.0 + PostgreSQL 18
-- Frontend: Next.js 16.2.1 (App Router) + React 19.2.4 + TypeScript 5.9.3 + HeroUI v3.0.1 + Tailwind 4.2.2
+Current Stack (locked) — Updated 2026-08-20
+- Backend: python:3.13-slim + Django 6.0.8 + DRF 3.18.0 + PostgreSQL 18
+- Frontend: Next.js 16.3.2 (App Router) + React 19.2.8 + TypeScript 5.9.3 + Tailwind 4.3.3
 - Runtime: Python 3.13 + Node 22
-- Cache / queue: Redis 8.4 + Celery 5.6.2
+- Cache / queue: Redis 8 + Celery 5.6.3
 - Containers: Docker + Dokploy deployment
 
 Rules we follow:

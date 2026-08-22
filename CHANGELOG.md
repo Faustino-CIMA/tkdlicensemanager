@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Technical
+- Frontend: Next.js 16.3.2, React 19.2.8, Tailwind 4.3.3, and related same-major lockfile refresh (Radix, next-intl, react-hook-form, zod, Jest). Lucide, photo crop, ONNX, WeasyPrint, bleach, and Django 6.1 were left unchanged.
+- CI now matches Docker: Python 3.13, PostgreSQL 18, Node 22.
+
 ### User-facing
 - **Checkout return:** After Stripe payment, the success page confirms the session and activates licenses before **Go to dashboard**, so the dashboard should already show a paid invoice and current licenses.
 - **Record payment:** LTF Finance records a payment on a full page instead of a modal. Transaction communication is pre-filled with the invoice number and the payment date defaults to today.

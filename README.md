@@ -30,8 +30,8 @@ Download links:
 - Docker Desktop (macOS): https://www.docker.com/products/docker-desktop/
 
 Optional for local (non-Docker) development:
-- Python 3.12+
-- Node 20+
+- Python 3.13+
+- Node 22+
 
 Windows (WSL) notes:
 - Use WSL2 with a Linux distro (Ubuntu recommended).

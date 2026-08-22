@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { Button } from "@/components/ui/button";
+import { ListActionsRow, ListToolbarPanel } from "@/components/ui/list-page-chrome";
 import { DeleteConfirmModal } from "@/components/ui/delete-confirm-modal";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -248,15 +249,22 @@ export default function ClubAdminPrinterProfilesPage() {
       {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
       {successMessage ? <p className="text-sm text-success">{successMessage}</p> : null}
 
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Input
-            className="w-full max-w-xs"
-            placeholder={t("printerProfilesSearchPlaceholder")}
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4">
+          <ListToolbarPanel
+            search={
+              <Input
+                className="w-full min-w-0 max-w-xl"
+                placeholder={t("printerProfilesSearchPlaceholder")}
+                aria-label={t("printerProfilesSearchPlaceholder")}
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+              />
+            }
           />
-          <Button onClick={startCreate}>{t("printerProfilesCreateAction")}</Button>
+          <ListActionsRow
+            actions={<Button onClick={startCreate}>{t("printerProfilesCreateAction")}</Button>}
+          />
         </div>
 
         {isLoading ? (

@@ -420,6 +420,23 @@ export default function ClubAdminMembersPage() {
   const allSelected =
     allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedIds.includes(id));
 
+  const selectedStatusBreakdown = useMemo(() => {
+    const selectedOnPage = members.filter((member) => selectedIds.includes(member.id));
+    const activeCount = selectedOnPage.filter((member) => member.is_active).length;
+    const inactiveCount = selectedOnPage.filter((member) => !member.is_active).length;
+    const unknownCount = Math.max(0, selectedIds.length - selectedOnPage.length);
+    const unknownLikelyActive = memberStatusFilter === "active";
+    const unknownLikelyInactive = memberStatusFilter === "inactive";
+    const effectiveActive = activeCount + (unknownLikelyActive ? unknownCount : 0);
+    const effectiveInactive = inactiveCount + (unknownLikelyInactive ? unknownCount : 0);
+    const unknownMixed = unknownCount > 0 && memberStatusFilter === "all";
+    return {
+      total: selectedIds.length,
+      showActivate: effectiveInactive > 0 || unknownMixed,
+      showDeactivate: effectiveActive > 0 || unknownMixed,
+    };
+  }, [memberStatusFilter, members, selectedIds]);
+
   const toggleSelectAll = () => {
     if (!canManageMembers) {
       return;
@@ -594,7 +611,16 @@ export default function ClubAdminMembersPage() {
     try {
       for (const id of selectedIds) {
         try {
-          const m = await getMember(id);
+          const cached = members.find((member) => member.id === id);
+          if (cached && cached.is_active === targetActive) {
+            ok += 1;
+            continue;
+          }
+          const m = cached ?? (await getMember(id));
+          if (m.is_active === targetActive) {
+            ok += 1;
+            continue;
+          }
           await updateMember(id, memberToUpdateBody(m, targetActive));
           ok += 1;
         } catch {
@@ -640,7 +666,13 @@ export default function ClubAdminMembersPage() {
         isOpen={bulkStatusOpen}
         onClose={() => !bulkStatusBusy && setBulkStatusOpen(false)}
         title={t("bulkChangeStatusTitle")}
-        description={t("bulkChangeStatusDescription", { count: selectedIds.length })}
+        description={
+          selectedStatusBreakdown.showActivate && !selectedStatusBreakdown.showDeactivate
+            ? t("bulkChangeStatusSetActiveDescription", { count: selectedStatusBreakdown.total })
+            : selectedStatusBreakdown.showDeactivate && !selectedStatusBreakdown.showActivate
+              ? t("bulkChangeStatusSetInactiveDescription", { count: selectedStatusBreakdown.total })
+              : t("bulkChangeStatusMixedDescription", { count: selectedStatusBreakdown.total })
+        }
       >
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
           <Button
@@ -650,20 +682,24 @@ export default function ClubAdminMembersPage() {
           >
             {common("deleteCancelButton")}
           </Button>
-          <Button
-            variant="secondary"
-            disabled={bulkStatusBusy}
-            onClick={() => void runBulkStatusChange(true)}
-          >
-            {t("bulkActivateSelected")}
-          </Button>
-          <Button
-            variant="destructive"
-            disabled={bulkStatusBusy}
-            onClick={() => void runBulkStatusChange(false)}
-          >
-            {t("bulkDeactivateSelected")}
-          </Button>
+          {selectedStatusBreakdown.showActivate ? (
+            <Button
+              variant={selectedStatusBreakdown.showDeactivate ? "secondary" : "default"}
+              disabled={bulkStatusBusy}
+              onClick={() => void runBulkStatusChange(true)}
+            >
+              {t("bulkActivateSelected")}
+            </Button>
+          ) : null}
+          {selectedStatusBreakdown.showDeactivate ? (
+            <Button
+              variant="destructive"
+              disabled={bulkStatusBusy}
+              onClick={() => void runBulkStatusChange(false)}
+            >
+              {t("bulkDeactivateSelected")}
+            </Button>
+          ) : null}
         </div>
       </Modal>
 
