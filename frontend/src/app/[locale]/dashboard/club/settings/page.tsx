@@ -33,6 +33,7 @@ const clubSchema = z.object({
   postal_code: z.string().optional(),
   locality: z.string().optional(),
   iban: z.string().optional(),
+  email: z.string().optional(),
 });
 
 type ClubFormValues = z.infer<typeof clubSchema>;
@@ -64,6 +65,7 @@ export default function ClubAdminSettingsPage() {
       postal_code: "",
       locality: "",
       iban: "",
+      email: "",
     },
   });
   const watchedIban = useWatch({ control, name: "iban", defaultValue: "" });
@@ -80,6 +82,7 @@ export default function ClubAdminSettingsPage() {
       postal_code: "",
       locality: "",
       iban: "",
+      email: "",
     });
   }, [reset]);
 
@@ -110,6 +113,7 @@ export default function ClubAdminSettingsPage() {
         postal_code: club.postal_code ?? "",
         locality: club.locality ?? club.city ?? "",
         iban: club.iban ?? "",
+        email: club.email ?? "",
       });
     } catch (error) {
       if (requestId !== requestIdRef.current) {
@@ -248,6 +252,12 @@ export default function ClubAdminSettingsPage() {
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground">{t("localityLabel")}</label>
                 <Input placeholder="Luxembourg" {...register("locality")} />
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-sm font-medium text-foreground">{t("clubEmailLabel")}</label>
+                <Input type="email" placeholder="club@example.com" {...register("email")} />
+                <p className="text-xs text-muted">{t("clubEmailHint")}</p>
               </div>
 
               <div className="space-y-2 md:col-span-2">

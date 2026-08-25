@@ -91,6 +91,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
 
 class InvoiceListSerializer(serializers.ModelSerializer):
     item_quantity = serializers.SerializerMethodField()
+    club_name = serializers.CharField(source="club.name", read_only=True)
 
     class Meta:
         model = Invoice
@@ -99,6 +100,7 @@ class InvoiceListSerializer(serializers.ModelSerializer):
             "invoice_number",
             "order",
             "club",
+            "club_name",
             "member",
             "status",
             "currency",
@@ -121,6 +123,7 @@ class InvoiceListSerializer(serializers.ModelSerializer):
 
 class OrderListSerializer(serializers.ModelSerializer):
     item_quantity = serializers.SerializerMethodField()
+    club_name = serializers.CharField(source="club.name", read_only=True)
 
     class Meta:
         model = Order
@@ -128,6 +131,7 @@ class OrderListSerializer(serializers.ModelSerializer):
             "id",
             "order_number",
             "club",
+            "club_name",
             "member",
             "status",
             "currency",
@@ -616,12 +620,21 @@ class LicenseTypePolicySerializer(serializers.ModelSerializer):
 
 
 class PaymentSerializer(serializers.ModelSerializer):
+    invoice_number = serializers.CharField(source="invoice.invoice_number", read_only=True)
+    order_number = serializers.CharField(source="order.order_number", read_only=True)
+    club = serializers.IntegerField(source="order.club_id", read_only=True)
+    club_name = serializers.CharField(source="order.club.name", read_only=True)
+
     class Meta:
         model = Payment
         fields = [
             "id",
             "invoice",
+            "invoice_number",
             "order",
+            "order_number",
+            "club",
+            "club_name",
             "amount",
             "currency",
             "method",
@@ -640,7 +653,13 @@ class PaymentSerializer(serializers.ModelSerializer):
             "created_by",
             "created_at",
         ]
-        read_only_fields = ["created_at"]
+        read_only_fields = [
+            "invoice_number",
+            "order_number",
+            "club",
+            "club_name",
+            "created_at",
+        ]
 
 
 class ExpenseCategorySerializer(serializers.ModelSerializer):

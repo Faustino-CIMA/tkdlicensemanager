@@ -277,6 +277,23 @@ def reconcile_pending_stripe_orders(limit: int | None = None) -> int:
     return processed_count
 
 
+def invoice_recipient_emails(invoice: Invoice, recipients: list[str] | None = None) -> list[str]:
+    if recipients:
+        return list(
+            dict.fromkeys(
+                email.strip() for email in recipients if email and str(email).strip()
+            )
+        )
+    collected: list[str] = []
+    member_email = ""
+    if invoice.member:
+        member_email = str(invoice.member.email or "").strip()
+    if member_email:
+        collected.append(member_email)
+    collected.extend(invoice.club.notification_emails())
+    return list(dict.fromkeys(email for email in collected if email))
+
+
 @shared_task
 def send_invoice_email(invoice_id: int, recipients: list[str] | None = None) -> None:
     invoice = (
@@ -288,13 +305,7 @@ def send_invoice_email(invoice_id: int, recipients: list[str] | None = None) -> 
     if not invoice:
         return
 
-    recipient_list = recipients or []
-    if invoice.member and invoice.member.email:
-        recipient_list.append(invoice.member.email)
-    recipient_list.extend(
-        [email for email in invoice.club.admins.values_list("email", flat=True) if email]
-    )
-    recipient_list = list(dict.fromkeys(recipient_list))
+    recipient_list = invoice_recipient_emails(invoice, recipients)
     if not recipient_list:
         FinanceAuditLog.objects.create(
             action="invoice.email_skipped",

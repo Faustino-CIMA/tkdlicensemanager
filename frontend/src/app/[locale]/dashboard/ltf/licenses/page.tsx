@@ -1,34 +1,28 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ChevronDown, ChevronRight, Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
+import { EntityTable } from "@/components/club-admin/entity-table";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FilterPills } from "@/components/ui/filter-pills";
 import { Input } from "@/components/ui/input";
 import {
-  ExpandableTable,
   ListActionsRow,
   ListPagination,
   ListToolbarPanel,
-  NestedTable,
   PageNotice,
   PageSizeSelect,
   SelectionMeta,
-  dataRowClickableClass,
-  dataTableClass,
-  dataTdClass,
-  dataThClass,
-  dataTheadClass,
   resolveListPageSize,
 } from "@/components/ui/list-page-chrome";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -65,10 +59,6 @@ const licenseSchema = z.object({
 type LicenseFormValues = z.infer<typeof licenseSchema>;
 type LicenseStatusFilter = "all" | "active" | "pending" | "expired";
 
-function getYearKey(clubId: number, year: number) {
-  return `${clubId}:${year}`;
-}
-
 const BATCH_DELETE_STORAGE_KEY = "ltf_licenses_batch_delete_ids";
 
 export default function LtfAdminLicensesPage() {
@@ -82,8 +72,6 @@ export default function LtfAdminLicensesPage() {
   const [clubMembers, setClubMembers] = useState<Member[]>([]);
   const [licenses, setLicenses] = useState<License[]>([]);
   const [licenseTypes, setLicenseTypes] = useState<LicenseType[]>([]);
-  const [expandedClubIds, setExpandedClubIds] = useState<number[]>([]);
-  const [expandedYearKeys, setExpandedYearKeys] = useState<string[]>([]);
   const [editingLicense, setEditingLicense] = useState<License | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -135,22 +123,29 @@ export default function LtfAdminLicensesPage() {
     try {
       const q = searchQuery || undefined;
       const clubId = headerClubId ?? undefined;
-      const [clubsResponse, licensesResponse, licenseTypesResponse, allCountRes, activeCountRes, pendingCountRes, expiredCountRes] =
-        await Promise.all([
-          getClubs(),
-          getLicensesPage({
-            page: currentPage,
-            pageSize: licensesListPageSize,
-            q,
-            clubId,
-            status: statusFilterParam,
-          }),
-          getLicenseTypes(),
-          getLicensesPage({ page: 1, pageSize: 1, q, clubId }),
-          getLicensesPage({ page: 1, pageSize: 1, q, clubId, status: "active" }),
-          getLicensesPage({ page: 1, pageSize: 1, q, clubId, status: "pending" }),
-          getLicensesPage({ page: 1, pageSize: 1, q, clubId, status: "expired" }),
-        ]);
+      const [
+        clubsResponse,
+        licensesResponse,
+        licenseTypesResponse,
+        allCountRes,
+        activeCountRes,
+        pendingCountRes,
+        expiredCountRes,
+      ] = await Promise.all([
+        getClubs(),
+        getLicensesPage({
+          page: currentPage,
+          pageSize: licensesListPageSize,
+          q,
+          clubId,
+          status: statusFilterParam,
+        }),
+        getLicenseTypes(),
+        getLicensesPage({ page: 1, pageSize: 1, q, clubId }),
+        getLicensesPage({ page: 1, pageSize: 1, q, clubId, status: "active" }),
+        getLicensesPage({ page: 1, pageSize: 1, q, clubId, status: "pending" }),
+        getLicensesPage({ page: 1, pageSize: 1, q, clubId, status: "expired" }),
+      ]);
       setLicenseFacetCounts({
         all: allCountRes.count,
         active: activeCountRes.count,
@@ -162,9 +157,7 @@ export default function LtfAdminLicensesPage() {
         new Set(licensesResponse.results.map((license) => license.member))
       );
       const membersResponse =
-        visibleMemberIds.length > 0
-          ? await getMembersList({ ids: visibleMemberIds })
-          : [];
+        visibleMemberIds.length > 0 ? await getMembersList({ ids: visibleMemberIds }) : [];
       setClubs(clubsResponse);
       setMembers(membersResponse);
       setLicenses(licensesResponse.results);
@@ -186,12 +179,12 @@ export default function LtfAdminLicensesPage() {
   }, [currentPage, headerClubId, licensesListPageSize, searchQuery, setValue, statusFilterParam, watch]);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [headerClubId]);
+  }, [headerClubId, searchQuery, pageSize, statusFilterParam]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -235,122 +228,9 @@ export default function LtfAdminLicensesPage() {
     [licenseTypes]
   );
 
-  const groupedClubRows = useMemo(() => {
-    const grouped = new Map<
-      number,
-      {
-        clubName: string;
-        yearsMap: Map<number, License[]>;
-      }
-    >();
-
-    for (const license of licenses) {
-      const clubName = clubById.get(license.club)?.name ?? t("unknownClub");
-      const clubEntry = grouped.get(license.club);
-      if (!clubEntry) {
-        grouped.set(license.club, {
-          clubName,
-          yearsMap: new Map([[license.year, [license]]]),
-        });
-        continue;
-      }
-      const yearEntry = clubEntry.yearsMap.get(license.year);
-      if (yearEntry) {
-        yearEntry.push(license);
-      } else {
-        clubEntry.yearsMap.set(license.year, [license]);
-      }
-    }
-
-    return Array.from(grouped.entries())
-      .map(([clubId, clubEntry]) => {
-        const years = Array.from(clubEntry.yearsMap.entries())
-          .map(([year, yearLicenses]) => {
-            const licensesForYear = [...yearLicenses].sort((left, right) => {
-              const leftName = memberById.get(left.member)
-                ? `${memberById.get(left.member)!.first_name} ${memberById.get(left.member)!.last_name}`
-                : t("unknownMember");
-              const rightName = memberById.get(right.member)
-                ? `${memberById.get(right.member)!.first_name} ${memberById.get(right.member)!.last_name}`
-                : t("unknownMember");
-              const byName = leftName.localeCompare(rightName);
-              if (byName !== 0) {
-                return byName;
-              }
-              return right.id - left.id;
-            });
-            const activeCount = licensesForYear.filter((license) => license.status === "active").length;
-            const pendingCount = licensesForYear.filter((license) => license.status === "pending").length;
-            const expiredCount = licensesForYear.filter((license) => license.status === "expired").length;
-            return {
-              year,
-              licenses: licensesForYear,
-              total: licensesForYear.length,
-              activeCount,
-              pendingCount,
-              expiredCount,
-            };
-          })
-          .sort((left, right) => right.year - left.year);
-
-        const total = years.reduce((sum, year) => sum + year.total, 0);
-        const activeCount = years.reduce((sum, year) => sum + year.activeCount, 0);
-        const pendingCount = years.reduce((sum, year) => sum + year.pendingCount, 0);
-        const expiredCount = years.reduce((sum, year) => sum + year.expiredCount, 0);
-
-        return {
-          clubId,
-          clubName: clubEntry.clubName,
-          years,
-          total,
-          activeCount,
-          pendingCount,
-          expiredCount,
-        };
-      })
-      .sort((left, right) => left.clubName.localeCompare(right.clubName));
-  }, [clubById, licenses, memberById, t]);
-
   const totalPages = Math.max(1, Math.ceil(totalCount / licensesListPageSize));
-  const pagedClubRows = groupedClubRows;
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, pageSize, statusFilterParam]);
-
-  useEffect(() => {
-    const validClubIds = new Set(groupedClubRows.map((clubGroup) => clubGroup.clubId));
-    setExpandedClubIds((previous) => previous.filter((clubId) => validClubIds.has(clubId)));
-    const validYearKeys = new Set(
-      groupedClubRows.flatMap((clubGroup) =>
-        clubGroup.years.map((yearGroup) => getYearKey(clubGroup.clubId, yearGroup.year))
-      )
-    );
-    setExpandedYearKeys((previous) => previous.filter((yearKey) => validYearKeys.has(yearKey)));
-  }, [groupedClubRows]);
-
-  const expandedClubSet = useMemo(() => new Set(expandedClubIds), [expandedClubIds]);
-  const expandedYearSet = useMemo(() => new Set(expandedYearKeys), [expandedYearKeys]);
-
-  const allFilteredIds = useMemo(
-    () => licenses.map((license) => license.id),
-    [licenses]
-  );
-  const visibleLeafLicenseIds = useMemo(() => {
-    const ids: number[] = [];
-    for (const clubGroup of pagedClubRows) {
-      if (!expandedClubSet.has(clubGroup.clubId)) {
-        continue;
-      }
-      for (const yearGroup of clubGroup.years) {
-        const yearKey = getYearKey(clubGroup.clubId, yearGroup.year);
-        if (expandedYearSet.has(yearKey)) {
-          ids.push(...yearGroup.licenses.map((license) => license.id));
-        }
-      }
-    }
-    return ids;
-  }, [expandedClubSet, expandedYearSet, pagedClubRows]);
+  const allFilteredIds = useMemo(() => licenses.map((license) => license.id), [licenses]);
   const allSelected =
     allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedIds.includes(id));
 
@@ -377,13 +257,12 @@ export default function LtfAdminLicensesPage() {
     setSelectedIds((previous) => {
       if (shiftKey && lastSelectedLicenseIdRef.current !== null) {
         const anchorId = lastSelectedLicenseIdRef.current;
-        const order = visibleLeafLicenseIds.length > 0 ? visibleLeafLicenseIds : allFilteredIds;
-        const startIndex = order.indexOf(anchorId);
-        const endIndex = order.indexOf(id);
+        const startIndex = allFilteredIds.indexOf(anchorId);
+        const endIndex = allFilteredIds.indexOf(id);
         if (startIndex !== -1 && endIndex !== -1) {
           const [fromIndex, toIndex] =
             startIndex < endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
-          const rangeIds = order.slice(fromIndex, toIndex + 1);
+          const rangeIds = allFilteredIds.slice(fromIndex, toIndex + 1);
           const rangeSet = new Set(rangeIds);
           const allRangeSelected = rangeIds.every((rangeId) => previous.includes(rangeId));
           if (allRangeSelected) {
@@ -396,28 +275,9 @@ export default function LtfAdminLicensesPage() {
           return Array.from(merged);
         }
       }
-      return previous.includes(id)
-        ? previous.filter((item) => item !== id)
-        : [...previous, id];
+      return previous.includes(id) ? previous.filter((item) => item !== id) : [...previous, id];
     });
     lastSelectedLicenseIdRef.current = id;
-  };
-
-  const toggleClubExpanded = (clubId: number) => {
-    setExpandedClubIds((previous) =>
-      previous.includes(clubId)
-        ? previous.filter((id) => id !== clubId)
-        : [...previous, clubId]
-    );
-  };
-
-  const toggleYearExpanded = (clubId: number, year: number) => {
-    const key = getYearKey(clubId, year);
-    setExpandedYearKeys((previous) =>
-      previous.includes(key)
-        ? previous.filter((id) => id !== key)
-        : [...previous, key]
-    );
   };
 
   const onSubmit = async (values: LicenseFormValues) => {
@@ -451,8 +311,7 @@ export default function LtfAdminLicensesPage() {
   };
 
   const startEdit = (license: License) => {
-    const editableStatus =
-      license.status === "revoked" ? "expired" : license.status;
+    const editableStatus = license.status === "revoked" ? "expired" : license.status;
     setEditingLicense(license);
     setIsFormOpen(true);
     reset({
@@ -522,6 +381,99 @@ export default function LtfAdminLicensesPage() {
     }
     return formatDisplayDate(value);
   };
+
+  const columns = [
+    {
+      key: "select",
+      header: (
+        <span className="inline-flex min-h-[var(--control-height)] min-w-[var(--control-height)] items-center justify-center">
+          <Checkbox
+            aria-label={common("selectAllLabel")}
+            checked={allSelected}
+            onCheckedChange={() => toggleSelectAll()}
+          />
+        </span>
+      ),
+      render: (license: License) => (
+        <span
+          className="inline-flex min-h-[var(--control-height)] min-w-[var(--control-height)] items-center justify-center"
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          <Checkbox
+            aria-label={common("selectRowLabel")}
+            checked={selectedIds.includes(license.id)}
+            onPointerDown={(event) => {
+              rowSelectModifierRef.current = {
+                shiftKey: event.shiftKey,
+              };
+            }}
+            onCheckedChange={() =>
+              toggleSelectRow(license.id, {
+                shiftKey: rowSelectModifierRef.current.shiftKey,
+              })
+            }
+          />
+        </span>
+      ),
+    },
+    {
+      key: "member",
+      header: t("memberLabel"),
+      render: (license: License) => {
+        const member = memberById.get(license.member);
+        return member ? `${member.first_name} ${member.last_name}` : t("unknownMember");
+      },
+    },
+    {
+      key: "club",
+      header: t("clubLabel"),
+      render: (license: License) => clubById.get(license.club)?.name ?? t("unknownClub"),
+    },
+    {
+      key: "license_type",
+      header: t("licenseTypeLabel"),
+      render: (license: License) =>
+        licenseTypeById.get(license.license_type)?.name ?? t("unknownLicenseType"),
+    },
+    { key: "year", header: t("yearLabel") },
+    {
+      key: "status",
+      header: t("statusLabel"),
+      render: (license: License) => (
+        <StatusBadge label={getStatusLabel(license.status)} tone={getStatusTone(license.status)} />
+      ),
+    },
+    {
+      key: "issued_at",
+      header: t("issuedAtLabel"),
+      render: (license: License) => formatIssuedAt(license.issued_at),
+    },
+    {
+      key: "actions",
+      header: t("actionsLabel"),
+      render: (license: License) => (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            className="h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] shrink-0 p-0"
+            aria-label={t("editAction")}
+            onClick={() => startEdit(license)}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="destructive"
+            className="h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] shrink-0 p-0"
+            aria-label={t("deleteAction")}
+            onClick={() => handleDelete(license)}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <LtfAdminLayout title={t("licensesTitle")} subtitle={t("licensesSubtitle")}>
@@ -623,219 +575,10 @@ export default function LtfAdminLicensesPage() {
 
         {isLoading ? (
           <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
-        ) : groupedClubRows.length === 0 ? (
+        ) : licenses.length === 0 ? (
           <EmptyState title={t("noResultsTitle")} description={t("noLicensesResultsSubtitle")} />
         ) : (
-          <ExpandableTable>
-            <table className={dataTableClass}>
-              <thead className={dataTheadClass}>
-                <tr>
-                  <th className={`w-10 ${dataThClass}`} />
-                  <th className={dataThClass}>{t("clubLabel")}</th>
-                  <th className={dataThClass}>{t("totalLabel")}</th>
-                  <th className={dataThClass}>{t("statusActive")}</th>
-                  <th className={dataThClass}>{t("statusPending")}</th>
-                  <th className={dataThClass}>{t("statusExpired")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/80">
-                {pagedClubRows.map((clubGroup) => {
-                  const clubExpanded = expandedClubSet.has(clubGroup.clubId);
-                  return (
-                    <Fragment key={clubGroup.clubId}>
-                      <tr
-                        className={dataRowClickableClass}
-                        onClick={() => toggleClubExpanded(clubGroup.clubId)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            toggleClubExpanded(clubGroup.clubId);
-                          }
-                        }}
-                        tabIndex={0}
-                        role="button"
-                        aria-expanded={clubExpanded}
-                      >
-                        <td className={`${dataTdClass} text-muted`}>
-                          {clubExpanded ? (
-                            <ChevronDown className="h-4 w-4" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4" />
-                          )}
-                        </td>
-                        <td className={`${dataTdClass} font-medium`}>{clubGroup.clubName}</td>
-                        <td className={dataTdClass}>{clubGroup.total}</td>
-                        <td className={dataTdClass}>{clubGroup.activeCount}</td>
-                        <td className={dataTdClass}>{clubGroup.pendingCount}</td>
-                        <td className={dataTdClass}>{clubGroup.expiredCount}</td>
-                      </tr>
-                      {clubExpanded ? (
-                        <tr className="bg-secondary/60">
-                          <td colSpan={6} className="px-6 py-3">
-                            <NestedTable>
-                              <table className={dataTableClass}>
-                                <thead className={dataTheadClass}>
-                                  <tr>
-                                    <th className="w-10 px-4 py-2 font-medium" />
-                                    <th className="px-4 py-2 font-medium">{t("yearLabel")}</th>
-                                    <th className="px-4 py-2 font-medium">{t("totalLabel")}</th>
-                                    <th className="px-4 py-2 font-medium">{t("statusActive")}</th>
-                                    <th className="px-4 py-2 font-medium">{t("statusPending")}</th>
-                                    <th className="px-4 py-2 font-medium">{t("statusExpired")}</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-border/80">
-                                  {clubGroup.years.map((yearGroup) => {
-                                    const yearKey = getYearKey(clubGroup.clubId, yearGroup.year);
-                                    const yearExpanded = expandedYearSet.has(yearKey);
-                                    return (
-                                      <Fragment key={yearKey}>
-                                        <tr
-                                          className={dataRowClickableClass}
-                                          onClick={() => toggleYearExpanded(clubGroup.clubId, yearGroup.year)}
-                                          onKeyDown={(event) => {
-                                            if (event.key === "Enter" || event.key === " ") {
-                                              event.preventDefault();
-                                              toggleYearExpanded(clubGroup.clubId, yearGroup.year);
-                                            }
-                                          }}
-                                          tabIndex={0}
-                                          role="button"
-                                          aria-expanded={yearExpanded}
-                                        >
-                                          <td className="px-4 py-2 text-muted">
-                                            {yearExpanded ? (
-                                              <ChevronDown className="h-4 w-4" />
-                                            ) : (
-                                              <ChevronRight className="h-4 w-4" />
-                                            )}
-                                          </td>
-                                          <td className="px-4 py-2 font-medium">{yearGroup.year}</td>
-                                          <td className="px-4 py-2">{yearGroup.total}</td>
-                                          <td className="px-4 py-2">{yearGroup.activeCount}</td>
-                                          <td className="px-4 py-2">{yearGroup.pendingCount}</td>
-                                          <td className="px-4 py-2">{yearGroup.expiredCount}</td>
-                                        </tr>
-                                        {yearExpanded ? (
-                                          <tr className="bg-secondary/50">
-                                            <td colSpan={6} className="px-6 py-3">
-                                              <NestedTable>
-                                                <table className={dataTableClass}>
-                                                  <thead className={dataTheadClass}>
-                                                    <tr>
-                                                      <th className="w-10 px-4 py-2 font-medium">
-                                                        <span className="inline-flex min-h-[var(--control-height)] min-w-[var(--control-height)] items-center justify-center">
-                                                          <Checkbox
-                                                            aria-label={common("selectAllLabel")}
-                                                            checked={allSelected}
-                                                            onCheckedChange={() => toggleSelectAll()}
-                                                          />
-                                                        </span>
-                                                      </th>
-                                                      <th className="px-4 py-2 font-medium">{t("memberLabel")}</th>
-                                                      <th className="px-4 py-2 font-medium">{t("licenseTypeLabel")}</th>
-                                                      <th className="px-4 py-2 font-medium">{t("statusLabel")}</th>
-                                                      <th className="px-4 py-2 font-medium">{t("issuedAtLabel")}</th>
-                                                      <th className="px-4 py-2 font-medium">{t("actionsLabel")}</th>
-                                                    </tr>
-                                                  </thead>
-                                                  <tbody className="divide-y divide-border/80">
-                                                    {yearGroup.licenses.map((license) => {
-                                                      const member = memberById.get(license.member);
-                                                      const licenseType = licenseTypeById.get(
-                                                        license.license_type
-                                                      );
-                                                      return (
-                                                        <tr
-                                                          key={license.id}
-                                                          className="h-[var(--table-row-height)] text-foreground"
-                                                        >
-                                                          <td className="px-4 py-2">
-                                                            <span
-                                                              className="inline-flex min-h-[var(--control-height)] min-w-[var(--control-height)] items-center justify-center"
-                                                              onClick={(event) => event.stopPropagation()}
-                                                              onKeyDown={(event) => event.stopPropagation()}
-                                                            >
-                                                              <Checkbox
-                                                                aria-label={common("selectRowLabel")}
-                                                                checked={selectedIds.includes(license.id)}
-                                                                onPointerDown={(event) => {
-                                                                  rowSelectModifierRef.current = {
-                                                                    shiftKey: event.shiftKey,
-                                                                  };
-                                                                }}
-                                                                onCheckedChange={() =>
-                                                                  toggleSelectRow(license.id, {
-                                                                    shiftKey:
-                                                                      rowSelectModifierRef.current.shiftKey,
-                                                                  })
-                                                                }
-                                                              />
-                                                            </span>
-                                                          </td>
-                                                          <td className="px-4 py-2">
-                                                            {member
-                                                              ? `${member.first_name} ${member.last_name}`
-                                                              : t("unknownMember")}
-                                                          </td>
-                                                          <td className="px-4 py-2">
-                                                            {licenseType
-                                                              ? licenseType.name
-                                                              : t("unknownLicenseType")}
-                                                          </td>
-                                                          <td className="px-4 py-2">
-                                                            <StatusBadge
-                                                              label={getStatusLabel(license.status)}
-                                                              tone={getStatusTone(license.status)}
-                                                            />
-                                                          </td>
-                                                          <td className="px-4 py-2">
-                                                            {formatIssuedAt(license.issued_at)}
-                                                          </td>
-                                                          <td className="px-4 py-2">
-                                                            <div className="flex flex-wrap items-center gap-2">
-                                                              <Button
-                                                                variant="outline"
-                                                                className="h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] shrink-0 p-0"
-                                                                aria-label={t("editAction")}
-                                                                onClick={() => startEdit(license)}
-                                                              >
-                                                                <Pencil className="h-4 w-4" />
-                                                              </Button>
-                                                              <Button
-                                                                variant="destructive"
-                                                                className="h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] shrink-0 p-0"
-                                                                aria-label={t("deleteAction")}
-                                                                onClick={() => handleDelete(license)}
-                                                              >
-                                                                <Trash2 className="h-4 w-4" />
-                                                              </Button>
-                                                            </div>
-                                                          </td>
-                                                        </tr>
-                                                      );
-                                                    })}
-                                                  </tbody>
-                                                </table>
-                                              </NestedTable>
-                                            </td>
-                                          </tr>
-                                        ) : null}
-                                      </Fragment>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            </NestedTable>
-                          </td>
-                        </tr>
-                      ) : null}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </ExpandableTable>
+          <EntityTable columns={columns} rows={licenses} />
         )}
       </div>
 

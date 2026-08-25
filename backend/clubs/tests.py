@@ -41,6 +41,23 @@ class ClubApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), 1)
 
+    def test_ltf_admin_can_filter_clubs_without_admin(self):
+        club_without_admin = Club.objects.create(
+            name="No Admin Club",
+            city="Esch",
+            address="2 Side St",
+            created_by=self.ltf_admin,
+        )
+        self.client.force_authenticate(user=self.ltf_admin)
+        all_response = self.client.get("/api/clubs/")
+        self.assertEqual(all_response.status_code, 200)
+        self.assertEqual(len(all_response.data), 2)
+
+        filtered = self.client.get("/api/clubs/", {"issue": "no_admin"})
+        self.assertEqual(filtered.status_code, 200)
+        ids = {row["id"] for row in filtered.data}
+        self.assertEqual(ids, {club_without_admin.id})
+
     def test_club_admin_sees_own_club(self):
         self.client.force_authenticate(user=self.club_admin)
         response = self.client.get("/api/clubs/")
@@ -225,6 +242,22 @@ class ClubApiTests(TestCase):
         self.club.refresh_from_db()
         self.assertEqual(self.club.iban, "LU280019400644750000")
         self.assertEqual(self.club.bank_name, "Spuerkeess (BCEE)")
+
+    def test_club_email_is_writable_and_used_for_notifications(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        self.club_admin.email = "admin@example.com"
+        self.club_admin.save(update_fields=["email"])
+        self.assertEqual(self.club.notification_emails(), ["admin@example.com"])
+
+        response = self.client.patch(
+            f"/api/clubs/{self.club.id}/",
+            {"email": " club@example.com "},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.club.refresh_from_db()
+        self.assertEqual(self.club.email, "club@example.com")
+        self.assertEqual(self.club.notification_emails(), ["club@example.com"])
 
     def test_club_admin_can_patch_own_club_iban(self):
         self.client.force_authenticate(user=self.club_admin)
@@ -425,6 +458,259 @@ class ClubAdminManagementTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.club.refresh_from_db()
         self.assertEqual(self.club.max_admins, 5)
+
+    def test_add_admin_does_not_name_match_unrelated_user(self):
+        self.club.max_admins = 5
+        self.club.save(update_fields=["max_admins"])
+        stranger = User.objects.create_user(
+            username="stranger",
+            password="pass12345",
+            role=User.Roles.MEMBER,
+            first_name="Kai",
+            last_name="Schmidt",
+        )
+        candidate = Member.objects.create(
+            club=self.club,
+            first_name="Kai",
+            last_name="Schmidt",
+            email="kai.schmidt@example.com",
+        )
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            f"/api/clubs/{self.club.id}/add_admin/",
+            {"member_id": candidate.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        candidate.refresh_from_db()
+        stranger.refresh_from_db()
+        self.assertNotEqual(candidate.user_id, stranger.id)
+        self.assertEqual(stranger.role, User.Roles.MEMBER)
+        self.assertTrue(self.club.admins.filter(id=candidate.user_id).exists())
+        self.assertTrue(response.data["created_user"])
+        self.assertFalse(response.data["linked_existing_user"])
+
+    def test_add_admin_requires_email_when_creating_user(self):
+        self.club.max_admins = 5
+        self.club.save(update_fields=["max_admins"])
+        candidate = Member.objects.create(
+            club=self.club,
+            first_name="No",
+            last_name="Email",
+        )
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            f"/api/clubs/{self.club.id}/add_admin/",
+            {"member_id": candidate.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data["detail"], "email_required")
+
+        response = self.client.post(
+            f"/api/clubs/{self.club.id}/add_admin/",
+            {"member_id": candidate.id, "email": "no.email@example.com"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        candidate.refresh_from_db()
+        self.assertEqual(candidate.email, "no.email@example.com")
+        self.assertIsNotNone(candidate.user_id)
+        self.assertEqual(candidate.user.email, "no.email@example.com")
+
+    def test_add_admin_links_existing_same_name_admin_on_club(self):
+        self.club.max_admins = 5
+        self.club.save(update_fields=["max_admins"])
+        existing = User.objects.create_user(
+            username="jschwitz",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+            first_name="Jenna",
+            last_name="SCHWITZ",
+        )
+        self.club.admins.add(existing)
+        member = Member.objects.create(
+            club=self.club,
+            first_name="Jenna",
+            last_name="SCHWITZ",
+        )
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            f"/api/clubs/{self.club.id}/add_admin/",
+            {"member_id": member.id, "email": "jenna@example.com"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        member.refresh_from_db()
+        self.assertEqual(member.user_id, existing.id)
+        self.assertTrue(response.data["linked_existing_user"])
+        self.assertFalse(response.data["created_user"])
+        self.assertEqual(self.club.admins.count(), 1)
+
+    def test_add_admin_does_not_demote_ltf_admin(self):
+        self.club.max_admins = 5
+        self.club.save(update_fields=["max_admins"])
+        officer = User.objects.create_user(
+            username="officer",
+            password="pass12345",
+            role=User.Roles.LTF_ADMIN,
+            email="officer@example.com",
+        )
+        member = Member.objects.create(
+            user=officer,
+            club=self.club,
+            first_name="Pat",
+            last_name="Officer",
+            email="officer@example.com",
+        )
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post(
+            f"/api/clubs/{self.club.id}/add_admin/",
+            {"member_id": member.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        officer.refresh_from_db()
+        self.assertEqual(officer.role, User.Roles.LTF_ADMIN)
+        self.assertTrue(self.club.admins.filter(id=officer.id).exists())
+
+    def test_admin_assignment_board_payload(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        license_type = LicenseType.objects.create(name="Paid Board", code="paid-board")
+        licensed = Member.objects.create(
+            club=self.club,
+            first_name="Licensed",
+            last_name="Athlete",
+            email="licensed@example.com",
+        )
+        License.objects.create(
+            member=licensed,
+            club=self.club,
+            license_type=license_type,
+            year=2026,
+            status=License.Status.ACTIVE,
+        )
+        response = self.client.get("/api/clubs/admin_assignment/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("clubs", response.data)
+        self.assertIn("admins", response.data)
+        self.assertNotIn("members", response.data)
+        club_row = next(item for item in response.data["clubs"] if item["id"] == self.club.id)
+        self.assertEqual(club_row["admin_count"], 0)
+
+        empty = self.client.get("/api/clubs/admin_assignment_members/")
+        self.assertEqual(empty.status_code, 200)
+        self.assertEqual(empty.data["members"], [])
+
+        by_club = self.client.get(
+            "/api/clubs/admin_assignment_members/",
+            {"club_id": self.club.id, "licensed_only": "true"},
+        )
+        self.assertEqual(by_club.status_code, 200)
+        self.assertEqual(len(by_club.data["members"]), 1)
+        self.assertTrue(by_club.data["members"][0]["has_valid_license"])
+        self.assertEqual(by_club.data["members"][0]["id"], licensed.id)
+
+        by_name = self.client.get(
+            "/api/clubs/admin_assignment_members/",
+            {"q": "Licensed Athlete", "licensed_only": "true"},
+        )
+        self.assertEqual(by_name.status_code, 200)
+        self.assertEqual(by_name.data["members"][0]["id"], licensed.id)
+
+        too_short = self.client.get(
+            "/api/clubs/admin_assignment_members/",
+            {"q": "L", "licensed_only": "true"},
+        )
+        self.assertEqual(too_short.status_code, 200)
+        self.assertEqual(too_short.data["members"], [])
+        self.assertFalse(too_short.data["truncated"])
+
+        unlicensed = self.client.get(
+            "/api/clubs/admin_assignment_members/",
+            {"club_id": self.club.id, "licensed_only": "false"},
+        )
+        self.assertEqual(unlicensed.status_code, 200)
+        member_ids = {item["id"] for item in unlicensed.data["members"]}
+        self.assertIn(licensed.id, member_ids)
+        self.assertGreaterEqual(len(member_ids), 2)
+
+        capped = self.client.get(
+            "/api/clubs/admin_assignment_members/",
+            {"club_id": self.club.id, "licensed_only": "false", "limit": 100},
+        )
+        self.assertLessEqual(capped.data["limit"], 25)
+
+    def test_admin_assignment_member_search_truncates(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        license_type = LicenseType.objects.create(name="Paid Search Cap", code="paid-search-cap")
+        for index in range(26):
+            member = Member.objects.create(
+                club=self.club,
+                first_name=f"Search{index:02d}",
+                last_name="Cap",
+                email=f"search{index:02d}@example.com",
+            )
+            License.objects.create(
+                member=member,
+                club=self.club,
+                license_type=license_type,
+                year=2026,
+                status=License.Status.ACTIVE,
+            )
+        response = self.client.get(
+            "/api/clubs/admin_assignment_members/",
+            {"club_id": self.club.id, "licensed_only": "true"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data["members"]), 25)
+        self.assertGreaterEqual(response.data["total"], 26)
+        self.assertTrue(response.data["truncated"])
+        self.assertEqual(response.data["limit"], 25)
+
+    def test_add_admin_sends_welcome_email_without_resend(self):
+        self.club.max_admins = 5
+        self.club.save(update_fields=["max_admins"])
+        candidate = Member.objects.create(
+            club=self.club,
+            first_name="Mail",
+            last_name="Tester",
+            email="mail.tester@example.com",
+        )
+        self.client.force_authenticate(user=self.ltf_admin)
+        from django.core import mail
+        from django.test import override_settings
+
+        with override_settings(
+            RESEND_API_KEY="replace-me",
+            EMAIL_HOST="",
+            EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        ):
+            response = self.client.post(
+                f"/api/clubs/{self.club.id}/add_admin/",
+                {"member_id": candidate.id, "locale": "en"},
+                format="json",
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["created_user"])
+        self.assertTrue(response.data["email_sent"])
+        self.assertTrue(response.data["reset_url"])
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("mail.tester@example.com", mail.outbox[0].to)
+        self.assertIn("reset-password", mail.outbox[0].body)
+
+    def test_admin_assignment_forbidden_for_club_admin(self):
+        club_admin = User.objects.create_user(
+            username="clubadmin-board",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+        )
+        self.club.admins.add(club_admin)
+        self.client.force_authenticate(user=club_admin)
+        response = self.client.get("/api/clubs/admin_assignment/")
+        self.assertEqual(response.status_code, 403)
+        members = self.client.get("/api/clubs/admin_assignment_members/")
+        self.assertEqual(members.status_code, 403)
 
 
 class FederationProfileApiTests(TestCase):

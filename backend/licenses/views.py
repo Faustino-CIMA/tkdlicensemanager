@@ -694,6 +694,33 @@ class InvoiceViewSet(OptionalPaginationListMixin, viewsets.ReadOnlyModelViewSet)
             return InvoiceListSerializer
         return InvoiceSerializer
 
+    @action(detail=False, methods=["get"], url_path="totals")
+    def totals(self, request):
+        queryset = Invoice.objects.all()
+        club_id = request.query_params.get("club_id")
+        if club_id:
+            queryset = queryset.filter(club_id=club_id)
+        search_value = request.query_params.get("q", "").strip()
+        if search_value:
+            queryset = queryset.filter(
+                Q(invoice_number__icontains=search_value)
+                | Q(status__icontains=search_value)
+                | Q(club__name__icontains=search_value)
+                | Q(member__first_name__icontains=search_value)
+                | Q(member__last_name__icontains=search_value)
+                | Q(order__order_number__icontains=search_value)
+                | Q(currency__icontains=search_value)
+            )
+        issued = queryset.filter(status=Invoice.Status.ISSUED)
+        outstanding = issued.aggregate(total=Sum("total"))["total"]
+        currency = issued.values_list("currency", flat=True).first() or "EUR"
+        return Response(
+            {
+                "outstanding_amount": _decimal_string(outstanding),
+                "currency": currency,
+            }
+        )
+
 
 class PaymentViewSet(OptionalPaginationListMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = PaymentSerializer
@@ -707,7 +734,9 @@ class PaymentViewSet(OptionalPaginationListMixin, viewsets.ReadOnlyModelViewSet)
             return Payment.objects.none()
         if user.role != "ltf_finance":
             return Payment.objects.none()
-        queryset = Payment.objects.select_related("invoice", "order", "created_by").all()
+        queryset = Payment.objects.select_related(
+            "invoice", "order", "order__club", "created_by"
+        ).all()
 
         club_id = self.request.query_params.get("club_id")
         if club_id:
@@ -793,7 +822,7 @@ class LtfAdminOverviewView(APIView):
     permission_classes = [IsLtfAdmin]
 
     def get(self, request):
-        cache_key = "dashboard:overview:ltf_admin:v1"
+        cache_key = "dashboard:overview:ltf_admin:v2"
         cached_payload = cache.get(cache_key)
         if cached_payload is not None:
             return Response(cached_payload, status=status.HTTP_200_OK)
@@ -882,19 +911,27 @@ class LtfAdminOverviewView(APIView):
                     "key": "clubs_without_admin",
                     "count": clubs_without_admin,
                     "severity": "warning",
-                    "link": _overview_link("LtfAdmin.navClubs", "/dashboard/ltf/clubs"),
+                    "link": _overview_link(
+                        "LtfAdmin.navClubAdmins", "/dashboard/ltf/club-admins"
+                    ),
                 },
                 {
                     "key": "members_missing_ltf_licenseid",
                     "count": members_missing_ltf_licenseid,
                     "severity": "info",
-                    "link": _overview_link("LtfAdmin.navMembers", "/dashboard/ltf/members"),
+                    "link": _overview_link(
+                        "LtfAdmin.navMembers",
+                        "/dashboard/ltf/members?issue=missing_ltf_licenseid",
+                    ),
                 },
                 {
                     "key": "members_without_active_or_pending_license",
                     "count": active_members_without_valid_license,
                     "severity": "critical",
-                    "link": _overview_link("LtfAdmin.navMembers", "/dashboard/ltf/members"),
+                    "link": _overview_link(
+                        "LtfAdmin.navMembers",
+                        "/dashboard/ltf/members?issue=no_valid_license",
+                    ),
                 },
             ],
             "distributions": {

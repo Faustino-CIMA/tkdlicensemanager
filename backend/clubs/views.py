@@ -5,7 +5,6 @@ from rest_framework.views import APIView
 from rest_framework import permissions, status, viewsets
 from rest_framework.exceptions import ValidationError
 
-import re
 import mimetypes
 from pathlib import Path
 
@@ -15,17 +14,19 @@ from accounts.permissions import (
     IsLtfFinanceOrLtfAdmin,
 )
 from config.pagination import OptionalPaginationListMixin
-from django.conf import settings
-from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.db import transaction
+from django.db.models import Count
 from django.http import FileResponse
-from django.utils.crypto import get_random_string
-from django.utils.encoding import force_bytes
-from django.utils.http import urlsafe_base64_encode
 
-from accounts.models import User
-from accounts.email_utils import send_club_admin_welcome_email
 from members.models import Member
+
+from .admin_assignment import (
+    AdminAssignmentError,
+    assign_club_admin,
+    build_assignment_board,
+    remove_club_admin,
+    search_assignment_members,
+)
 
 from .models import BrandingAsset, Club, FederationProfile
 from .serializers import (
@@ -35,20 +36,6 @@ from .serializers import (
     ClubSerializer,
     FederationProfileSerializer,
 )
-
-
-def build_username(first_name, last_name):
-    base = f"{(first_name or '')[:1]}{last_name or ''}".lower()
-    base = re.sub(r"[^a-z0-9]", "", base) or "member"
-    base = base[:10]
-    username = base
-    counter = 1
-    while User.objects.filter(username=username).exists():
-        suffix = str(counter)
-        trim = max(1, 10 - len(suffix))
-        username = f"{base[:trim]}{suffix}"
-        counter += 1
-    return username
 
 
 def _stream_branding_asset_file(asset: BrandingAsset, *, missing_detail: str):
@@ -135,15 +122,22 @@ class ClubViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
         ]:
             return Club.objects.all()
         if user.role in ["ltf_admin", "ltf_finance"]:
-            return Club.objects.all()
-        if user.role == "club_admin":
-            return Club.objects.filter(admins=user).distinct()
-        if user.role == "coach":
-            return Club.objects.filter(members__user=user).distinct()
-        return (
-            Club.objects.filter(admins=user)
-            | Club.objects.filter(members__user=user)
-        ).distinct()
+            queryset = Club.objects.all()
+        elif user.role == "club_admin":
+            queryset = Club.objects.filter(admins=user).distinct()
+        elif user.role == "coach":
+            queryset = Club.objects.filter(members__user=user).distinct()
+        else:
+            queryset = (
+                Club.objects.filter(admins=user)
+                | Club.objects.filter(members__user=user)
+            ).distinct()
+
+        if self.action == "list":
+            issue = (self.request.query_params.get("issue") or "").strip()
+            if issue == "no_admin":
+                queryset = queryset.annotate(admin_count=Count("admins")).filter(admin_count=0)
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -173,6 +167,32 @@ class ClubViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
         if not self._can_manage_club(request.user, club):
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
         return super().partial_update(request, *args, **kwargs)
+
+    @action(detail=False, methods=["get"], permission_classes=[permissions.IsAuthenticated])
+    def admin_assignment(self, request):
+        if request.user.role != "ltf_admin":
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        return Response(build_assignment_board())
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="admin_assignment_members",
+        permission_classes=[permissions.IsAuthenticated],
+    )
+    def admin_assignment_members(self, request):
+        if request.user.role != "ltf_admin":
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        licensed_raw = str(request.query_params.get("licensed_only", "true")).strip().lower()
+        licensed_only = licensed_raw not in {"0", "false", "no"}
+        return Response(
+            search_assignment_members(
+                query=request.query_params.get("q", ""),
+                club_id=request.query_params.get("club_id"),
+                licensed_only=licensed_only,
+                limit=request.query_params.get("limit", 25),
+            )
+        )
 
     @action(detail=True, methods=["get"], permission_classes=[permissions.IsAuthenticated])
     def admins(self, request, pk=None):
@@ -216,89 +236,28 @@ class ClubViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
         club = self.get_object()
         if request.user.role != "ltf_admin":
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
-        user_id = request.data.get("user_id")
-        member_id = request.data.get("member_id")
-        email = request.data.get("email")
-        if not user_id and not member_id:
-            return Response(
-                {"detail": "member_id or user_id is required."},
-                status=status.HTTP_400_BAD_REQUEST,
+        try:
+            payload = assign_club_admin(
+                club,
+                member_id=request.data.get("member_id"),
+                user_id=request.data.get("user_id"),
+                email=request.data.get("email"),
+                locale=request.data.get("locale"),
             )
-        if club.admins.count() >= club.max_admins:
-            return Response({"detail": "Club admin limit reached."}, status=status.HTTP_400_BAD_REQUEST)
-        created_user = False
-        if member_id:
-            member = Member.objects.select_related("user").filter(id=member_id).first()
-            if not member:
-                return Response({"detail": "Member not found."}, status=status.HTTP_400_BAD_REQUEST)
-            if member.user:
-                user = member.user
-            else:
-                existing_user = User.objects.filter(
-                    first_name__iexact=member.first_name,
-                    last_name__iexact=member.last_name,
-                ).first()
-                if existing_user:
-                    user = existing_user
-                else:
-                    if not member.email and not email:
-                        return Response(
-                            {"detail": "email_required", "member_id": member.id},
-                            status=status.HTTP_400_BAD_REQUEST,
-                        )
-                    if email and not member.email:
-                        member.email = email
-                        member.save(update_fields=["email"])
-                    username = build_username(member.first_name, member.last_name)
-                    temp_password = get_random_string(20)
-                    user = User.objects.create_user(
-                        username=username,
-                        email=member.email or "",
-                        password=temp_password,
-                        role="member",
-                        first_name=member.first_name,
-                        last_name=member.last_name,
-                    )
-                created_user = True
-                member.user = user
-                member.save(update_fields=["user"])
-        else:
-            user = User.objects.filter(id=user_id, role="member").first()
-            if not user:
-                return Response({"detail": "User must be a member."}, status=status.HTTP_400_BAD_REQUEST)
-            if not Member.objects.filter(user=user).exists():
-                return Response({"detail": "User must have a member profile."}, status=status.HTTP_400_BAD_REQUEST)
-        club.admins.add(user)
-        if user.role != "club_admin":
-            user.role = "club_admin"
-            user.save(update_fields=["role"])
-        locale = request.data.get("locale") or settings.FRONTEND_DEFAULT_LOCALE
-        token = PasswordResetTokenGenerator().make_token(user)
-        uid = urlsafe_base64_encode(force_bytes(user.pk))
-        reset_url = f"{settings.FRONTEND_BASE_URL}/{locale}/reset-password?uid={uid}&token={token}"
-        if user.email and created_user:
-            email_sent, email_error = send_club_admin_welcome_email(user, club, reset_url)
-            if not email_sent:
-                return Response(
-                    {"detail": "email_send_failed", "error": email_error},
-                    status=status.HTTP_502_BAD_GATEWAY,
-                )
-        return Response({"detail": "Admin added."})
+        except AdminAssignmentError as error:
+            return Response(error.payload, status=error.status_code)
+        return Response(payload)
 
     @action(detail=True, methods=["post"], permission_classes=[permissions.IsAuthenticated])
     def remove_admin(self, request, pk=None):
         club = self.get_object()
         if request.user.role != "ltf_admin":
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
-        user_id = request.data.get("user_id")
-        if not user_id:
-            return Response({"detail": "user_id is required."}, status=status.HTTP_400_BAD_REQUEST)
-        club.admins.remove(user_id)
-        user = User.objects.filter(id=user_id).first()
-        if user and not Club.objects.filter(admins=user).exists():
-            user.role = "member"
-            user.save(update_fields=["role"])
-        return Response({"detail": "Admin removed."})
+        try:
+            payload = remove_club_admin(club, request.data.get("user_id"))
+        except AdminAssignmentError as error:
+            return Response(error.payload, status=error.status_code)
+        return Response(payload)
 
     @action(detail=True, methods=["patch"], permission_classes=[permissions.IsAuthenticated])
     def set_max_admins(self, request, pk=None):

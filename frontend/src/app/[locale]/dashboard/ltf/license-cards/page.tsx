@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 
@@ -21,7 +21,9 @@ import {
   cloneCardTemplate,
   createCardTemplate,
   deleteCardTemplateSafely,
+  exportCardTemplate,
   getCardTemplates,
+  importCardTemplate,
   setDefaultCardTemplate,
 } from "@/lib/license-card-api";
 
@@ -46,6 +48,8 @@ export default function LtfAdminLicenseCardsPage() {
   const [newTemplateName, setNewTemplateName] = useState("");
   const [newTemplateDescription, setNewTemplateDescription] = useState("");
   const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
+  const [isImportingTemplate, setIsImportingTemplate] = useState(false);
+  const importFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [cloneSourceTemplate, setCloneSourceTemplate] = useState<CardTemplate | null>(null);
   const [cloneTemplateName, setCloneTemplateName] = useState("");
@@ -153,6 +157,54 @@ export default function LtfAdminLicenseCardsPage() {
       );
     } finally {
       setIsCreatingTemplate(false);
+    }
+  };
+
+  const handleExportTemplate = async (template: CardTemplate) => {
+    setBusyTemplateId(template.id);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      await exportCardTemplate(template.id);
+      setSuccessMessage(t("licenseCardsTemplateExported"));
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : t("licenseCardsTemplateExportError")
+      );
+    } finally {
+      setBusyTemplateId(null);
+    }
+  };
+
+  const handleImportTemplateFile = async (file: File | null) => {
+    if (!file) {
+      return;
+    }
+    setIsImportingTemplate(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      const text = await file.text();
+      let payload: Record<string, unknown>;
+      try {
+        payload = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        setErrorMessage(t("licenseCardsTemplateImportInvalidFile"));
+        return;
+      }
+      if (!payload || typeof payload !== "object" || payload.format !== "ltkdf.card-template") {
+        setErrorMessage(t("licenseCardsTemplateImportInvalidFile"));
+        return;
+      }
+      await importCardTemplate(payload);
+      setSuccessMessage(t("licenseCardsTemplateImported"));
+      await loadTemplates();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : t("licenseCardsTemplateImportError")
+      );
+    } finally {
+      setIsImportingTemplate(false);
     }
   };
 
@@ -315,7 +367,30 @@ export default function LtfAdminLicenseCardsPage() {
             }
           />
           <ListActionsRow
-            actions={<Button onClick={startCreateTemplate}>{t("licenseCardsCreateAction")}</Button>}
+            actions={
+              <>
+                <Button onClick={startCreateTemplate}>{t("licenseCardsCreateAction")}</Button>
+                <Button
+                  variant="outline"
+                  disabled={isImportingTemplate}
+                  onClick={() => importFileInputRef.current?.click()}
+                >
+                  {isImportingTemplate
+                    ? t("licenseCardsImportingTemplateAction")
+                    : t("licenseCardsImportAction")}
+                </Button>
+                <input
+                  ref={importFileInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={(event) => {
+                    void handleImportTemplateFile(event.target.files?.[0] ?? null);
+                    event.target.value = "";
+                  }}
+                />
+              </>
+            }
           />
         </div>
 
@@ -413,6 +488,16 @@ export default function LtfAdminLicenseCardsPage() {
                       onClick={() => startCloneTemplate(template)}
                     >
                       {t("licenseCardsCloneAction")}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busyTemplateId === template.id}
+                      onClick={() => void handleExportTemplate(template)}
+                    >
+                      {busyTemplateId === template.id
+                        ? t("licenseCardsExportingAction")
+                        : t("licenseCardsExportAction")}
                     </Button>
                     <Button
                       size="sm"

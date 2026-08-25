@@ -52,6 +52,7 @@ export function shouldShowClubSelector(pathname: string | null | undefined): boo
       return false;
     }
     const hiddenPrefixes = [
+      "/dashboard/ltf/club-admins",
       "/dashboard/ltf/license-cards",
       "/dashboard/ltf/license-types",
       "/dashboard/ltf/printer-profiles",

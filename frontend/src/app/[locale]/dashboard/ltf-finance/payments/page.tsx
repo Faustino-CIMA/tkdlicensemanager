@@ -1,190 +1,156 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronRight } from "lucide-react";
 
 import { useClubSelection } from "@/components/club-selection-provider";
-import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
+import { EntityTable } from "@/components/club-admin/entity-table";
+import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { Button } from "@/components/ui/button";
 import { FilterPills } from "@/components/ui/filter-pills";
 import { Input } from "@/components/ui/input";
 import {
-  ExpandableTable,
   LIST_PAGE_SIZE_CAP,
   ListActionsRow,
   ListPagination,
   ListToolbarPanel,
-  NestedTable,
   PageNotice,
   PageSizeSelect,
-  dataRowClickableClass,
-  dataTableClass,
-  dataTdClass,
-  dataThClass,
-  dataTheadClass,
   resolveListPageSize,
 } from "@/components/ui/list-page-chrome";
 import { StatusBadge } from "@/components/ui/status-badge";
-import {
-  Club,
-  FinanceInvoice,
-  getFinanceClubs,
-  getFinanceInvoicesPage,
-} from "@/lib/ltf-finance-api";
 import { formatDisplayDateTime } from "@/lib/date-display";
-import { openInvoicePdf } from "@/lib/invoice-pdf";
+import { Payment, getFinancePaymentsPage } from "@/lib/ltf-finance-api";
 
 const AUTO_REFRESH_INTERVAL_MS = 30000;
 
-type InvoiceStatusFilter = "all" | "draft" | "issued" | "paid" | "void";
-
-function getGroupYear(value: string | null, fallback: string | null, createdAt: string) {
-  const candidate = value ?? fallback ?? createdAt;
-  const parsed = new Date(candidate);
-  if (Number.isNaN(parsed.getTime())) {
-    return 0;
-  }
-  return parsed.getFullYear();
-}
-
-function getYearKey(clubId: number, year: number) {
-  return `${clubId}:${year}`;
-}
+type PaymentStatusFilter = "all" | "pending" | "paid" | "failed" | "cancelled";
 
 export default function LtfFinancePaymentsPage() {
   const t = useTranslations("LtfFinance");
   const common = useTranslations("Common");
   const locale = useLocale();
   const router = useRouter();
-  const [invoices, setInvoices] = useState<FinanceInvoice[]>([]);
-  const [clubs, setClubs] = useState<Club[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState("50");
-  const [totalInvoiceCount, setTotalInvoiceCount] = useState(0);
-  const [statusFilter, setStatusFilter] = useState<InvoiceStatusFilter>("all");
-  const [invoiceFacetCounts, setInvoiceFacetCounts] = useState({
+  const [statusFilter, setStatusFilter] = useState<PaymentStatusFilter>("all");
+  const [totalPaymentCount, setTotalPaymentCount] = useState(0);
+  const [paymentFacetCounts, setPaymentFacetCounts] = useState({
     all: 0,
-    draft: 0,
-    issued: 0,
+    pending: 0,
     paid: 0,
-    void: 0,
+    failed: 0,
+    cancelled: 0,
   });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [expandedClubIds, setExpandedClubIds] = useState<number[]>([]);
-  const [expandedYearKeys, setExpandedYearKeys] = useState<string[]>([]);
-  const [expandedStateHydrated, setExpandedStateHydrated] = useState(false);
   const isRefreshingRef = useRef(false);
   const requestAbortRef = useRef<AbortController | null>(null);
-
-  const expandedClubStorageKey = "ltf_finance_payments_expanded_clubs";
-  const expandedYearStorageKey = "ltf_finance_payments_expanded_years";
   const { selectedClubId } = useClubSelection();
 
-  const loadInvoices = useCallback(async (options?: { silent?: boolean; includeStatic?: boolean }) => {
-    const silent = options?.silent ?? false;
-    const includeStatic = options?.includeStatic ?? true;
-    if (isRefreshingRef.current) {
-      return;
-    }
-    const controller = new AbortController();
-    isRefreshingRef.current = true;
-    requestAbortRef.current = controller;
-    if (!silent) {
-      setIsLoading(true);
-      setErrorMessage(null);
-    }
-    try {
-      const facetParams = {
-        q: searchQuery || undefined,
-        clubId: selectedClubId ?? undefined,
-      };
-      const invoicesPromise = getFinanceInvoicesPage(
-        {
-          page: currentPage,
-          pageSize: resolveListPageSize(pageSize, LIST_PAGE_SIZE_CAP),
-          q: searchQuery || undefined,
-          status: statusFilter === "all" ? undefined : statusFilter,
-          clubId: selectedClubId ?? undefined,
-        },
-        { signal: controller.signal }
-      );
-      if (includeStatic) {
-        const [
-          invoiceResponse,
-          clubsResponse,
-          allCountRes,
-          draftCountRes,
-          issuedCountRes,
-          paidCountRes,
-          voidCountRes,
-        ] = await Promise.all([
-          invoicesPromise,
-          getFinanceClubs({ signal: controller.signal }),
-          getFinanceInvoicesPage({ page: 1, pageSize: 1, ...facetParams }, { signal: controller.signal }),
-          getFinanceInvoicesPage(
-            { page: 1, pageSize: 1, ...facetParams, status: "draft" },
-            { signal: controller.signal }
-          ),
-          getFinanceInvoicesPage(
-            { page: 1, pageSize: 1, ...facetParams, status: "issued" },
-            { signal: controller.signal }
-          ),
-          getFinanceInvoicesPage(
-            { page: 1, pageSize: 1, ...facetParams, status: "paid" },
-            { signal: controller.signal }
-          ),
-          getFinanceInvoicesPage(
-            { page: 1, pageSize: 1, ...facetParams, status: "void" },
-            { signal: controller.signal }
-          ),
-        ]);
-        setInvoices(invoiceResponse.results);
-        setTotalInvoiceCount(invoiceResponse.count);
-        setClubs(clubsResponse);
-        setInvoiceFacetCounts({
-          all: allCountRes.count,
-          draft: draftCountRes.count,
-          issued: issuedCountRes.count,
-          paid: paidCountRes.count,
-          void: voidCountRes.count,
-        });
-      } else {
-        const invoiceResponse = await invoicesPromise;
-        setInvoices(invoiceResponse.results);
-        setTotalInvoiceCount(invoiceResponse.count);
-      }
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
+  const loadPayments = useCallback(
+    async (options?: { silent?: boolean; includeStatic?: boolean }) => {
+      const silent = options?.silent ?? false;
+      const includeStatic = options?.includeStatic ?? true;
+      if (isRefreshingRef.current) {
         return;
       }
+      const controller = new AbortController();
+      isRefreshingRef.current = true;
+      requestAbortRef.current = controller;
       if (!silent) {
-        setErrorMessage(error instanceof Error ? error.message : t("paymentsLoadError"));
+        setIsLoading(true);
+        setErrorMessage(null);
       }
-    } finally {
-      if (requestAbortRef.current === controller) {
-        requestAbortRef.current = null;
+      try {
+        const facetParams = {
+          q: searchQuery || undefined,
+          clubId: selectedClubId ?? undefined,
+        };
+        const paymentsPromise = getFinancePaymentsPage(
+          {
+            page: currentPage,
+            pageSize: resolveListPageSize(pageSize, LIST_PAGE_SIZE_CAP),
+            q: searchQuery || undefined,
+            status: statusFilter === "all" ? undefined : statusFilter,
+            clubId: selectedClubId ?? undefined,
+          },
+          { signal: controller.signal }
+        );
+        if (includeStatic) {
+          const [
+            paymentsResponse,
+            allCountRes,
+            pendingCountRes,
+            paidCountRes,
+            failedCountRes,
+            cancelledCountRes,
+          ] = await Promise.all([
+            paymentsPromise,
+            getFinancePaymentsPage({ page: 1, pageSize: 1, ...facetParams }, { signal: controller.signal }),
+            getFinancePaymentsPage(
+              { page: 1, pageSize: 1, ...facetParams, status: "pending" },
+              { signal: controller.signal }
+            ),
+            getFinancePaymentsPage(
+              { page: 1, pageSize: 1, ...facetParams, status: "paid" },
+              { signal: controller.signal }
+            ),
+            getFinancePaymentsPage(
+              { page: 1, pageSize: 1, ...facetParams, status: "failed" },
+              { signal: controller.signal }
+            ),
+            getFinancePaymentsPage(
+              { page: 1, pageSize: 1, ...facetParams, status: "cancelled" },
+              { signal: controller.signal }
+            ),
+          ]);
+          setPayments(paymentsResponse.results);
+          setTotalPaymentCount(paymentsResponse.count);
+          setPaymentFacetCounts({
+            all: allCountRes.count,
+            pending: pendingCountRes.count,
+            paid: paidCountRes.count,
+            failed: failedCountRes.count,
+            cancelled: cancelledCountRes.count,
+          });
+        } else {
+          const paymentsResponse = await paymentsPromise;
+          setPayments(paymentsResponse.results);
+          setTotalPaymentCount(paymentsResponse.count);
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+        if (!silent) {
+          setErrorMessage(error instanceof Error ? error.message : t("paymentsLoadError"));
+        }
+      } finally {
+        if (requestAbortRef.current === controller) {
+          requestAbortRef.current = null;
+        }
+        isRefreshingRef.current = false;
+        if (!silent) {
+          setIsLoading(false);
+        }
       }
-      isRefreshingRef.current = false;
-      if (!silent) {
-        setIsLoading(false);
-      }
-    }
-  }, [currentPage, pageSize, searchQuery, selectedClubId, statusFilter, t]);
+    },
+    [currentPage, pageSize, searchQuery, selectedClubId, statusFilter, t]
+  );
 
   useEffect(() => {
-    void loadInvoices();
-  }, [loadInvoices]);
+    void loadPayments();
+  }, [loadPayments]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedClubId]);
+  }, [selectedClubId, searchQuery, pageSize, statusFilter]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -207,7 +173,7 @@ export default function LtfFinancePaymentsPage() {
     }
     const refreshInBackground = () => {
       if (document.visibilityState === "visible") {
-        void loadInvoices({ silent: true, includeStatic: false });
+        void loadPayments({ silent: true, includeStatic: false });
       }
     };
     const intervalId = window.setInterval(refreshInBackground, AUTO_REFRESH_INTERVAL_MS);
@@ -218,125 +184,10 @@ export default function LtfFinancePaymentsPage() {
       window.removeEventListener("focus", refreshInBackground);
       document.removeEventListener("visibilitychange", refreshInBackground);
     };
-  }, [loadInvoices]);
+  }, [loadPayments]);
 
-  const clubNameById = useMemo(() => {
-    return clubs.reduce<Record<number, string>>((acc, club) => {
-      acc[club.id] = club.name;
-      return acc;
-    }, {});
-  }, [clubs]);
-
-  const getInvoiceQuantity = useCallback((invoice: FinanceInvoice) => {
-    return typeof invoice.item_quantity === "number" ? invoice.item_quantity : "-";
-  }, []);
-
-  const searchedInvoices = useMemo(() => {
-    return invoices;
-  }, [invoices]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, pageSize, statusFilter]);
-
-  const getInvoiceStatusMeta = (status: string) => {
-    switch (status) {
-      case "draft":
-        return { label: common("statusDraft"), tone: "neutral" as const };
-      case "issued":
-        return { label: common("statusIssued"), tone: "warning" as const };
-      case "paid":
-        return { label: common("statusPaid"), tone: "success" as const };
-      case "void":
-        return { label: common("statusVoid"), tone: "danger" as const };
-      default:
-        return { label: status, tone: "neutral" as const };
-    }
-  };
-
-  const groupedClubRows = useMemo(() => {
-    const grouped = new Map<
-      number,
-      {
-        clubName: string;
-        yearsMap: Map<number, FinanceInvoice[]>;
-      }
-    >();
-
-    for (const invoice of searchedInvoices) {
-      const year = getGroupYear(invoice.paid_at, invoice.issued_at, invoice.created_at);
-      const clubName = clubNameById[invoice.club] ?? String(invoice.club);
-      const clubEntry = grouped.get(invoice.club);
-      if (!clubEntry) {
-        grouped.set(invoice.club, {
-          clubName,
-          yearsMap: new Map([[year, [invoice]]]),
-        });
-        continue;
-      }
-      const yearEntry = clubEntry.yearsMap.get(year);
-      if (yearEntry) {
-        yearEntry.push(invoice);
-      } else {
-        clubEntry.yearsMap.set(year, [invoice]);
-      }
-    }
-
-    return Array.from(grouped.entries())
-      .map(([clubId, clubEntry]) => {
-        const years = Array.from(clubEntry.yearsMap.entries())
-          .map(([year, yearInvoices]) => {
-            const invoicesForYear = [...yearInvoices].sort((left, right) => {
-              const leftTimestamp = left.paid_at ?? left.issued_at ?? left.created_at;
-              const rightTimestamp = right.paid_at ?? right.issued_at ?? right.created_at;
-              return rightTimestamp.localeCompare(leftTimestamp);
-            });
-            const counts = invoicesForYear.reduce(
-              (acc, invoice) => {
-                if (invoice.status === "draft") {
-                  acc.draftCount += 1;
-                } else if (invoice.status === "issued") {
-                  acc.issuedCount += 1;
-                } else if (invoice.status === "paid") {
-                  acc.paidCount += 1;
-                } else if (invoice.status === "void") {
-                  acc.voidCount += 1;
-                }
-                return acc;
-              },
-              { draftCount: 0, issuedCount: 0, paidCount: 0, voidCount: 0 }
-            );
-            return {
-              year,
-              invoices: invoicesForYear,
-              total: invoicesForYear.length,
-              ...counts,
-            };
-          })
-          .sort((left, right) => right.year - left.year);
-
-        const total = years.reduce((sum, year) => sum + year.total, 0);
-        const draftCount = years.reduce((sum, year) => sum + year.draftCount, 0);
-        const issuedCount = years.reduce((sum, year) => sum + year.issuedCount, 0);
-        const paidCount = years.reduce((sum, year) => sum + year.paidCount, 0);
-        const voidCount = years.reduce((sum, year) => sum + year.voidCount, 0);
-
-        return {
-          clubId,
-          clubName: clubEntry.clubName,
-          years,
-          total,
-          draftCount,
-          issuedCount,
-          paidCount,
-          voidCount,
-        };
-      })
-      .sort((left, right) => left.clubName.localeCompare(right.clubName));
-  }, [clubNameById, searchedInvoices]);
-
-  const resolvedPageSize = resolveListPageSize(pageSize, totalInvoiceCount);
-  const totalPages = Math.max(1, Math.ceil(totalInvoiceCount / resolvedPageSize));
+  const resolvedPageSize = resolveListPageSize(pageSize, totalPaymentCount);
+  const totalPages = Math.max(1, Math.ceil(totalPaymentCount / resolvedPageSize));
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -344,97 +195,92 @@ export default function LtfFinancePaymentsPage() {
     }
   }, [currentPage, totalPages]);
 
-  useEffect(() => {
-    const validClubIds = new Set(groupedClubRows.map((clubGroup) => clubGroup.clubId));
-    setExpandedClubIds((previous) => previous.filter((clubId) => validClubIds.has(clubId)));
-    const validYearKeys = new Set(
-      groupedClubRows.flatMap((clubGroup) =>
-        clubGroup.years.map((yearGroup) => getYearKey(clubGroup.clubId, yearGroup.year))
-      )
-    );
-    setExpandedYearKeys((previous) => previous.filter((yearKey) => validYearKeys.has(yearKey)));
-  }, [groupedClubRows]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      setExpandedStateHydrated(true);
-      return;
-    }
-    try {
-      const storedClubIds = window.localStorage.getItem(expandedClubStorageKey);
-      const storedYearKeys = window.localStorage.getItem(expandedYearStorageKey);
-      if (storedClubIds) {
-        const parsed = JSON.parse(storedClubIds);
-        if (Array.isArray(parsed)) {
-          setExpandedClubIds(
-            parsed
-              .map((value) => Number(value))
-              .filter((value) => Number.isInteger(value) && value > 0)
-          );
-        }
+  const getPaymentStatusMeta = useCallback(
+    (status: string) => {
+      switch (status) {
+        case "pending":
+          return { label: common("statusPending"), tone: "warning" as const };
+        case "paid":
+          return { label: common("statusPaid"), tone: "success" as const };
+        case "failed":
+          return { label: common("statusFailed"), tone: "danger" as const };
+        case "cancelled":
+          return { label: common("statusCancelled"), tone: "neutral" as const };
+        default:
+          return { label: status, tone: "neutral" as const };
       }
-      if (storedYearKeys) {
-        const parsed = JSON.parse(storedYearKeys);
-        if (Array.isArray(parsed)) {
-          setExpandedYearKeys(parsed.filter((value) => typeof value === "string"));
-        }
+    },
+    [common, t]
+  );
+
+  const getMethodLabel = useCallback(
+    (method: string) => {
+      switch (method) {
+        case "card":
+          return t("paymentMethodCard");
+        case "bank_transfer":
+          return t("paymentMethodBankTransfer");
+        case "cash":
+          return t("paymentMethodCash");
+        case "offline":
+          return t("paymentMethodOffline");
+        default:
+          return t("paymentMethodOther");
       }
-    } catch {
-      setExpandedClubIds([]);
-      setExpandedYearKeys([]);
-    } finally {
-      setExpandedStateHydrated(true);
-    }
-  }, []);
+    },
+    [t]
+  );
 
-  useEffect(() => {
-    if (!expandedStateHydrated || typeof window === "undefined") {
-      return;
-    }
-    if (expandedClubIds.length > 0) {
-      window.localStorage.setItem(expandedClubStorageKey, JSON.stringify(expandedClubIds));
-    } else {
-      window.localStorage.removeItem(expandedClubStorageKey);
-    }
-    if (expandedYearKeys.length > 0) {
-      window.localStorage.setItem(expandedYearStorageKey, JSON.stringify(expandedYearKeys));
-    } else {
-      window.localStorage.removeItem(expandedYearStorageKey);
-    }
-  }, [
-    expandedClubIds,
-    expandedYearKeys,
-    expandedStateHydrated,
-    expandedClubStorageKey,
-    expandedYearStorageKey,
-  ]);
-
-  const expandedClubSet = useMemo(() => new Set(expandedClubIds), [expandedClubIds]);
-  const expandedYearSet = useMemo(() => new Set(expandedYearKeys), [expandedYearKeys]);
-
-  const toggleClubExpanded = (clubId: number) => {
-    setExpandedClubIds((previous) =>
-      previous.includes(clubId)
-        ? previous.filter((id) => id !== clubId)
-        : [...previous, clubId]
-    );
-  };
-
-  const toggleYearExpanded = (clubId: number, year: number) => {
-    const key = getYearKey(clubId, year);
-    setExpandedYearKeys((previous) =>
-      previous.includes(key) ? previous.filter((id) => id !== key) : [...previous, key]
-    );
-  };
+  const columns = useMemo(
+    () => [
+      {
+        key: "paid_at",
+        header: t("paidAtLabel"),
+        render: (row: Payment) => formatDisplayDateTime(row.paid_at || row.created_at),
+      },
+      {
+        key: "invoice_number",
+        header: t("invoiceNumberLabel"),
+        render: (row: Payment) => row.invoice_number || String(row.invoice),
+      },
+      {
+        key: "club",
+        header: t("clubLabel"),
+        render: (row: Payment) => row.club_name || (row.club ? String(row.club) : "-"),
+      },
+      {
+        key: "amount",
+        header: t("paymentAmountLabel"),
+        render: (row: Payment) => `${row.amount} ${row.currency}`,
+      },
+      {
+        key: "method",
+        header: t("paymentMethodLabel"),
+        render: (row: Payment) => getMethodLabel(row.method),
+      },
+      {
+        key: "reference",
+        header: t("paymentReferenceLabel"),
+        render: (row: Payment) => row.reference || "-",
+      },
+      {
+        key: "status",
+        header: t("statusLabel"),
+        render: (row: Payment) => {
+          const meta = getPaymentStatusMeta(row.status);
+          return <StatusBadge label={meta.label} tone={meta.tone} />;
+        },
+      },
+    ],
+    [getMethodLabel, getPaymentStatusMeta, t]
+  );
 
   return (
     <LtfFinanceLayout title={t("paymentsTitle")} subtitle={t("paymentsSubtitle")}>
       {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
-      {actionError ? <PageNotice tone="danger">{actionError}</PageNotice> : null}
 
       <div className="flex flex-col gap-4">
         <ListToolbarPanel
-          filtersPlacement="below"
           search={
             <Input
               className="w-full max-w-xs"
@@ -454,21 +300,40 @@ export default function LtfFinancePaymentsPage() {
           }
           filters={
             <FilterPills
-              layout="wrap"
               ariaLabel={t("paymentsStatusFilterAriaLabel")}
               value={statusFilter}
               onChange={setStatusFilter}
               options={[
-                { value: "all", title: t("filterAllTitle"), count: invoiceFacetCounts.all },
-                { value: "draft", title: common("statusDraft"), count: invoiceFacetCounts.draft },
-                { value: "issued", title: common("statusIssued"), count: invoiceFacetCounts.issued },
-                { value: "paid", title: common("statusPaid"), count: invoiceFacetCounts.paid },
-                { value: "void", title: common("statusVoid"), count: invoiceFacetCounts.void },
+                { value: "all", title: t("filterAllTitle"), count: paymentFacetCounts.all },
+                {
+                  value: "pending",
+                  title: common("statusPending"),
+                  count: paymentFacetCounts.pending,
+                },
+                { value: "paid", title: common("statusPaid"), count: paymentFacetCounts.paid },
+                {
+                  value: "failed",
+                  title: common("statusFailed"),
+                  count: paymentFacetCounts.failed,
+                },
+                {
+                  value: "cancelled",
+                  title: common("statusCancelled"),
+                  count: paymentFacetCounts.cancelled,
+                },
               ]}
             />
           }
         />
         <ListActionsRow
+          actions={
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/${locale}/dashboard/ltf-finance/invoices`)}
+            >
+              {t("recordPaymentFromInvoiceAction")}
+            </Button>
+          }
           pagination={
             <ListPagination
               currentPage={currentPage}
@@ -485,212 +350,16 @@ export default function LtfFinancePaymentsPage() {
 
       {isLoading ? (
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
-      ) : groupedClubRows.length === 0 ? (
+      ) : payments.length === 0 ? (
         <EmptyState title={t("noPaymentsTitle")} description={t("noPaymentsSubtitle")} />
       ) : (
-        <ExpandableTable>
-            <table className={dataTableClass}>
-              <thead className={dataTheadClass}>
-                <tr>
-                  <th className={`w-10 ${dataThClass}`} />
-                  <th className={dataThClass}>{t("clubLabel")}</th>
-                  <th className={dataThClass}>{t("totalLabel")}</th>
-                  <th className={dataThClass}>{t("invoicesDraftCountLabel")}</th>
-                  <th className={dataThClass}>{t("invoicesIssuedCountLabel")}</th>
-                  <th className={dataThClass}>{t("invoicesPaidCountLabel")}</th>
-                  <th className={dataThClass}>{t("invoicesVoidCountLabel")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/80">
-                {groupedClubRows.map((clubGroup) => {
-                  const clubExpanded = expandedClubSet.has(clubGroup.clubId);
-                  return (
-                    <Fragment key={clubGroup.clubId}>
-                      <tr
-                        className={dataRowClickableClass}
-                        onClick={() => toggleClubExpanded(clubGroup.clubId)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            toggleClubExpanded(clubGroup.clubId);
-                          }
-                        }}
-                        tabIndex={0}
-                        role="button"
-                        aria-expanded={clubExpanded}
-                      >
-                        <td className={`${dataTdClass} text-muted`}>
-                          {clubExpanded ? (
-                            <ChevronDown className="h-4 w-4" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4" />
-                          )}
-                        </td>
-                        <td className={`${dataTdClass} font-medium`}>{clubGroup.clubName}</td>
-                        <td className={dataTdClass}>{clubGroup.total}</td>
-                        <td className={dataTdClass}>{clubGroup.draftCount}</td>
-                        <td className={dataTdClass}>{clubGroup.issuedCount}</td>
-                        <td className={dataTdClass}>{clubGroup.paidCount}</td>
-                        <td className={dataTdClass}>{clubGroup.voidCount}</td>
-                      </tr>
-                      {clubExpanded ? (
-                        <tr className="bg-secondary/60">
-                          <td colSpan={7} className="px-6 py-3">
-                            <NestedTable>
-                              <table className={dataTableClass}>
-                                <thead className={dataTheadClass}>
-                                  <tr>
-                                    <th className="w-10 px-4 py-2 font-medium" />
-                                    <th className="px-4 py-2 font-medium">{t("yearLabel")}</th>
-                                    <th className="px-4 py-2 font-medium">{t("totalLabel")}</th>
-                                    <th className="px-4 py-2 font-medium">{t("invoicesDraftCountLabel")}</th>
-                                    <th className="px-4 py-2 font-medium">{t("invoicesIssuedCountLabel")}</th>
-                                    <th className="px-4 py-2 font-medium">{t("invoicesPaidCountLabel")}</th>
-                                    <th className="px-4 py-2 font-medium">{t("invoicesVoidCountLabel")}</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-border/80">
-                                  {clubGroup.years.map((yearGroup) => {
-                                    const yearKey = getYearKey(clubGroup.clubId, yearGroup.year);
-                                    const yearExpanded = expandedYearSet.has(yearKey);
-                                    return (
-                                      <Fragment key={yearKey}>
-                                        <tr
-                                          className={dataRowClickableClass}
-                                          onClick={() => toggleYearExpanded(clubGroup.clubId, yearGroup.year)}
-                                          onKeyDown={(event) => {
-                                            if (event.key === "Enter" || event.key === " ") {
-                                              event.preventDefault();
-                                              toggleYearExpanded(clubGroup.clubId, yearGroup.year);
-                                            }
-                                          }}
-                                          tabIndex={0}
-                                          role="button"
-                                          aria-expanded={yearExpanded}
-                                        >
-                                          <td className="px-4 py-2 text-muted">
-                                            {yearExpanded ? (
-                                              <ChevronDown className="h-4 w-4" />
-                                            ) : (
-                                              <ChevronRight className="h-4 w-4" />
-                                            )}
-                                          </td>
-                                          <td className="px-4 py-2 font-medium">
-                                            {yearGroup.year > 0 ? yearGroup.year : "—"}
-                                          </td>
-                                          <td className="px-4 py-2">{yearGroup.total}</td>
-                                          <td className="px-4 py-2">{yearGroup.draftCount}</td>
-                                          <td className="px-4 py-2">{yearGroup.issuedCount}</td>
-                                          <td className="px-4 py-2">{yearGroup.paidCount}</td>
-                                          <td className="px-4 py-2">{yearGroup.voidCount}</td>
-                                        </tr>
-                                        {yearExpanded ? (
-                                          <tr className="bg-secondary/50">
-                                            <td colSpan={7} className="px-6 py-3">
-                                              <NestedTable>
-                                                <table className={dataTableClass}>
-                                                  <thead className={dataTheadClass}>
-                                                    <tr>
-                                                      <th className="px-4 py-2 font-medium">{t("invoiceNumberLabel")}</th>
-                                                      <th className="px-4 py-2 font-medium">{t("statusLabel")}</th>
-                                                      <th className="px-4 py-2 font-medium">{common("qtyLabel")}</th>
-                                                      <th className="px-4 py-2 font-medium">{t("totalLabel")}</th>
-                                                      <th className="px-4 py-2 font-medium">{t("paidAtLabel")}</th>
-                                                      <th className="px-4 py-2 font-medium">{common("invoicePdfLabel")}</th>
-                                                      <th className="px-4 py-2 font-medium">{common("paymentActionsLabel")}</th>
-                                                    </tr>
-                                                  </thead>
-                                                  <tbody className="divide-y divide-border/80">
-                                                    {yearGroup.invoices.map((invoice) => {
-                                                      const meta = getInvoiceStatusMeta(invoice.status);
-                                                      const canRecord =
-                                                        invoice.status !== "paid" && invoice.status !== "void";
-                                                      return (
-                                                        <tr
-                                                          key={invoice.id}
-                                                          className={dataRowClickableClass}
-                                                          onClick={() => {
-                                                            router.push(
-                                                              `/${locale}/dashboard/ltf-finance/payments/${invoice.id}`
-                                                            );
-                                                          }}
-                                                        >
-                                                          <td className="px-4 py-2 font-medium">
-                                                            {invoice.invoice_number}
-                                                          </td>
-                                                          <td className="px-4 py-2">
-                                                            <StatusBadge label={meta.label} tone={meta.tone} />
-                                                          </td>
-                                                          <td className="px-4 py-2">
-                                                            {getInvoiceQuantity(invoice)}
-                                                          </td>
-                                                          <td className="px-4 py-2">
-                                                            {`${invoice.total} ${invoice.currency}`}
-                                                          </td>
-                                                          <td className="px-4 py-2">
-                                                            {formatDisplayDateTime(invoice.paid_at)}
-                                                          </td>
-                                                          <td className="px-4 py-2">
-                                                            <Button
-                                                              variant="ghost"
-                                                              size="sm"
-                                                              onClick={async (event) => {
-                                                                event.stopPropagation();
-                                                                setActionError(null);
-                                                                try {
-                                                                  await openInvoicePdf(invoice.id);
-                                                                } catch (error) {
-                                                                  setActionError(
-                                                                    error instanceof Error
-                                                                      ? error.message
-                                                                      : common("pdfDownloadFailed")
-                                                                  );
-                                                                }
-                                                              }}
-                                                            >
-                                                              {common("invoicePdfLabel")}
-                                                            </Button>
-                                                          </td>
-                                                          <td className="px-4 py-2">
-                                                            {canRecord ? (
-                                                              <Button
-                                                                variant="outline"
-                                                                size="sm"
-                                                                onClick={(event) => {
-                                                                  event.stopPropagation();
-                                                                  router.push(
-                                                                    `/${locale}/dashboard/ltf-finance/payments/${invoice.id}/record`
-                                                                  );
-                                                                }}
-                                                              >
-                                                                {t("recordPaymentButton")}
-                                                              </Button>
-                                                            ) : null}
-                                                          </td>
-                                                        </tr>
-                                                      );
-                                                    })}
-                                                  </tbody>
-                                                </table>
-                                              </NestedTable>
-                                            </td>
-                                          </tr>
-                                        ) : null}
-                                      </Fragment>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            </NestedTable>
-                          </td>
-                        </tr>
-                      ) : null}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-        </ExpandableTable>
+        <EntityTable
+          columns={columns}
+          rows={payments}
+          onRowClick={(payment) =>
+            router.push(`/${locale}/dashboard/ltf-finance/payments/${payment.invoice}`)
+          }
+        />
       )}
     </LtfFinanceLayout>
   );

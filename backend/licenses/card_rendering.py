@@ -2121,7 +2121,6 @@ def _render_sheet_document_html(preview_data: dict[str, Any]) -> str:
     slot_markup: list[str] = []
     for slot in slots:
         selected = bool(slot.get("selected"))
-        slot_border = "#1d4ed8" if selected else "#d1d5db"
         corner_radius_mm = str(slot.get("card_corner_radius_mm") or "0.00")
         content = card_fragment if selected else ""
         slot_markup.append(
@@ -2129,7 +2128,6 @@ def _render_sheet_document_html(preview_data: dict[str, Any]) -> str:
             "style=\"position:absolute;box-sizing:border-box;"
             f"left:{slot['x_mm']}mm;top:{slot['y_mm']}mm;"
             f"width:{slot['width_mm']}mm;height:{slot['height_mm']}mm;"
-            f"border:0.15mm dashed {slot_border};"
             f"border-radius:{escape(corner_radius_mm)}mm;overflow:hidden;\">"
             f"{content}</div>"
         )

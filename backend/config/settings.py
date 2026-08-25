@@ -427,9 +427,33 @@ CSRF_TRUSTED_ORIGINS = split_csv(
     )
 )
 
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+def _secret_configured(value: str) -> bool:
+    return str(value or "").strip().lower() not in {
+        "",
+        "replace-me",
+        "changeme",
+        "change-me",
+    }
+
+
 RESEND_API_KEY = config("RESEND_API_KEY", default="")
-RESEND_FROM_EMAIL = config("RESEND_FROM_EMAIL", default="no-reply@ltf-license-manager.local")
+RESEND_FROM_EMAIL = config(
+    "RESEND_FROM_EMAIL",
+    default="no-reply@ltf-license-manager.local",
+)
+EMAIL_HOST = config("EMAIL_HOST", default="")
+EMAIL_PORT = config("EMAIL_PORT", default=25, cast=int)
+EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=False, cast=bool)
+EMAIL_USE_SSL = config("EMAIL_USE_SSL", default=False, cast=bool)
+DEFAULT_FROM_EMAIL = RESEND_FROM_EMAIL
+if _secret_configured(RESEND_API_KEY):
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+elif EMAIL_HOST:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 FERNET_KEYS = split_csv(
     config("FERNET_KEYS", default=derive_fernet_key(SECRET_KEY))

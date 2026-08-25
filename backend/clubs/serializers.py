@@ -20,6 +20,7 @@ class ClubSerializer(serializers.ModelSerializer):
             "locality",
             "iban",
             "bank_name",
+            "email",
             "max_admins",
             "created_by",
             "admins",
@@ -36,6 +37,9 @@ class ClubSerializer(serializers.ModelSerializer):
         if normalized and not is_valid_iban(normalized):
             raise serializers.ValidationError("Enter a valid IBAN.")
         return normalized
+
+    def validate_email(self, value):
+        return str(value or "").strip()
 
     def validate(self, attrs):
         attrs = super().validate(attrs)

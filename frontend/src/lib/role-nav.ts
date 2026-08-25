@@ -15,6 +15,7 @@ import {
   Settings,
   ShoppingCart,
   Sparkles,
+  UserCog,
   Users,
   Wallet,
 } from "lucide-react";
@@ -114,6 +115,14 @@ const LTF_ADMIN_NAV: RoleNavDef[] = [
     labelKey: "navClubs",
     namespace: "LtfAdmin",
     icon: Building2,
+    matchMode: "prefix",
+  },
+  {
+    id: "club-admins",
+    href: (locale) => `/${locale}/dashboard/ltf/club-admins`,
+    labelKey: "navClubAdmins",
+    namespace: "LtfAdmin",
+    icon: UserCog,
     matchMode: "prefix",
   },
   {

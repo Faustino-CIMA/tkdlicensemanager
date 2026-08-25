@@ -141,6 +141,48 @@ class MemberApiTests(TestCase):
         self.assertIn(self.member.id, ids)
         self.assertNotIn(self.inactive_member.id, ids)
 
+    def test_ltf_admin_can_filter_members_by_issue(self):
+        licensed_member = Member.objects.create(
+            club=self.club,
+            first_name="Pat",
+            last_name="Licensed",
+            ltf_licenseid="LTF-900",
+            is_active=True,
+        )
+        License.objects.create(
+            member=licensed_member,
+            club=self.club,
+            license_type=self.license_type,
+            year=2026,
+            status=License.Status.ACTIVE,
+        )
+        pending_member = Member.objects.create(
+            club=self.club,
+            first_name="Quinn",
+            last_name="Pending",
+            ltf_licenseid="LTF-901",
+            is_active=True,
+        )
+        License.objects.create(
+            member=pending_member,
+            club=self.club,
+            license_type=self.license_type,
+            year=2026,
+            status=License.Status.PENDING,
+        )
+        self.client.force_authenticate(user=self.ltf_admin)
+
+        no_license = self.client.get("/api/members/", {"issue": "no_valid_license"})
+        self.assertEqual(no_license.status_code, status.HTTP_200_OK)
+        no_license_ids = {row["id"] for row in no_license.data}
+        self.assertEqual(no_license_ids, {self.member.id})
+
+        missing_id = self.client.get("/api/members/", {"issue": "missing_ltf_licenseid"})
+        self.assertEqual(missing_id.status_code, status.HTTP_200_OK)
+        missing_ids = {row["id"] for row in missing_id.data}
+        self.assertEqual(missing_ids, {self.member.id})
+        self.assertNotIn(self.inactive_member.id, missing_ids)
+
     def test_ltf_finance_only_sees_active_members(self):
         self.client.force_authenticate(user=self.finance_user)
         response = self.client.get("/api/members/")

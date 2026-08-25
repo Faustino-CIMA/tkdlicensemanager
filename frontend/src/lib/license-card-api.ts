@@ -685,6 +685,59 @@ export function cloneCardTemplate(id: number, input: CardTemplateCloneInput) {
   });
 }
 
+function parseAttachmentFilename(contentDisposition: string | null, fallback: string): string {
+  if (!contentDisposition) {
+    return fallback;
+  }
+  const utfMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utfMatch?.[1]) {
+    try {
+      return decodeURIComponent(utfMatch[1]);
+    } catch {
+      return utfMatch[1];
+    }
+  }
+  const plainMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+  return plainMatch?.[1]?.trim() || fallback;
+}
+
+export async function exportCardTemplate(id: number): Promise<void> {
+  const token = getToken();
+  const response = await fetch(`${API_URL}/api/card-templates/${id}/export/`, {
+    method: "GET",
+    headers: {
+      ...(token ? { Authorization: `Token ${token}` } : {}),
+    },
+  });
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type");
+    const message = await response.text();
+    throw new Error(
+      normalizeApiErrorMessage(message, contentType) || `Request failed with ${response.status}`
+    );
+  }
+  const blob = await response.blob();
+  const filename = parseAttachmentFilename(
+    response.headers.get("Content-Disposition"),
+    `card-template-${id}.json`
+  );
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
+export function importCardTemplate(payload: Record<string, unknown>) {
+  return apiRequest<CardTemplate>("/api/card-templates/import/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getCardTemplateVersions(params?: CardTemplateVersionListQuery, options?: ApiCallOptions) {
   const search = buildTemplateVersionQuery(params);
   const suffix = search.toString();

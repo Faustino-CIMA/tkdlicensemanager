@@ -797,6 +797,112 @@ class LicenseCardVersionWorkflowTests(TestCase):
         self.assertEqual(cloned_version.paper_profile_id, source_version.paper_profile_id)
         self.assertEqual(cloned_version.design_payload, source_version.design_payload)
 
+    def test_export_import_round_trip_preserves_layers_and_merge_fields(self):
+        with tempfile.TemporaryDirectory() as media_root:
+            with self.settings(MEDIA_ROOT=media_root):
+                image_asset = CardImageAsset.objects.create(
+                    name="Export Logo",
+                    image=_build_uploaded_png("export-logo.png"),
+                    created_by=self.ltf_admin,
+                )
+                design_payload = {
+                    "elements": [
+                        {
+                            "id": "member-name",
+                            "type": "text",
+                            "x_mm": "4.00",
+                            "y_mm": "4.00",
+                            "width_mm": "40.00",
+                            "height_mm": "8.00",
+                            "z_index": 2,
+                            "merge_field": "member.full_name",
+                            "text": "{{member.full_name}}",
+                        },
+                        {
+                            "id": "logo",
+                            "type": "image",
+                            "x_mm": "60.00",
+                            "y_mm": "4.00",
+                            "width_mm": "20.00",
+                            "height_mm": "20.00",
+                            "z_index": 3,
+                            "style": {"image_asset_id": image_asset.id},
+                        },
+                    ],
+                    "metadata": {"unit": "mm"},
+                }
+                CardTemplateVersion.objects.create(
+                    template=self.template,
+                    version_number=1,
+                    label="Export Source",
+                    status=CardTemplateVersion.Status.DRAFT,
+                    card_format=self.card_format,
+                    paper_profile=self.paper_profile,
+                    design_payload=design_payload,
+                    created_by=self.ltf_admin,
+                )
+
+                export_response = self.client.get(
+                    f"/api/card-templates/{self.template.id}/export/"
+                )
+                self.assertEqual(export_response.status_code, status.HTTP_200_OK)
+                bundle = export_response.json()
+                self.assertEqual(bundle["format"], "ltkdf.card-template")
+                self.assertEqual(bundle["schema_version"], 1)
+                self.assertEqual(bundle["card_format"]["code"], "3c")
+                self.assertEqual(bundle["paper_profile"]["code"], "sigel-lp798")
+                exported_elements = bundle["version"]["design_payload"]["elements"]
+                name_element = next(item for item in exported_elements if item["id"] == "member-name")
+                self.assertEqual(name_element["merge_field"], "member.full_name")
+                self.assertEqual(int(name_element["z_index"]), 2)
+                self.assertEqual(len(bundle["image_assets"]), 1)
+                self.assertTrue(bundle["image_assets"][0]["data_base64"])
+
+                import_response = self.client.post(
+                    "/api/card-templates/import/",
+                    bundle,
+                    format="json",
+                )
+                self.assertEqual(import_response.status_code, status.HTTP_201_CREATED)
+                imported_template = CardTemplate.objects.get(id=import_response.data["id"])
+                self.assertNotEqual(imported_template.id, self.template.id)
+                imported_version = imported_template.versions.get(version_number=1)
+                self.assertEqual(imported_version.status, CardTemplateVersion.Status.DRAFT)
+                imported_elements = imported_version.design_payload["elements"]
+                imported_name = next(item for item in imported_elements if item["id"] == "member-name")
+                imported_logo = next(item for item in imported_elements if item["id"] == "logo")
+                self.assertEqual(imported_name["merge_field"], "member.full_name")
+                self.assertEqual(int(imported_name["z_index"]), 2)
+                new_image_id = int(imported_logo["style"]["image_asset_id"])
+                self.assertNotEqual(new_image_id, image_asset.id)
+                self.assertTrue(CardImageAsset.objects.filter(id=new_image_id).exists())
+
+    def test_club_admin_cannot_export_or_import_templates(self):
+        club_admin = User.objects.create_user(
+            username="cards-export-club-admin",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+        )
+        CardTemplateVersion.objects.create(
+            template=self.template,
+            version_number=1,
+            card_format=self.card_format,
+            design_payload=_sample_design_payload(),
+            created_by=self.ltf_admin,
+        )
+        self.client.force_authenticate(user=club_admin)
+        export_response = self.client.get(f"/api/card-templates/{self.template.id}/export/")
+        self.assertIn(
+            export_response.status_code,
+            {status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND},
+        )
+        import_response = self.client.post(
+            "/api/card-templates/import/",
+            {"format": "ltkdf.card-template", "schema_version": 1},
+            format="json",
+        )
+        self.assertEqual(import_response.status_code, status.HTTP_403_FORBIDDEN)
+
     def test_set_default_template_action(self):
         first_template = CardTemplate.objects.create(
             name="Default A",
@@ -2982,6 +3088,28 @@ class LicenseCardPreviewApiTests(TestCase):
         self.assertEqual(response["Content-Type"], "application/pdf")
         self.assertIn("sheet-preview", response["Content-Disposition"])
         self.assertTrue(response.content.startswith(b"%PDF"))
+
+    def test_sheet_preview_pdf_html_omits_slot_and_guide_outlines(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        with patch("licenses.card_rendering._render_pdf", return_value=b"%PDF-1.4\n") as render_pdf_mock:
+            response = self.client.post(
+                self.preview_sheet_pdf_url,
+                {
+                    "member_id": self.member.id,
+                    "license_id": self.license.id,
+                    "paper_profile_id": self.paper_profile.id,
+                    "selected_slots": [0, 5],
+                    "include_bleed_guide": False,
+                    "include_safe_area_guide": False,
+                },
+                format="json",
+            )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        rendered_html = str(render_pdf_mock.call_args.args[0])
+        self.assertNotIn("dashed #1d4ed8", rendered_html)
+        self.assertNotIn("#ef4444", rendered_html)
+        self.assertNotIn("#10b981", rendered_html)
+        self.assertNotIn("0.15mm dashed", rendered_html)
 
     def test_preview_sheet_pdf_applies_selected_printer_profile_offset(self):
         self.client.force_authenticate(user=self.ltf_admin)

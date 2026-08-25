@@ -27,6 +27,7 @@ class Club(models.Model):
     locality = models.CharField(max_length=255, blank=True)
     iban = models.CharField(max_length=34, blank=True)
     bank_name = models.CharField(max_length=255, blank=True)
+    email = models.EmailField(blank=True)
     max_admins = models.PositiveIntegerField(default=10)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -62,6 +63,16 @@ class Club(models.Model):
         if postal_locality:
             lines.append(postal_locality)
         return ", ".join(lines)
+
+    def notification_emails(self) -> list[str]:
+        club_email = str(self.email or "").strip()
+        if club_email:
+            return [club_email]
+        return [
+            email.strip()
+            for email in self.admins.values_list("email", flat=True)
+            if email and str(email).strip()
+        ]
 
     def __str__(self):
         return self.name

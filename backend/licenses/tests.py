@@ -317,6 +317,47 @@ class LicenseTypeApiTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
+class InvoiceRecipientEmailTests(TestCase):
+    def test_prefers_club_email_over_admin_emails(self):
+        from licenses.tasks import invoice_recipient_emails
+
+        admin = User.objects.create_user(
+            username="invoice-admin",
+            password="pass12345",
+            role=User.Roles.LTF_ADMIN,
+        )
+        club_admin = User.objects.create_user(
+            username="invoice-club-admin",
+            password="pass12345",
+            email="admin@example.com",
+            role=User.Roles.CLUB_ADMIN,
+        )
+        club = Club.objects.create(
+            name="Mail Club",
+            created_by=admin,
+            email="club@example.com",
+        )
+        club.admins.add(club_admin)
+        member = Member.objects.create(
+            club=club,
+            first_name="Ann",
+            last_name="Mail",
+            email="member@example.com",
+        )
+        invoice = type("Invoice", (), {"member": member, "club": club})()
+        self.assertEqual(
+            invoice_recipient_emails(invoice),
+            ["member@example.com", "club@example.com"],
+        )
+
+        club.email = ""
+        club.save(update_fields=["email"])
+        self.assertEqual(
+            invoice_recipient_emails(invoice),
+            ["member@example.com", "admin@example.com"],
+        )
+
+
 class LicenseApiPermissionTests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -633,6 +674,7 @@ class OrderApiTests(TestCase):
         self.assertGreaterEqual(len(response.data), 1)
         row = response.data[0]
         self.assertIn("item_quantity", row)
+        self.assertEqual(row["club_name"], self.club.name)
         self.assertNotIn("items", row)
         self.assertNotIn("stripe_payment_intent_id", row)
 
@@ -648,8 +690,52 @@ class OrderApiTests(TestCase):
         self.assertGreaterEqual(len(response.data), 1)
         row = response.data[0]
         self.assertIn("item_quantity", row)
+        self.assertEqual(row["club_name"], self.club.name)
         self.assertNotIn("stripe_invoice_id", row)
         self.assertNotIn("stripe_customer_id", row)
+
+    def test_ltf_finance_invoice_totals_outstanding_amount(self):
+        self.client.force_authenticate(user=self.ltf_finance)
+        create_response = self.client.post(
+            "/api/orders/", self._order_payload(), format="json"
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        invoice = Invoice.objects.get(id=create_response.data["invoice"]["id"])
+        invoice.status = Invoice.Status.ISSUED
+        invoice.total = Decimal("30.00")
+        invoice.save(update_fields=["status", "total"])
+
+        response = self.client.get("/api/invoices/totals/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["outstanding_amount"], "30.00")
+        self.assertEqual(response.data["currency"], "EUR")
+
+    def test_ltf_finance_payment_list_includes_invoice_and_club(self):
+        self.client.force_authenticate(user=self.ltf_finance)
+        create_response = self.client.post(
+            "/api/orders/", self._order_payload(), format="json"
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        order = Order.objects.get(id=create_response.data["id"])
+        invoice = Invoice.objects.get(id=create_response.data["invoice"]["id"])
+        Payment.objects.create(
+            invoice=invoice,
+            order=order,
+            amount=Decimal("30.00"),
+            currency="EUR",
+            method=Payment.Method.BANK_TRANSFER,
+            provider=Payment.Provider.MANUAL,
+            status=Payment.Status.PAID,
+            reference=invoice.invoice_number,
+        )
+
+        response = self.client.get("/api/payments/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(len(response.data), 1)
+        row = response.data[0]
+        self.assertEqual(row["invoice_number"], invoice.invoice_number)
+        self.assertEqual(row["club_name"], self.club.name)
+        self.assertEqual(row["club"], self.club.id)
 
     def test_ltf_admin_cannot_list_invoices(self):
         self.client.force_authenticate(user=self.ltf_admin)
@@ -2382,6 +2468,25 @@ class OverviewApiTests(TestCase):
         self.assertEqual(response.data["cards"]["total_clubs"], 2)
         self.assertEqual(response.data["cards"]["active_members"], 2)
         self.assertEqual(response.data["cards"]["active_licenses"], 1)
+
+    def test_ltf_admin_overview_action_queue_links_include_issue_filters(self):
+        cache.clear()
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.get("/api/dashboard/overview/ltf-admin/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        queue = {item["key"]: item for item in response.data["action_queue"]}
+        self.assertEqual(
+            queue["clubs_without_admin"]["link"]["path"],
+            "/dashboard/ltf/club-admins",
+        )
+        self.assertEqual(
+            queue["members_missing_ltf_licenseid"]["link"]["path"],
+            "/dashboard/ltf/members?issue=missing_ltf_licenseid",
+        )
+        self.assertEqual(
+            queue["members_without_active_or_pending_license"]["link"]["path"],
+            "/dashboard/ltf/members?issue=no_valid_license",
+        )
 
     def test_ltf_finance_overview_requires_ltf_finance_role(self):
         self.client.force_authenticate(user=self.ltf_admin)

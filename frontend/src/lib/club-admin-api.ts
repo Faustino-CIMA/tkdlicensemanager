@@ -17,6 +17,7 @@ export type Club = {
   locality: string;
   iban: string;
   bank_name: string;
+  email: string;
   max_admins: number;
   created_by: number;
   admins: number[];
@@ -210,6 +211,7 @@ export type ClubInput = {
   postal_code?: string;
   locality?: string;
   iban?: string;
+  email?: string;
 };
 
 export type LicenseRoleValue =

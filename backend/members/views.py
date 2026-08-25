@@ -2,7 +2,7 @@ import mimetypes
 from pathlib import Path
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db.models import Prefetch, Q
+from django.db.models import Exists, OuterRef, Prefetch, Q
 from django.db.models.deletion import ProtectedError
 from django.http import FileResponse
 from rest_framework import permissions, status, viewsets
@@ -33,6 +33,25 @@ from .services import (
     update_grade_promotion,
 )
 from licenses.models import License, LicenseHistoryEvent
+
+
+def _apply_member_issue_filter(queryset, issue):
+    issue = (issue or "").strip()
+    if issue == "missing_ltf_licenseid":
+        return queryset.filter(is_active=True).filter(
+            Q(ltf_licenseid__isnull=True) | Q(ltf_licenseid="")
+        )
+    if issue == "no_valid_license":
+        has_valid_license = License.objects.filter(
+            member_id=OuterRef("pk"),
+            status__in=[License.Status.ACTIVE, License.Status.PENDING],
+        )
+        return (
+            queryset.filter(is_active=True)
+            .annotate(has_valid_license=Exists(has_valid_license))
+            .filter(has_valid_license=False)
+        )
+    return queryset
 
 
 class MemberViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
@@ -113,6 +132,11 @@ class MemberViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
                 | Q(ltf_licenseid__icontains=search_value)
                 | Q(wt_licenseid__icontains=search_value)
                 | Q(belt_rank__icontains=search_value)
+            )
+
+        if self.action == "list":
+            queryset = _apply_member_issue_filter(
+                queryset, self.request.query_params.get("issue")
             )
 
         return queryset.prefetch_related(

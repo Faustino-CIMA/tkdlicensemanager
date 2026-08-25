@@ -1,12 +1,13 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { ChevronDown, ChevronRight, CircleAlert } from "lucide-react";
+import { CircleAlert } from "lucide-react";
 
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
+import { EntityTable } from "@/components/club-admin/entity-table";
 import { resolveAssignedClubId, useClubSelection } from "@/components/club-selection-provider";
 import {
   License,
@@ -38,15 +39,6 @@ type LicenseStatusFilter = "all" | "active" | "pending" | "expired";
 /** Matches backend `API_PAGINATION_MAX_PAGE_SIZE`. */
 const LICENSES_LIST_PAGE_SIZE_CAP = 200;
 
-type MemberLicenseRow = {
-  member: Member;
-  allLicenses: License[];
-  visibleLicenses: License[];
-  activeCount: number;
-  pendingCount: number;
-  expiredCount: number;
-};
-
 type AuthMeResponse = { role: string };
 const QUICK_PRINT_STORAGE_KEY = "club_quick_print_payload";
 const NO_PRINTER_PROFILE_VALUE = "__no_printer_profile__";
@@ -66,8 +58,6 @@ export default function ClubAdminLicensesPage() {
   const [selectedQuickPrintPrinterProfileValue, setSelectedQuickPrintPrinterProfileValue] =
     useState(NO_PRINTER_PROFILE_VALUE);
   const [licenseTypes, setLicenseTypes] = useState<LicenseType[]>([]);
-  const [expandedMemberIds, setExpandedMemberIds] = useState<number[]>([]);
-  const [expandedStateHydrated, setExpandedStateHydrated] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [licenseStatusFilter, setLicenseStatusFilter] = useState<LicenseStatusFilter>("all");
@@ -232,7 +222,7 @@ export default function ClubAdminLicensesPage() {
   ]);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
 
   useEffect(() => {
@@ -268,53 +258,6 @@ export default function ClubAdminLicensesPage() {
     return new Map(members.map((member) => [member.id, member]));
   }, [members]);
 
-  const memberRows = useMemo(() => {
-    const grouped = new Map<number, License[]>();
-    for (const license of licenses) {
-      const existing = grouped.get(license.member);
-      if (existing) {
-        existing.push(license);
-      } else {
-        grouped.set(license.member, [license]);
-      }
-    }
-    const rows: MemberLicenseRow[] = [];
-    for (const [memberId, memberLicenses] of grouped.entries()) {
-      const member = memberById.get(memberId);
-      if (!member) {
-        continue;
-      }
-      const allLicenses = [...memberLicenses].sort((a, b) => b.year - a.year || b.id - a.id);
-      rows.push({
-        member,
-        allLicenses,
-        visibleLicenses: allLicenses,
-        activeCount: allLicenses.filter((license) => license.status === "active").length,
-        pendingCount: allLicenses.filter((license) => license.status === "pending").length,
-        expiredCount: allLicenses.filter((license) => license.status === "expired").length,
-      });
-    }
-    return rows.sort((left, right) => {
-      const byLastName = left.member.last_name.localeCompare(right.member.last_name);
-      if (byLastName !== 0) {
-        return byLastName;
-      }
-      return left.member.first_name.localeCompare(right.member.first_name);
-    });
-  }, [licenses, memberById]);
-
-  const expandableMemberIds = useMemo(() => {
-    return memberRows.map((row) => row.member.id);
-  }, [memberRows]);
-  const expandableMemberIdSet = useMemo(
-    () => new Set(expandableMemberIds),
-    [expandableMemberIds]
-  );
-  const expandedStorageKey = useMemo(
-    () => `club-licenses-expanded:${selectedClubId ?? "all"}`,
-    [selectedClubId]
-  );
-
   const licenseTypeNameById = useMemo(
     () => new Map(licenseTypes.map((licenseType) => [licenseType.id, licenseType.name])),
     [licenseTypes]
@@ -341,88 +284,6 @@ export default function ClubAdminLicensesPage() {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, selectedClubId, pageSize, licenseStatusFilter]);
-
-  useEffect(() => {
-    setExpandedStateHydrated(false);
-    if (typeof window === "undefined") {
-      setExpandedStateHydrated(true);
-      return;
-    }
-    try {
-      const storedValue = window.localStorage.getItem(expandedStorageKey);
-      if (!storedValue) {
-        setExpandedMemberIds([]);
-        return;
-      }
-      const parsedValue = JSON.parse(storedValue);
-      if (Array.isArray(parsedValue)) {
-        setExpandedMemberIds(
-          parsedValue
-            .map((value) => Number(value))
-            .filter((value) => Number.isInteger(value) && value > 0)
-        );
-        return;
-      }
-      setExpandedMemberIds([]);
-    } catch {
-      setExpandedMemberIds([]);
-    } finally {
-      setExpandedStateHydrated(true);
-    }
-  }, [expandedStorageKey]);
-
-  useEffect(() => {
-    setExpandedMemberIds((previous) => {
-      const next = previous.filter((memberId) => expandableMemberIdSet.has(memberId));
-      return next.length === previous.length ? previous : next;
-    });
-  }, [expandableMemberIdSet]);
-
-  useEffect(() => {
-    if (!expandedStateHydrated || typeof window === "undefined") {
-      return;
-    }
-    try {
-      window.localStorage.setItem(expandedStorageKey, JSON.stringify(expandedMemberIds));
-    } catch {
-      // Ignore browser storage failures.
-    }
-  }, [expandedMemberIds, expandedStateHydrated, expandedStorageKey]);
-
-  const expandedMemberSet = useMemo(
-    () => new Set(expandedMemberIds),
-    [expandedMemberIds]
-  );
-  const pagedMemberIds = useMemo(
-    () => memberRows.map((row) => row.member.id),
-    [memberRows]
-  );
-  const pagedMemberIdSet = useMemo(() => new Set(pagedMemberIds), [pagedMemberIds]);
-  const allPagedExpanded =
-    pagedMemberIds.length > 0 && pagedMemberIds.every((memberId) => expandedMemberSet.has(memberId));
-  const hasExpandedOnPage = pagedMemberIds.some((memberId) => expandedMemberSet.has(memberId));
-
-  const toggleMemberExpanded = (memberId: number) => {
-    setExpandedMemberIds((previous) =>
-      previous.includes(memberId)
-        ? previous.filter((id) => id !== memberId)
-        : [...previous, memberId]
-    );
-  };
-
-  const expandAllOnPage = () => {
-    setExpandedMemberIds((previous) => {
-      const next = new Set(previous);
-      for (const memberId of pagedMemberIds) {
-        next.add(memberId);
-      }
-      return Array.from(next);
-    });
-  };
-
-  const collapseAllOnPage = () => {
-    setExpandedMemberIds((previous) => previous.filter((memberId) => !pagedMemberIdSet.has(memberId)));
-  };
 
   const toggleSelectAllLicenses = () => {
     if (!canManageLicenses) {
@@ -502,6 +363,65 @@ export default function ClubAdminLicensesPage() {
     return formatDisplayDate(value);
   };
 
+  const columns = [
+    ...(canManageLicenses
+      ? [
+          {
+            key: "select",
+            header: (
+              <span className="inline-flex min-h-[var(--control-height)] min-w-[var(--control-height)] items-center justify-center">
+                <Checkbox
+                  aria-label={common("selectAllLabel")}
+                  checked={allLicensesSelected}
+                  onCheckedChange={() => toggleSelectAllLicenses()}
+                />
+              </span>
+            ),
+            render: (license: License) => (
+              <span
+                className="inline-flex min-h-[var(--control-height)] min-w-[var(--control-height)] items-center justify-center"
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+              >
+                <Checkbox
+                  aria-label={common("selectRowLabel")}
+                  checked={selectedLicenseIds.includes(license.id)}
+                  onCheckedChange={() => toggleSelectLicense(license.id)}
+                />
+              </span>
+            ),
+          },
+        ]
+      : []),
+    {
+      key: "member",
+      header: t("memberLabel"),
+      render: (license: License) => {
+        const member = memberById.get(license.member);
+        return member ? `${member.first_name} ${member.last_name}` : t("unknownMember");
+      },
+    },
+    { key: "year", header: t("yearLabel") },
+    {
+      key: "license_type",
+      header: t("licenseTypeLabel"),
+      render: (license: License) =>
+        licenseTypeNameById.get(license.license_type) ?? t("unknownLicenseType"),
+    },
+    {
+      key: "status",
+      header: t("statusLabel"),
+      render: (license: License) => (
+        <StatusBadge label={getStatusLabel(license.status)} tone={getStatusTone(license.status)} />
+      ),
+    },
+    {
+      key: "issued_at",
+      header: t("issuedAtLabel"),
+      render: (license: License) => formatIssuedAt(license.issued_at),
+    },
+  ];
+
   return (
     <ClubAdminLayout title={t("licensesTitle")} subtitle={t("licensesSubtitle")}>
       {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
@@ -552,30 +472,6 @@ export default function ClubAdminLicensesPage() {
 
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex min-h-[var(--control-height)] flex-wrap items-center gap-3">
-              <Select
-                value=""
-                onValueChange={(value) => {
-                  if (value === "expand") {
-                    expandAllOnPage();
-                  }
-                  if (value === "collapse") {
-                    collapseAllOnPage();
-                  }
-                }}
-              >
-                <SelectTrigger className="min-w-[11rem]" aria-label={t("licensesMenuLabel")}>
-                  <SelectValue placeholder={t("licensesMenuLabel")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="expand" disabled={pagedMemberIds.length === 0 || allPagedExpanded}>
-                    {t("expandAllMembers")}
-                  </SelectItem>
-                  <SelectItem value="collapse" disabled={!hasExpandedOnPage}>
-                    {t("collapseAllMembers")}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-
               {canManageLicenses ? (
                 <>
                   <Select
@@ -683,141 +579,16 @@ export default function ClubAdminLicensesPage() {
 
         {isLoading ? (
           <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
-        ) : memberRows.length === 0 ? (
+        ) : licenses.length === 0 ? (
           <EmptyState title={t("noResultsTitle")} description={t("noLicensesResultsSubtitle")} />
         ) : (
-          <div className="app-panel overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-border bg-secondary/70 text-xs uppercase tracking-wide text-muted">
-                <tr>
-                  {canManageLicenses ? (
-                    <th className="w-10 px-4 py-3 font-medium">
-                      <span className="inline-flex min-h-[var(--control-height)] min-w-[var(--control-height)] items-center justify-center">
-                        <Checkbox
-                          aria-label={common("selectAllLabel")}
-                          checked={allLicensesSelected}
-                          onCheckedChange={() => toggleSelectAllLicenses()}
-                        />
-                      </span>
-                    </th>
-                  ) : null}
-                  <th className="w-10 px-4 py-3 font-medium" />
-                  <th className="px-4 py-3 font-medium">{t("memberLabel")}</th>
-                  <th className="px-4 py-3 font-medium">{t("totalLabel")}</th>
-                  <th className="px-4 py-3 font-medium">{t("statusActive")}</th>
-                  <th className="px-4 py-3 font-medium">{t("statusPending")}</th>
-                  <th className="px-4 py-3 font-medium">{t("statusExpired")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/80">
-                {memberRows.map((row) => {
-                  const isExpanded = expandedMemberSet.has(row.member.id);
-                  const memberName = `${row.member.first_name} ${row.member.last_name}`;
-                  const selectedForMember = row.visibleLicenses.filter((license) =>
-                    selectedLicenseIds.includes(license.id)
-                  ).length;
-                  return (
-                    <Fragment key={row.member.id}>
-                      <tr
-                        className="h-[var(--table-row-height)] cursor-pointer text-foreground transition-colors hover:bg-[color-mix(in_oklab,var(--accent)_6%,white)]"
-                        onClick={() => toggleMemberExpanded(row.member.id)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            toggleMemberExpanded(row.member.id);
-                          }
-                        }}
-                        tabIndex={0}
-                        role="button"
-                        aria-expanded={isExpanded}
-                      >
-                        {canManageLicenses ? (
-                          <td className="px-4 py-3 text-xs text-muted">
-                            {selectedForMember > 0 ? selectedForMember : "—"}
-                          </td>
-                        ) : null}
-                        <td className="px-4 py-3 text-muted">
-                          {isExpanded ? (
-                            <ChevronDown className="h-4 w-4" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4" />
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{memberName}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">{row.allLicenses.length}</td>
-                        <td className="px-4 py-3">{row.activeCount}</td>
-                        <td className="px-4 py-3">{row.pendingCount}</td>
-                        <td className="px-4 py-3">{row.expiredCount}</td>
-                      </tr>
-                      {isExpanded ? (
-                        <tr className="bg-secondary/60">
-                          <td colSpan={canManageLicenses ? 7 : 6} className="px-6 py-3">
-                            <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-card">
-                              <table className="min-w-full text-left text-sm">
-                                <thead className="border-b border-border bg-secondary/70 text-xs uppercase tracking-wide text-muted">
-                                  <tr>
-                                    {canManageLicenses ? (
-                                      <th className="w-10 px-4 py-2 font-medium">
-                                        <span className="sr-only">{common("selectRowLabel")}</span>
-                                      </th>
-                                    ) : null}
-                                    <th className="px-4 py-2 font-medium">{t("yearLabel")}</th>
-                                    <th className="px-4 py-2 font-medium">{t("licenseTypeLabel")}</th>
-                                    <th className="px-4 py-2 font-medium">{t("statusLabel")}</th>
-                                    <th className="px-4 py-2 font-medium">{t("issuedAtLabel")}</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-border/80">
-                                  {row.visibleLicenses.map((license) => (
-                                    <tr
-                                      key={license.id}
-                                      className="h-[var(--table-row-height)] text-foreground"
-                                    >
-                                      {canManageLicenses ? (
-                                        <td className="px-4 py-2">
-                                          <span
-                                            className="inline-flex min-h-[var(--control-height)] min-w-[var(--control-height)] items-center justify-center"
-                                            onClick={(event) => event.stopPropagation()}
-                                            onKeyDown={(event) => event.stopPropagation()}
-                                          >
-                                            <Checkbox
-                                              aria-label={common("selectRowLabel")}
-                                              checked={selectedLicenseIds.includes(license.id)}
-                                              onCheckedChange={() => toggleSelectLicense(license.id)}
-                                            />
-                                          </span>
-                                        </td>
-                                      ) : null}
-                                      <td className="px-4 py-2">{license.year}</td>
-                                      <td className="px-4 py-2">
-                                        {licenseTypeNameById.get(license.license_type) ??
-                                          t("unknownLicenseType")}
-                                      </td>
-                                      <td className="px-4 py-2">
-                                        <StatusBadge
-                                          label={getStatusLabel(license.status)}
-                                          tone={getStatusTone(license.status)}
-                                        />
-                                      </td>
-                                      <td className="px-4 py-2">{formatIssuedAt(license.issued_at)}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </td>
-                        </tr>
-                      ) : null}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <EntityTable
+            columns={columns}
+            rows={licenses}
+            onRowClick={(license) =>
+              router.push(`/${locale}/dashboard/club/members/${license.member}`)
+            }
+          />
         )}
       </div>
     </ClubAdminLayout>

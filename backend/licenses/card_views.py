@@ -7,6 +7,7 @@ from django.db import transaction
 from django.db.models import Max, Q
 from django.http import FileResponse, HttpResponse
 from django.utils import timezone
+from django.utils.text import slugify
 from django.utils.dateparse import parse_date, parse_datetime
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
@@ -21,6 +22,12 @@ from config.pagination import OptionalPaginationListMixin
 from clubs.models import Club
 from members.models import Member
 
+from .card_design_transfer import (
+    CardDesignTransferError,
+    build_export_bundle,
+    dump_export_json,
+    import_bundle,
+)
 from .card_rendering import (
     CardRenderError,
     build_card_simulation_payload,
@@ -404,6 +411,74 @@ class CardTemplateViewSet(viewsets.ModelViewSet):
             )
         return Response(
             CardTemplateSerializer(cloned_template).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(
+                response=OpenApiTypes.BINARY,
+                description="Portable card template export JSON.",
+            )
+        }
+    )
+    @action(detail=True, methods=["get"], url_path="export")
+    def export_template(self, request, pk=None):
+        if not _is_ltf_admin(request.user):
+            raise PermissionDenied("Only LTF Admin can export templates.")
+        template = self.get_object()
+        version_id = request.query_params.get("version_id")
+        versions = template.versions.all()
+        source_version = None
+        if version_id:
+            try:
+                source_version = versions.filter(pk=int(version_id)).first()
+            except (TypeError, ValueError):
+                source_version = None
+            if source_version is None:
+                raise serializers.ValidationError(
+                    {"version_id": "Version does not belong to this template."}
+                )
+        if source_version is None:
+            source_version = versions.order_by("-version_number").first()
+        if source_version is None:
+            raise serializers.ValidationError(
+                {"detail": "Template must have at least one version to export."}
+            )
+        bundle = build_export_bundle(template=template, version=source_version)
+        filename = f"card-template-{slugify(template.name) or template.id}.json"
+        response = HttpResponse(dump_export_json(bundle), content_type="application/json")
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+    @extend_schema(request=None, responses=CardTemplateSerializer)
+    @action(detail=False, methods=["post"], url_path="import")
+    def import_template(self, request):
+        if not _is_ltf_admin(request.user):
+            raise PermissionDenied("Only LTF Admin can import templates.")
+        payload = request.data
+        if not isinstance(payload, dict):
+            raise serializers.ValidationError(
+                {"detail": "Import body must be a JSON object."}
+            )
+        name_override = str(payload.get("import_name") or "").strip() or None
+        try:
+            with transaction.atomic():
+                template = import_bundle(
+                    payload,
+                    user=request.user,
+                    name_override=name_override,
+                )
+        except CardDesignTransferError as exc:
+            raise serializers.ValidationError({"detail": str(exc)}) from exc
+        self._audit_template_event(
+            template_id=int(template.id),
+            template_name=str(template.name),
+            action="imported",
+            message="Card template imported.",
+        )
+        return Response(
+            CardTemplateSerializer(template).data,
             status=status.HTTP_201_CREATED,
         )
 

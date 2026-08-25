@@ -1,6 +1,6 @@
 "use client";
 
-import type { ComponentProps, ReactNode } from "react";
+import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -187,6 +187,102 @@ export function PageNotice({
     tone === "danger" ? "banner-danger" : tone === "success" ? "banner-success" : "banner-info";
   return (
     <p className={cn("rounded-[var(--radius-form)] border px-4 py-3 text-sm", toneClass)}>{children}</p>
+  );
+}
+
+export function FloatingNotice({
+  open,
+  tone,
+  token,
+  children,
+  onDismiss,
+  dismissLabel,
+}: {
+  open: boolean;
+  tone: "danger" | "success" | "info";
+  token?: string;
+  children: ReactNode;
+  onDismiss?: () => void;
+  dismissLabel?: string;
+}) {
+  const [mounted, setMounted] = useState(false);
+  const [shown, setShown] = useState(false);
+  const [payload, setPayload] = useState<{ tone: typeof tone; children: ReactNode }>({
+    tone,
+    children,
+  });
+
+  useEffect(() => {
+    if (open) {
+      setPayload({ tone, children });
+      setMounted(true);
+      setShown(false);
+      const start = window.setTimeout(() => setShown(true), 30);
+      return () => window.clearTimeout(start);
+    }
+    setShown(false);
+    return undefined;
+    // Snapshot copy when the notice opens or is replaced; ignore render-identity of children.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, token]);
+
+  if (!mounted) {
+    return null;
+  }
+
+  const toneClass =
+    payload.tone === "danger"
+      ? "banner-danger"
+      : payload.tone === "success"
+        ? "banner-success"
+        : "banner-info";
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed right-4 z-[60] w-[min(24rem,calc(100vw-2rem))]"
+      style={{
+        top: "calc(var(--topbar-height, 4rem) + 0.75rem)",
+        transform: shown ? "translateX(0)" : "translateX(calc(100% + 1.5rem))",
+        opacity: shown ? 1 : 0,
+        transition: shown
+          ? "transform 520ms cubic-bezier(0.16, 1, 0.3, 1), opacity 280ms ease-out"
+          : "transform 340ms cubic-bezier(0.4, 0, 1, 1), opacity 220ms ease-in",
+      }}
+      onTransitionEnd={(event) => {
+        if (event.target !== event.currentTarget) {
+          return;
+        }
+        if (event.propertyName !== "transform") {
+          return;
+        }
+        if (!shown) {
+          setMounted(false);
+        }
+      }}
+    >
+      <div
+        className={cn(
+          "flex items-start gap-3 rounded-[var(--radius-form)] border px-4 py-3 text-sm shadow-[var(--shadow-float,0_12px_32px_rgb(15_23_42/0.16))]",
+          toneClass
+        )}
+      >
+        <div className="min-w-0 flex-1">{payload.children}</div>
+        {onDismiss ? (
+          <button
+            type="button"
+            className="inline-flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-form)] hover:bg-[color-mix(in_oklab,black_8%,transparent)]"
+            onClick={onDismiss}
+            aria-label={dismissLabel || "Close"}
+          >
+            <span aria-hidden className="text-lg leading-none">
+              ×
+            </span>
+          </button>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

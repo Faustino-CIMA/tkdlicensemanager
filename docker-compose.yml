@@ -74,11 +74,15 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      EMAIL_HOST: ${EMAIL_HOST:-mailpit}
+      EMAIL_PORT: ${EMAIL_PORT:-1025}
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     command: >
       sh -c "APP_UID=$$(id -u app) &&
       APP_GID=$$(id -g app) &&
@@ -136,6 +140,8 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      EMAIL_HOST: ${EMAIL_HOST:-mailpit}
+      EMAIL_PORT: ${EMAIL_PORT:-1025}
     depends_on:
       db:
         condition: service_healthy
@@ -143,6 +149,8 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     command: >
       sh -c "APP_UID=$$(id -u app) &&
       APP_GID=$$(id -g app) &&
@@ -185,6 +193,8 @@ services:
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
       CELERY_BEAT_SCHEDULE_FILENAME: /var/lib/celerybeat/celerybeat-schedule
+      EMAIL_HOST: ${EMAIL_HOST:-mailpit}
+      EMAIL_PORT: ${EMAIL_PORT:-1025}
     depends_on:
       db:
         condition: service_healthy
@@ -192,6 +202,8 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     command: >
       sh -c "APP_UID=$$(id -u app) &&
       APP_GID=$$(id -g app) &&
@@ -215,6 +227,15 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    networks:
+      - app-net
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${MAILPIT_UI_BIND:-127.0.0.1}:8025:8025"
     networks:
       - app-net
 

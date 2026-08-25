@@ -58,6 +58,7 @@ export type FinanceInvoice = {
   invoice_number: string;
   order: number | null;
   club: number;
+  club_name?: string;
   member: number | null;
   status: string;
   currency: string;
@@ -77,6 +78,7 @@ export type FinanceOrder = {
   id: number;
   order_number: string;
   club: number;
+  club_name?: string;
   member: number | null;
   status: string;
   currency: string;
@@ -109,7 +111,11 @@ export type FinanceAuditLog = {
 export type Payment = {
   id: number;
   invoice: number;
+  invoice_number?: string;
   order: number;
+  order_number?: string;
+  club?: number;
+  club_name?: string;
   amount: string;
   currency: string;
   method: string;
@@ -372,9 +378,32 @@ export function getFinanceInvoice(invoiceId: number) {
   return apiRequest<FinanceInvoice>(`/api/invoices/${invoiceId}/`);
 }
 
+export type FinanceInvoiceTotals = {
+  outstanding_amount: string;
+  currency: string;
+};
+
+export function getFinanceInvoiceTotals(
+  params?: Pick<FinanceInvoiceQueryParams, "q" | "clubId">,
+  options?: ApiCallOptions
+) {
+  const search = new URLSearchParams();
+  if (params?.q) {
+    search.set("q", params.q);
+  }
+  if (params?.clubId) {
+    search.set("club_id", String(params.clubId));
+  }
+  const suffix = search.toString();
+  return apiRequest<FinanceInvoiceTotals>(`/api/invoices/totals/${suffix ? `?${suffix}` : ""}`, {
+    signal: options?.signal,
+  });
+}
+
 type FinancePaymentQueryParams = {
   invoiceId?: number;
   orderId?: number;
+  clubId?: number;
   status?: string;
   q?: string;
 };
@@ -391,6 +420,9 @@ function buildFinancePaymentQuery(params?: FinancePaymentQueryParams) {
   }
   if (params?.orderId) {
     search.set("order_id", String(params.orderId));
+  }
+  if (params?.clubId) {
+    search.set("club_id", String(params.clubId));
   }
   if (params?.status) {
     search.set("status", params.status);

@@ -3271,6 +3271,22 @@ export default function LtfAdminLicenseCardDesignerPage() {
     };
   }, [buildPreviewSheetPayload]);
 
+  const buildPrintPreviewSheetPayload = useCallback((): CardSheetPreviewRequestInput => {
+    return {
+      ...buildPreviewSheetPayload(),
+      include_bleed_guide: false,
+      include_safe_area_guide: false,
+    };
+  }, [buildPreviewSheetPayload]);
+
+  const buildPrintPreviewCardPayload = useCallback((): CardPreviewRequestInput => {
+    return {
+      ...buildPreviewCardPayload(),
+      include_bleed_guide: false,
+      include_safe_area_guide: false,
+    };
+  }, [buildPreviewCardPayload]);
+
   const handleRefreshPreviewData = async () => {
     if (!selectedVersion) {
       setErrorMessage(t("licenseCardDesignerNoVersionsSubtitle"));
@@ -3307,7 +3323,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
     setErrorMessage(null);
     setSuccessMessage(null);
     try {
-      const payload = buildPreviewCardPayload();
+      const payload = buildPrintPreviewCardPayload();
       const blob = await getCardTemplateVersionCardPreviewPdf(selectedVersion.id, payload);
       openBlobInNewTab(blob);
     } catch (error) {
@@ -3333,7 +3349,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
     setErrorMessage(null);
     setSuccessMessage(null);
     try {
-      const payload = buildPreviewSheetPayload();
+      const payload = buildPrintPreviewSheetPayload();
       if (!payload.paper_profile_id && !selectedVersion.paper_profile) {
         setErrorMessage(t("licenseCardPreviewSheetRequiresPaperProfileError"));
         return;
@@ -3362,7 +3378,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
     setIsLoadingLiveSimulation(true);
     setLiveSimulationError(null);
     try {
-      const payload = buildPreviewCardPayload();
+      const payload = buildPrintPreviewCardPayload();
       const response = await getCardTemplateVersionCardPreviewHtml(selectedVersion.id, payload, {
         signal: controller.signal,
       });
@@ -3393,7 +3409,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
         setIsLoadingLiveSimulation(false);
       }
     }
-  }, [buildPreviewCardPayload, selectedVersion, t]);
+  }, [buildPrintPreviewCardPayload, selectedVersion, t]);
 
   useEffect(() => {
     if (!isLivePrintSimulationEnabled) {

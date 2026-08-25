@@ -4,14 +4,24 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
-### Technical
-- Frontend: Next.js 16.3.2, React 19.2.8, Tailwind 4.3.3, and related same-major lockfile refresh (Radix, next-intl, react-hook-form, zod, Jest). Lucide, photo crop, ONNX, WeasyPrint, bleach, and Django 6.1 were left unchanged.
-- CI now matches Docker: Python 3.13, PostgreSQL 18, Node 22.
+## [0.6.0] - 2026-08-25
 
 ### User-facing
-- **Checkout return:** After Stripe payment, the success page confirms the session and activates licenses before **Go to dashboard**, so the dashboard should already show a paid invoice and current licenses.
-- **Record payment:** LTF Finance records a payment on a full page instead of a modal. Transaction communication is pre-filled with the invoice number and the payment date defaults to today.
-- **Fund inflows:** LTF Finance can record other income (subsidies, donations, sponsoring, grants) on a dedicated Income register. These amounts appear on the finance overview, income statement, cash movement, and Excel export.
+- **Club admins:** LTF Admin assigns club admins on a search-first board (pick a club or a member, then connect them). The Admins tab on the club detail page is gone.
+- **Club email:** Each club can store an email. Invoice mail goes there, or to the club admins if none is set.
+- **Welcome email:** New club admins receive a username and a set-password link (Resend in production, Mailpit locally).
+- **Lists:** LTF Members, Licenses, and LTF Finance orders, invoices, and payments use the same flattened list chrome as Club Members.
+- **Card templates:** License card templates can be exported and imported. Print PDFs no longer draw bleed or slot guides.
+- **Checkout return:** After Stripe payment, the success page confirms the session and activates licenses before **Go to dashboard**.
+- **Record payment:** LTF Finance records a payment on a full page instead of a modal.
+- **Fund inflows:** LTF Finance can record other income (subsidies, donations, sponsoring, grants) on an Income register.
+
+### Technical
+- `Club.email`, `notification_emails()`, and `/api/clubs/admin_assignment/` plus capped `/api/clubs/admin_assignment_members/`.
+- Mailpit in Compose; Resend when `RESEND_API_KEY` is real, otherwise Django SMTP.
+- Card template transfer (`ltkdf.card-template`) and authenticated logo previews on the LTF club page.
+- Frontend: Next.js 16.3.2, React 19.2.8, Tailwind 4.3.3 lockfile refresh. CI matches Docker (Python 3.13, PostgreSQL 18, Node 22).
+- Millimetre print precision is unchanged.
 
 ## [0.5.0] - 2026-08-20
 

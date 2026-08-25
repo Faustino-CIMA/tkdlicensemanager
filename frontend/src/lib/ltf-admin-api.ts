@@ -17,6 +17,7 @@ export type Club = {
   locality: string;
   iban: string;
   bank_name: string;
+  email: string;
   max_admins: number;
   created_by: number;
   admins: number[];
@@ -149,6 +150,7 @@ export type ClubInput = {
   postal_code?: string;
   locality?: string;
   iban?: string;
+  email?: string;
 };
 
 export type MemberInput = {
@@ -315,8 +317,19 @@ export type LtfAdminOverviewResponse = {
   };
 };
 
-export function getClubs() {
-  return apiRequest<Club[] | PaginatedResponse<Club>>("/api/clubs/").then(unwrapListResponse);
+export type ClubListQueryParams = {
+  issue?: "no_admin";
+};
+
+export function getClubs(params?: ClubListQueryParams) {
+  const search = new URLSearchParams();
+  if (params?.issue) {
+    search.set("issue", params.issue);
+  }
+  const suffix = search.toString();
+  return apiRequest<Club[] | PaginatedResponse<Club>>(
+    `/api/clubs/${suffix ? `?${suffix}` : ""}`
+  ).then(unwrapListResponse);
 }
 
 export function getClub(id: number) {
@@ -432,6 +445,71 @@ export type EligibleMember = {
   club_name: string;
 };
 
+export type AssignmentClub = {
+  id: number;
+  name: string;
+  locality: string;
+  max_admins: number;
+  admin_count: number;
+  admin_ids: number[];
+};
+
+export type AssignmentMember = {
+  id: number;
+  first_name: string;
+  last_name: string;
+  email: string;
+  club_id: number;
+  club_name: string;
+  has_valid_license: boolean;
+  user_id: number | null;
+  username: string;
+  administered_club_ids: number[];
+};
+
+export type AssignmentAdminClub = {
+  id: number;
+  name: string;
+};
+
+export type AssignmentAdmin = {
+  id: number;
+  username: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  role: string;
+  member_id: number | null;
+  member_name: string;
+  home_club_id: number | null;
+  home_club_name: string;
+  clubs: AssignmentAdminClub[];
+};
+
+export type ClubAdminAssignmentBoard = {
+  clubs: AssignmentClub[];
+  admins: AssignmentAdmin[];
+};
+
+export type AssignmentMemberSearch = {
+  members: AssignmentMember[];
+  total: number;
+  truncated: boolean;
+  limit: number;
+};
+
+export type AddClubAdminResponse = {
+  detail: string;
+  created_user: boolean;
+  linked_existing_user: boolean;
+  email_sent: boolean;
+  email_error: string | null;
+  reset_url: string;
+  username: string;
+  user_id: number;
+  member_id: number | null;
+};
+
 export function getClubAdmins(clubId: number) {
   return apiRequest<{ admins: ClubAdmin[]; max_admins: number }>(
     `/api/clubs/${clubId}/admins/`
@@ -444,8 +522,36 @@ export function getEligibleMembers(clubId: number) {
   );
 }
 
+export function getClubAdminAssignment() {
+  return apiRequest<ClubAdminAssignmentBoard>("/api/clubs/admin_assignment/");
+}
+
+export function searchClubAdminAssignmentMembers(options: {
+  query?: string;
+  clubId?: number | null;
+  licensedOnly?: boolean;
+  limit?: number;
+  signal?: AbortSignal;
+}) {
+  const search = new URLSearchParams();
+  if (options.query?.trim()) {
+    search.set("q", options.query.trim());
+  }
+  if (options.clubId) {
+    search.set("club_id", String(options.clubId));
+  }
+  search.set("licensed_only", options.licensedOnly === false ? "false" : "true");
+  if (options.limit) {
+    search.set("limit", String(options.limit));
+  }
+  return apiRequest<AssignmentMemberSearch>(
+    `/api/clubs/admin_assignment_members/?${search.toString()}`,
+    { signal: options.signal }
+  );
+}
+
 export function addClubAdmin(clubId: number, memberId: number, email?: string, locale?: string) {
-  return apiRequest(`/api/clubs/${clubId}/add_admin/`, {
+  return apiRequest<AddClubAdminResponse>(`/api/clubs/${clubId}/add_admin/`, {
     method: "POST",
     body: JSON.stringify({ member_id: memberId, email, locale }),
   });
@@ -465,11 +571,14 @@ export function setClubMaxAdmins(clubId: number, maxAdmins: number) {
   });
 }
 
+export type MemberIssueFilter = "no_valid_license" | "missing_ltf_licenseid";
+
 type MemberListQueryParams = {
   q?: string;
   clubId?: number;
   isActive?: boolean;
   ids?: number[];
+  issue?: MemberIssueFilter;
 };
 
 type MemberPageParams = MemberListQueryParams & {
@@ -490,6 +599,9 @@ function buildMemberListQuery(params?: MemberListQueryParams) {
   }
   if (params?.ids && params.ids.length > 0) {
     search.set("ids", params.ids.join(","));
+  }
+  if (params?.issue) {
+    search.set("issue", params.issue);
   }
   return search;
 }

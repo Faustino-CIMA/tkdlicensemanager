@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Trash2 } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
@@ -36,7 +36,9 @@ export default function LtfAdminClubsPage() {
   const common = useTranslations("Common");
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const locale = pathname?.split("/")[1] || "en";
+  const issue = searchParams.get("issue") === "no_admin" ? "no_admin" : null;
   const [clubs, setClubs] = useState<Club[]>([]);
   const [clubToDelete, setClubToDelete] = useState<Club | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -49,22 +51,26 @@ export default function LtfAdminClubsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const { selectedClubId } = useClubSelection();
 
-  const loadClubs = async () => {
+  const loadClubs = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const clubsResponse = await getClubs();
+      const clubsResponse = await getClubs(issue ? { issue } : undefined);
       setClubs(clubsResponse);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to load clubs.");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [issue]);
 
   useEffect(() => {
     void loadClubs();
-  }, []);
+  }, [loadClubs]);
+
+  const dismissIssueFilter = () => {
+    router.replace(`/${locale}/dashboard/ltf/clubs`);
+  };
 
   const searchedClubs = useMemo(() => {
     const scopedClubs = selectedClubId
@@ -156,6 +162,20 @@ export default function LtfAdminClubsPage() {
       {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
 
       <div className="space-y-6">
+        {issue === "no_admin" ? (
+          <div className="flex items-start justify-between gap-3 rounded-[var(--radius-form)] border px-4 py-3 text-sm banner-info">
+            <p className="min-w-0 flex-1">{t("clubsWithoutAdminFilterMessage")}</p>
+            <button
+              type="button"
+              className="inline-flex h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] shrink-0 items-center justify-center rounded-[var(--radius-form)]"
+              aria-label={common("modalClose")}
+              onClick={dismissIssueFilter}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        ) : null}
+
         <div className="flex flex-col gap-4">
           <ListToolbarPanel
             search={
