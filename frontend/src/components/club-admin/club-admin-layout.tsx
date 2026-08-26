@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 import {
+  ArrowLeftRight,
   CreditCard,
   FileText,
   IdCard,
@@ -14,6 +15,7 @@ import {
   Users,
 } from "lucide-react";
 
+import { IncomingTransferNotice } from "@/components/club-admin/incoming-transfer-notice";
 import { AppShell, type AppNavItem } from "@/components/app-shell";
 
 type ClubAdminLayoutProps = {
@@ -34,6 +36,7 @@ type ClubNavDef = Readonly<{
     | "navPrintJobs"
     | "navOrders"
     | "navInvoices"
+    | "navTransfers"
     | "navPrinterProfiles"
     | "navSettings";
   matchMode: NavMatchMode;
@@ -84,6 +87,13 @@ const CLUB_NAV_DEFINITIONS: readonly ClubNavDef[] = Object.freeze([
     icon: FileText,
   } satisfies ClubNavDef),
   Object.freeze({
+    id: "transfers",
+    routePath: "dashboard/club/transfers",
+    labelKey: "navTransfers",
+    matchMode: "prefix",
+    icon: ArrowLeftRight,
+  } satisfies ClubNavDef),
+  Object.freeze({
     id: "printer-profiles",
     routePath: "dashboard/club/printer-profiles",
     labelKey: "navPrinterProfiles",
@@ -118,6 +128,7 @@ export function ClubAdminLayout({ title, subtitle, children }: ClubAdminLayoutPr
 
   return (
     <AppShell title={title} subtitle={subtitle} navItems={navItems}>
+      <IncomingTransferNotice />
       {children}
     </AppShell>
   );

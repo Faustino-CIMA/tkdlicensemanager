@@ -3,13 +3,10 @@ from __future__ import annotations
 import re
 
 from django.conf import settings
-from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.db.models import Count, Exists, OuterRef, Prefetch, Q
 from django.utils.crypto import get_random_string
-from django.utils.encoding import force_bytes
-from django.utils.http import urlsafe_base64_encode
 
-from accounts.email_utils import send_club_admin_welcome_email
+from accounts.email_utils import build_password_reset_url, send_club_admin_welcome_email
 from accounts.models import User
 from licenses.models import License
 from members.models import Member
@@ -198,9 +195,7 @@ def _grant_club_admin_role(user: User) -> None:
 
 
 def _build_reset_url(user: User, locale: str) -> str:
-    token = PasswordResetTokenGenerator().make_token(user)
-    uid = urlsafe_base64_encode(force_bytes(user.pk))
-    return f"{settings.FRONTEND_BASE_URL}/{locale}/reset-password?uid={uid}&token={token}"
+    return build_password_reset_url(user, locale)
 
 
 def assign_club_admin(

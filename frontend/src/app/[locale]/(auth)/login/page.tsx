@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 
@@ -16,6 +16,8 @@ export default function LoginPage() {
   const t = useTranslations("Auth");
   const router = useRouter();
   const locale = useLocale();
+  const searchParams = useSearchParams();
+  const prefillUsername = (searchParams.get("username") ?? "").trim();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showVerifyLink, setShowVerifyLink] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{ username?: string; password?: string }>({});
@@ -99,8 +101,10 @@ export default function LoginPage() {
                 id="login-username"
                 name="username"
                 autoComplete="username"
+                defaultValue={prefillUsername}
                 placeholder="john.doe"
                 disabled={isSubmitting}
+                autoFocus={!prefillUsername}
               />
               {fieldErrors.username ? <p className="text-sm text-destructive">{fieldErrors.username}</p> : null}
             </div>
@@ -116,6 +120,7 @@ export default function LoginPage() {
                 autoComplete="current-password"
                 placeholder="••••••••"
                 disabled={isSubmitting}
+                autoFocus={Boolean(prefillUsername)}
               />
               {fieldErrors.password ? <p className="text-sm text-destructive">{fieldErrors.password}</p> : null}
             </div>

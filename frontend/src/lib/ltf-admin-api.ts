@@ -289,6 +289,7 @@ export type LtfAdminOverviewResponse = {
   action_queue: Array<{
     key:
       | "clubs_without_admin"
+      | "paid_pending_transfers"
       | "members_missing_ltf_licenseid"
       | "members_without_active_or_pending_license";
     count: number;

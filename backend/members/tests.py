@@ -1306,3 +1306,166 @@ class LtfLicensePrefixRewriteTests(TestCase):
         self.client.force_authenticate(user=self.club_admin)
         response = self.client.post("/api/members/ltf-license-prefix-rewrite/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+@override_settings(
+    RESEND_API_KEY="replace-me",
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+)
+class MemberTransferApiTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.ltf_admin = User.objects.create_user(
+            username="transfer-ltf",
+            password="pass12345",
+            role=User.Roles.LTF_ADMIN,
+            email="ltf.transfer@example.com",
+        )
+        self.source_admin = User.objects.create_user(
+            username="source-admin",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+            email="source.admin@example.com",
+        )
+        self.dest_admin = User.objects.create_user(
+            username="dest-admin",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+            email="dest.admin@example.com",
+        )
+        self.source_club = Club.objects.create(
+            name="Source Club",
+            city="Luxembourg",
+            created_by=self.ltf_admin,
+        )
+        self.dest_club = Club.objects.create(
+            name="Dest Club",
+            city="Esch",
+            created_by=self.ltf_admin,
+        )
+        self.source_club.admins.add(self.source_admin)
+        self.dest_club.admins.add(self.dest_admin)
+        self.athlete = Member.objects.create(
+            club=self.source_club,
+            first_name="Alex",
+            last_name="Moved",
+            email="alex.moved@example.com",
+        )
+        self.license_type = LicenseType.objects.create(name="Transfer Paid", code="transfer-paid")
+        self.license = License.objects.create(
+            member=self.athlete,
+            club=self.source_club,
+            license_type=self.license_type,
+            year=2026,
+            status=License.Status.ACTIVE,
+        )
+
+    def test_club_admin_can_create_free_transfer_and_destination_completes_it(self):
+        self.client.force_authenticate(user=self.source_admin)
+        from django.core import mail
+        from django.test import override_settings
+
+        with override_settings(
+            RESEND_API_KEY="replace-me",
+            EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        ):
+            created = self.client.post(
+                "/api/member-transfers/",
+                {
+                    "member_id": self.athlete.id,
+                    "to_club_id": self.dest_club.id,
+                    "fee_amount": "0",
+                    "note": "Please take Alex.",
+                    "locale": "en",
+                },
+                format="json",
+            )
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(created.data["status"], "pending")
+        self.assertFalse(created.data["has_fee"])
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("dest.admin@example.com", mail.outbox[0].to)
+
+        transfer_id = created.data["id"]
+        self.client.force_authenticate(user=self.dest_admin)
+        with override_settings(
+            RESEND_API_KEY="replace-me",
+            EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        ):
+            accepted = self.client.post(
+                f"/api/member-transfers/{transfer_id}/accept/",
+                {"locale": "en"},
+                format="json",
+            )
+        self.assertEqual(accepted.status_code, 200)
+        self.assertEqual(accepted.data["status"], "completed")
+        self.athlete.refresh_from_db()
+        self.license.refresh_from_db()
+        self.assertEqual(self.athlete.club_id, self.dest_club.id)
+        self.assertEqual(self.license.club_id, self.dest_club.id)
+
+    def test_fee_transfer_notifies_ltf_admin(self):
+        self.client.force_authenticate(user=self.source_admin)
+        from django.core import mail
+        from django.test import override_settings
+
+        with override_settings(
+            RESEND_API_KEY="replace-me",
+            EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        ):
+            created = self.client.post(
+                "/api/member-transfers/",
+                {
+                    "member_id": self.athlete.id,
+                    "to_club_id": self.dest_club.id,
+                    "fee_amount": "150.00",
+                    "locale": "en",
+                },
+                format="json",
+            )
+        self.assertEqual(created.status_code, 201)
+        self.assertTrue(created.data["has_fee"])
+        self.assertTrue(created.data["ltf_notified"])
+        recipients = [address for message in mail.outbox for address in message.to]
+        self.assertIn("dest.admin@example.com", recipients)
+        self.assertIn("ltf.transfer@example.com", recipients)
+
+    def test_cannot_transfer_source_club_admin(self):
+        admin_member = Member.objects.create(
+            user=self.source_admin,
+            club=self.source_club,
+            first_name="Source",
+            last_name="Admin",
+        )
+        self.client.force_authenticate(user=self.source_admin)
+        response = self.client.post(
+            "/api/member-transfers/",
+            {"member_id": admin_member.id, "to_club_id": self.dest_club.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data["detail"], "member_is_club_admin")
+
+    def test_destination_can_message_and_source_can_cancel(self):
+        self.client.force_authenticate(user=self.source_admin)
+        created = self.client.post(
+            "/api/member-transfers/",
+            {"member_id": self.athlete.id, "to_club_id": self.dest_club.id},
+            format="json",
+        )
+        transfer_id = created.data["id"]
+        self.client.force_authenticate(user=self.dest_admin)
+        messaged = self.client.post(
+            f"/api/member-transfers/{transfer_id}/messages/",
+            {"body": "Can we make this free?"},
+            format="json",
+        )
+        self.assertEqual(messaged.status_code, 201)
+        self.assertEqual(len(messaged.data["messages"]), 1)
+        self.client.force_authenticate(user=self.source_admin)
+        cancelled = self.client.post(f"/api/member-transfers/{transfer_id}/cancel/", {}, format="json")
+        self.assertEqual(cancelled.status_code, 200)
+        self.assertEqual(cancelled.data["status"], "cancelled")
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.club_id, self.source_club.id)
+

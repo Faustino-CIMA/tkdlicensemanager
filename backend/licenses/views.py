@@ -28,7 +28,7 @@ from accounts.permissions import (
 from config.pagination import OptionalPaginationListMixin
 
 from clubs.models import Club
-from members.models import Member
+from members.models import Member, MemberTransfer
 
 from .models import (
     Expense,
@@ -822,7 +822,7 @@ class LtfAdminOverviewView(APIView):
     permission_classes = [IsLtfAdmin]
 
     def get(self, request):
-        cache_key = "dashboard:overview:ltf_admin:v2"
+        cache_key = "dashboard:overview:ltf_admin:v3"
         cached_payload = cache.get(cache_key)
         if cached_payload is not None:
             return Response(cached_payload, status=status.HTTP_200_OK)
@@ -855,6 +855,10 @@ class LtfAdminOverviewView(APIView):
         clubs_without_admin = (
             Club.objects.annotate(admin_count=Count("admins")).filter(admin_count=0).count()
         )
+        paid_pending_transfers = MemberTransfer.objects.filter(
+            status=MemberTransfer.Status.PENDING,
+            fee_amount__gt=0,
+        ).count()
         expiring_in_30_days = licenses_queryset.filter(
             status=License.Status.ACTIVE,
             end_date__gte=today,
@@ -913,6 +917,14 @@ class LtfAdminOverviewView(APIView):
                     "severity": "warning",
                     "link": _overview_link(
                         "LtfAdmin.navClubAdmins", "/dashboard/ltf/club-admins"
+                    ),
+                },
+                {
+                    "key": "paid_pending_transfers",
+                    "count": paid_pending_transfers,
+                    "severity": "warning",
+                    "link": _overview_link(
+                        "LtfAdmin.navMemberTransfers", "/dashboard/ltf/member-transfers"
                     ),
                 },
                 {

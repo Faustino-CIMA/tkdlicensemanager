@@ -227,3 +227,80 @@ class GradePromotionHistory(models.Model):
 
     def __str__(self):
         return f"{self.member} · {self.from_grade} -> {self.to_grade}"
+
+
+class MemberTransfer(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        COMPLETED = "completed", "Completed"
+        REJECTED = "rejected", "Rejected"
+        CANCELLED = "cancelled", "Cancelled"
+
+    member = models.ForeignKey(Member, on_delete=models.PROTECT, related_name="transfers")
+    from_club = models.ForeignKey(
+        Club, on_delete=models.PROTECT, related_name="outgoing_member_transfers"
+    )
+    to_club = models.ForeignKey(
+        Club, on_delete=models.PROTECT, related_name="incoming_member_transfers"
+    )
+    initiated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="initiated_member_transfers",
+    )
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="decided_member_transfers",
+    )
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    fee_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    fee_currency = models.CharField(max_length=3, default="EUR")
+    note = models.TextField(blank=True)
+    ltf_notified = models.BooleanField(default=False)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "-created_at"], name="mtr_status_created_idx"),
+            models.Index(fields=["from_club", "status"], name="mtr_from_status_idx"),
+            models.Index(fields=["to_club", "status"], name="mtr_to_status_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["member"],
+                condition=models.Q(status="pending"),
+                name="unique_pending_member_transfer",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(from_club=models.F("to_club")),
+                name="member_transfer_clubs_must_differ",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.member} {self.from_club} -> {self.to_club} ({self.status})"
+
+
+class MemberTransferMessage(models.Model):
+    transfer = models.ForeignKey(
+        MemberTransfer, on_delete=models.CASCADE, related_name="messages"
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="member_transfer_messages",
+    )
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"Message on transfer {self.transfer_id}"

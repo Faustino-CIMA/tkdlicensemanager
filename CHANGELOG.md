@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-25
+
+### User-facing
+- **Member transfers:** Club Admins can request a member move to another club (rubber-band). The receiving club must accept. Optional fee (0 is free). Club-to-club messages on the request. Active or pending licenses move with the member.
+- **Transfer notice:** The receiving Club Admin sees an in-app notice on login, and **Review transfers** scrolls to Requests and messages.
+- **First password:** The welcome/reset link prefills the username so a password manager can save both fields. Login is prefilled after Continue to login.
+- **LTF:** Pending transfers with a fee appear on the LTF Transfers page and in the overview action queue.
+
+### Technical
+- `MemberTransfer` / `MemberTransferMessage` and `/api/member-transfers/`.
+- Set-password URL includes `username=` for autocomplete.
+
 ## [0.6.0] - 2026-08-25
 
 ### User-facing

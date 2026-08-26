@@ -15,6 +15,7 @@ import {
   Settings,
   ShoppingCart,
   Sparkles,
+  ArrowLeftRight,
   UserCog,
   Users,
   Wallet,
@@ -83,6 +84,14 @@ const CLUB_NAV: RoleNavDef[] = [
     matchMode: "prefix",
   },
   {
+    id: "transfers",
+    href: (locale) => `/${locale}/dashboard/club/transfers`,
+    labelKey: "navTransfers",
+    namespace: "ClubAdmin",
+    icon: ArrowLeftRight,
+    matchMode: "prefix",
+  },
+  {
     id: "printer-profiles",
     href: (locale) => `/${locale}/dashboard/club/printer-profiles`,
     labelKey: "navPrinterProfiles",
@@ -123,6 +132,14 @@ const LTF_ADMIN_NAV: RoleNavDef[] = [
     labelKey: "navClubAdmins",
     namespace: "LtfAdmin",
     icon: UserCog,
+    matchMode: "prefix",
+  },
+  {
+    id: "member-transfers",
+    href: (locale) => `/${locale}/dashboard/ltf/member-transfers`,
+    labelKey: "navMemberTransfers",
+    namespace: "LtfAdmin",
+    icon: ArrowLeftRight,
     matchMode: "prefix",
   },
   {

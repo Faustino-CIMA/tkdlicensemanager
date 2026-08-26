@@ -2,8 +2,8 @@ from allauth.account.models import EmailAddress, EmailConfirmationHMAC
 from django.conf import settings
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.db import transaction
-from django.utils.encoding import force_bytes, force_str
-from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode
 from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, response, status, views
 from rest_framework.authtoken.models import Token
@@ -12,7 +12,7 @@ from members.models import GradePromotionHistory, Member
 from members.services import clear_member_profile_picture
 from licenses.models import License, LicenseHistoryEvent
 
-from .email_utils import send_password_reset_email
+from .email_utils import build_password_reset_url, send_password_reset_email
 from .models import User
 from .serializers import (
     ConsentSerializer,
@@ -265,9 +265,7 @@ class PasswordResetRequestView(views.APIView):
 
         user = User.objects.filter(email__iexact=email).first()
         if user:
-            token = PasswordResetTokenGenerator().make_token(user)
-            uid = urlsafe_base64_encode(force_bytes(user.pk))
-            reset_url = f"{settings.FRONTEND_BASE_URL}/{locale}/reset-password?uid={uid}&token={token}"
+            reset_url = build_password_reset_url(user, locale)
             ok, _ = send_password_reset_email(user, reset_url)
 
         return response.Response(

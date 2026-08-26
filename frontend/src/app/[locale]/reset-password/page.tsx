@@ -15,12 +15,17 @@ export default function ResetPasswordPage() {
   const params = useSearchParams();
   const uid = params.get("uid");
   const token = params.get("token");
+  const username = (params.get("username") ?? "").trim();
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const loginHref = username
+    ? `/${locale}/login?username=${encodeURIComponent(username)}`
+    : `/${locale}/login`;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -59,19 +64,46 @@ export default function ResetPasswordPage() {
       {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
       {successMessage ? <p className="text-sm text-success">{successMessage}</p> : null}
 
-      <form className="space-y-4" onSubmit={handleSubmit}>
+      <form className="space-y-4" onSubmit={handleSubmit} autoComplete="on">
+        {username ? (
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground" htmlFor="reset-username">
+              {t("usernameLabel")}
+            </label>
+            <Input
+              id="reset-username"
+              name="username"
+              type="text"
+              value={username}
+              readOnly
+              autoComplete="username"
+            />
+            <p className="text-xs text-muted">{t("usernameHint")}</p>
+          </div>
+        ) : null}
         <div className="space-y-2">
-          <label className="text-sm font-medium text-foreground">{t("passwordLabel")}</label>
+          <label className="text-sm font-medium text-foreground" htmlFor="reset-password">
+            {t("passwordLabel")}
+          </label>
           <Input
+            id="reset-password"
+            name="new-password"
             type="password"
+            autoComplete="new-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
+            autoFocus
           />
         </div>
         <div className="space-y-2">
-          <label className="text-sm font-medium text-foreground">{t("confirmPasswordLabel")}</label>
+          <label className="text-sm font-medium text-foreground" htmlFor="reset-password-confirm">
+            {t("confirmPasswordLabel")}
+          </label>
           <Input
+            id="reset-password-confirm"
+            name="new-password-confirm"
             type="password"
+            autoComplete="new-password"
             value={confirmPassword}
             onChange={(event) => setConfirmPassword(event.target.value)}
           />
@@ -82,8 +114,8 @@ export default function ResetPasswordPage() {
       </form>
 
       <div className="text-center text-sm text-muted">
-        <Link className="text-foreground hover:underline" href={`/${locale}/login`}>
-          {t("backToLogin")}
+        <Link className="text-foreground hover:underline" href={loginHref}>
+          {successMessage ? t("continueToLogin") : t("backToLogin")}
         </Link>
       </div>
     </div>

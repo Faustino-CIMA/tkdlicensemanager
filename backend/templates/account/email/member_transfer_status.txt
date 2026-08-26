@@ -1,0 +1,5 @@
+The transfer of {{ member_name }} from {{ from_club }} to {{ to_club }} was {{ kind }}.
+
+Open: {{ action_url }}
+
+LTF License Manager

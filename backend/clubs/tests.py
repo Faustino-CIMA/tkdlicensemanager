@@ -695,9 +695,11 @@ class ClubAdminManagementTests(TestCase):
         self.assertTrue(response.data["created_user"])
         self.assertTrue(response.data["email_sent"])
         self.assertTrue(response.data["reset_url"])
+        self.assertIn(f"username={response.data['username']}", response.data["reset_url"])
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn("mail.tester@example.com", mail.outbox[0].to)
         self.assertIn("reset-password", mail.outbox[0].body)
+        self.assertIn(f"username={response.data['username']}", mail.outbox[0].body)
 
     def test_admin_assignment_forbidden_for_club_admin(self):
         club_admin = User.objects.create_user(

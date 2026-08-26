@@ -556,3 +556,148 @@ export function deleteLicense(id: number) {
     method: "DELETE",
   });
 }
+
+export type TransferClub = {
+  id: number;
+  name: string;
+  locality: string;
+  admin_count: number;
+};
+
+export type TransferMember = {
+  id: number;
+  first_name: string;
+  last_name: string;
+  email: string;
+  club_id: number;
+  has_valid_license: boolean;
+  pending_transfer: boolean;
+  is_club_admin: boolean;
+};
+
+export type TransferMessage = {
+  id: number;
+  author_id: number;
+  author_name: string;
+  body: string;
+  created_at: string;
+};
+
+export type MemberTransfer = {
+  id: number;
+  status: "pending" | "completed" | "rejected" | "cancelled";
+  member: {
+    id: number;
+    first_name: string;
+    last_name: string;
+    email: string;
+  };
+  from_club: { id: number; name: string };
+  to_club: { id: number; name: string };
+  initiated_by: { id: number; username: string };
+  decided_by: { id: number; username: string } | null;
+  fee_amount: string;
+  fee_currency: string;
+  has_fee: boolean;
+  note: string;
+  ltf_notified: boolean;
+  current_licenses: Array<{
+    id: number;
+    year: number;
+    status: string;
+    license_type_name: string;
+  }>;
+  messages: TransferMessage[];
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export function searchTransferMembers(clubId: number, query = "", options?: ApiCallOptions) {
+  const search = new URLSearchParams();
+  search.set("club_id", String(clubId));
+  if (query.trim()) {
+    search.set("q", query.trim());
+  }
+  return apiRequest<{
+    members: TransferMember[];
+    total: number;
+    truncated: boolean;
+    limit: number;
+  }>(`/api/member-transfers/members/?${search.toString()}`, { signal: options?.signal });
+}
+
+export function searchTransferClubs(fromClubId: number, query = "", options?: ApiCallOptions) {
+  const search = new URLSearchParams();
+  search.set("from_club_id", String(fromClubId));
+  if (query.trim()) {
+    search.set("q", query.trim());
+  }
+  return apiRequest<{
+    clubs: TransferClub[];
+    total: number;
+    truncated: boolean;
+    limit: number;
+  }>(`/api/member-transfers/clubs/?${search.toString()}`, { signal: options?.signal });
+}
+
+export function getMemberTransfers(options?: { feeOnly?: boolean; signal?: AbortSignal }) {
+  const search = new URLSearchParams();
+  if (options?.feeOnly) {
+    search.set("fee_only", "true");
+  }
+  const suffix = search.toString();
+  return apiRequest<MemberTransfer[]>(
+    `/api/member-transfers/${suffix ? `?${suffix}` : ""}`,
+    { signal: options?.signal }
+  );
+}
+
+export function createMemberTransfer(input: {
+  memberId: number;
+  toClubId: number;
+  fromClubId?: number;
+  feeAmount?: string;
+  note?: string;
+  locale?: string;
+}) {
+  return apiRequest<MemberTransfer>("/api/member-transfers/", {
+    method: "POST",
+    body: JSON.stringify({
+      member_id: input.memberId,
+      to_club_id: input.toClubId,
+      from_club_id: input.fromClubId,
+      fee_amount: input.feeAmount,
+      note: input.note,
+      locale: input.locale,
+    }),
+  });
+}
+
+export function acceptMemberTransfer(id: number, locale?: string) {
+  return apiRequest<MemberTransfer>(`/api/member-transfers/${id}/accept/`, {
+    method: "POST",
+    body: JSON.stringify({ locale }),
+  });
+}
+
+export function rejectMemberTransfer(id: number, locale?: string) {
+  return apiRequest<MemberTransfer>(`/api/member-transfers/${id}/reject/`, {
+    method: "POST",
+    body: JSON.stringify({ locale }),
+  });
+}
+
+export function cancelMemberTransfer(id: number, locale?: string) {
+  return apiRequest<MemberTransfer>(`/api/member-transfers/${id}/cancel/`, {
+    method: "POST",
+    body: JSON.stringify({ locale }),
+  });
+}
+
+export function addMemberTransferMessage(id: number, body: string) {
+  return apiRequest<MemberTransfer>(`/api/member-transfers/${id}/messages/`, {
+    method: "POST",
+    body: JSON.stringify({ body }),
+  });
+}

@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 import {
+  ArrowLeftRight,
   Building2,
   CreditCard,
   IdCard,
@@ -33,6 +34,7 @@ type LtfNavDef = {
     | "navOverview"
     | "navClubs"
     | "navClubAdmins"
+    | "navMemberTransfers"
     | "navMembers"
     | "navLicenses"
     | "navLicenseCards"
@@ -48,6 +50,7 @@ const LTF_NAV_DEFINITIONS: LtfNavDef[] = [
   { id: "overview", href: (l) => `/${l}/dashboard/ltf`, labelKey: "navOverview", matchMode: "exact", icon: LayoutDashboard },
   { id: "clubs", href: (l) => `/${l}/dashboard/ltf/clubs`, labelKey: "navClubs", matchMode: "prefix", icon: Building2 },
   { id: "club-admins", href: (l) => `/${l}/dashboard/ltf/club-admins`, labelKey: "navClubAdmins", matchMode: "prefix", icon: UserCog },
+  { id: "member-transfers", href: (l) => `/${l}/dashboard/ltf/member-transfers`, labelKey: "navMemberTransfers", matchMode: "prefix", icon: ArrowLeftRight },
   { id: "members", href: (l) => `/${l}/dashboard/ltf/members`, labelKey: "navMembers", matchMode: "prefix", icon: Users },
   { id: "licenses", href: (l) => `/${l}/dashboard/ltf/licenses`, labelKey: "navLicenses", matchMode: "prefix", icon: IdCard },
   {

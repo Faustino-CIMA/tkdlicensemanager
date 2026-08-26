@@ -71,11 +71,13 @@ from licenses.card_views import (
     PrinterProfileViewSet,
     PrintJobViewSet,
 )
+from members.transfer_views import MemberTransferViewSet
 from members.views import MemberViewSet, RewriteLtfLicensePrefixView
 
 router = DefaultRouter()
 router.register(r"clubs", ClubViewSet, basename="club")
 router.register(r"members", MemberViewSet, basename="member")
+router.register(r"member-transfers", MemberTransferViewSet, basename="member-transfer")
 router.register(r"licenses", LicenseViewSet, basename="license")
 router.register(r"license-types", LicenseTypeViewSet, basename="license-type")
 router.register(r"license-prices", LicensePriceViewSet, basename="license-price")

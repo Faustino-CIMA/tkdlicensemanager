@@ -1,0 +1,9 @@
+<p>A club admin of <strong>{{ from_club }}</strong> requested to transfer <strong>{{ member_name }}</strong> to <strong>{{ to_club }}</strong>.</p>
+{% if has_fee %}
+<p>Proposed transfer fee: <strong>{{ fee_amount }} {{ fee_currency }}</strong>.</p>
+{% else %}
+<p>This is a free transfer.</p>
+{% endif %}
+{% if note %}<p>Note: {{ note }}</p>{% endif %}
+<p><a href="{{ action_url }}">Review this transfer</a></p>
+<p>LTF License Manager</p>

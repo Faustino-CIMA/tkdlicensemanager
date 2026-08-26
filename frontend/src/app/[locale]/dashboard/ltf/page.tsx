@@ -64,6 +64,8 @@ export default function LtfAdminOverviewPage() {
     switch (key) {
       case "clubs_without_admin":
         return t("overviewActionClubsWithoutAdmin");
+      case "paid_pending_transfers":
+        return t("overviewActionPaidPendingTransfers");
       case "members_missing_ltf_licenseid":
         return t("overviewActionMissingLtfLicenseId");
       case "members_without_active_or_pending_license":

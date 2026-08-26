@@ -25,6 +25,7 @@ import {
   Member,
   getClubs,
   getLicenses,
+  getMemberTransfers,
   getMembers,
 } from "@/lib/club-admin-api";
 import { getClubInvoices, getClubOrders } from "@/lib/club-finance-api";
@@ -73,6 +74,7 @@ export default function ClubAdminOverviewPage() {
   const [licenses, setLicenses] = useState<License[]>([]);
   const [orders, setOrders] = useState<FinanceOrder[]>([]);
   const [invoices, setInvoices] = useState<FinanceInvoice[]>([]);
+  const [incomingTransferCount, setIncomingTransferCount] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -88,14 +90,22 @@ export default function ClubAdminOverviewPage() {
       }
       setErrorMessage(null);
       try {
-        const [clubsResponse, membersResponse, licensesResponse] = await Promise.all([
-          getClubs(),
-          getMembers(),
-          getLicenses(),
-        ]);
+        const [clubsResponse, membersResponse, licensesResponse, transfersResponse] =
+          await Promise.all([
+            getClubs(),
+            getMembers(),
+            getLicenses(),
+            getMemberTransfers().catch(() => []),
+          ]);
         setClubs(clubsResponse);
         setMembers(membersResponse);
         setLicenses(licensesResponse);
+        const administeredIds = new Set(clubsResponse.map((club) => club.id));
+        setIncomingTransferCount(
+          transfersResponse.filter(
+            (item) => item.status === "pending" && administeredIds.has(item.to_club.id)
+          ).length
+        );
 
         const effectiveClubId = resolveAssignedClubId(clubsResponse, selectedClubId);
         if (effectiveClubId !== selectedClubId) {
@@ -253,8 +263,16 @@ export default function ClubAdminOverviewPage() {
         severity: "warning",
         href: `/${locale}/dashboard/club/invoices`,
       },
+      {
+        id: "incoming_member_transfers",
+        label: t("overviewActionIncomingTransfers"),
+        count: incomingTransferCount,
+        severity: "warning",
+        href: `/${locale}/dashboard/club/transfers#requests`,
+      },
     ],
     [
+      incomingTransferCount,
       issuedInvoicesOverdue7d,
       locale,
       membersMissingLtfId,

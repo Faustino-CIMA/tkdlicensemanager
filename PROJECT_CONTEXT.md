@@ -2,6 +2,7 @@
 Last updated: 2026-08-25
 
 Current main branch state:
+- Version: v0.6.1 on `feature/ui-refresh-and-designer` — member transfers, login notice, first-password username (2026-08-25)
 - Version: v0.6.0 on `feature/ui-refresh-and-designer` — club admin assignment, club email, flattened lists (2026-08-25)
 - Version: v0.5.0 on `feature/ui-refresh-and-designer` — finance books, LTF ID prefix/digits, pending licenses, What's new (2026-08-20)
 - Version: v0.4.0 on `feature/ui-refresh-and-designer` — visual refresh + designer workspace (2026-08-17)

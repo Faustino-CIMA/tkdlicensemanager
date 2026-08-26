@@ -1,0 +1,8 @@
+A club admin of {{ from_club }} requested to transfer {{ member_name }} to {{ to_club }}.
+{% if has_fee %}Proposed transfer fee: {{ fee_amount }} {{ fee_currency }}.
+{% else %}This is a free transfer.
+{% endif %}{% if note %}Note: {{ note }}
+{% endif %}
+Review: {{ action_url }}
+
+LTF License Manager
