@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-08-28
+
+### User-facing
+- **Member import:** SimplyCompete `Membership End Date` is an optional helper column. It is not stored. When present, preview can skip members or import them as Active/Inactive by year.
+- **License issue date:** Newly activated licenses (including those issued by an LTF admin) now get an issue date. Existing active licenses without one are backfilled.
+- **Card preview:** If a member has no profile photo, the club logo is used as a faded photo fallback. Empty photo slots no longer show a dashed “No image” box. Card titles wrap more reliably on iPhone.
+
+### Technical
+- Import detects the helper header automatically (`detect_membership_end_date_header`) and does not map it as a member field.
+- `License.save()` sets `issued_at` when status becomes ACTIVE; migration `0033_backfill_license_issued_at`.
+- Club-logo photo fallback uses contain, light grey background, and 40% opacity. Card simulation sets `-webkit-text-size-adjust: none`.
+
 ## [0.6.2] - 2026-08-27
 
 ### User-facing

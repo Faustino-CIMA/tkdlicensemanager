@@ -1,7 +1,8 @@
 **LTF Taekwondo License Manager — Master Summary (May 2026)**
-Last updated: 2026-08-27
+Last updated: 2026-08-28
 
 Current main branch state:
+- Version: v0.6.3 on `feature/ui-refresh-and-designer` — member import helper dates, license issued_at, card photo fallback (2026-08-28)
 - Version: v0.6.2 on `feature/ui-refresh-and-designer` — member license-card preview, capitalized license roles (2026-08-27)
 - Version: v0.6.1 on `feature/ui-refresh-and-designer` — member transfers, login notice, first-password username (2026-08-25)
 - Version: v0.6.0 on `feature/ui-refresh-and-designer` — club admin assignment, club email, flattened lists (2026-08-25)
@@ -40,6 +41,9 @@ Rules we follow:
 - Member license-role taxonomy expanded (Volunteer, Staff, Media, Fan) across backend/frontend/import contracts with compatibility normalization — completed
 - License roles stored capitalized (`Athlete`, `Coach`, …); import still accepts mixed CSV casing — completed (v0.6.2)
 - Published Standard 3C card preview on Club and LTF member Current licenses (member-scoped preview API, display-fit sharp scaling) — completed (v0.6.2)
+- Member import treats SimplyCompete `Membership End Date` as an unmapped helper column (skip / Active / Inactive by year, not stored) — completed (v0.6.3)
+- License `issued_at` set when status becomes ACTIVE, with backfill for existing active licenses — completed (v0.6.3)
+- Card preview uses faded club logo as photo fallback; no dashed empty-photo placeholder; iPhone text-size-adjust — completed (v0.6.3)
 - Full Finance Module (Order, OrderItem, Invoice, Payment with card details, Stripe Checkout + webhooks + manual record payment, audit logs) — completed
 - License & Grade History tracking with django-simple-history — completed
 - Profile Picture system (upload, crop/framing for 8:10 print, @imgly/background-removal-js) — completed

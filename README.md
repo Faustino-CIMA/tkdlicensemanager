@@ -4,10 +4,10 @@ Modern, secure Taekwondo license management for the Luxembourg Taekwondo Federat
 
 ## Release Notes
 
-This working tree is **v0.6.2**: published Standard 3C card preview on member Current licenses, and capitalized primary/secondary license roles. Millimetre print output is unchanged.
+This working tree is **v0.6.3**: member import helper dates, license issue dates, and card preview photo fallback. Millimetre print output is unchanged.
 
-- See `CHANGELOG.md` **0.6.2** for this patch, **0.6.1** for member transfers, and **0.4.0** for the UI refresh and license-card designer.
-- Current tagged release: `v0.6.2`.
+- See `CHANGELOG.md` **0.6.3** for this patch, **0.6.2** for member card preview and capitalized roles, and **0.4.0** for the UI refresh and license-card designer.
+- Current tagged release: `v0.6.3`.
 
 ## CI (GitHub Actions)
 
