@@ -1,6 +1,9 @@
 import { getToken } from "./auth";
 import { API_URL, apiRequest } from "./api";
+import type { LicenseRoleValue } from "./license-roles";
 import { PaginatedResponse, unwrapListResponse } from "./pagination";
+
+export type { LicenseRoleValue } from "./license-roles";
 
 type ApiCallOptions = {
   signal?: AbortSignal;
@@ -214,17 +217,7 @@ export type ClubInput = {
   email?: string;
 };
 
-export type LicenseRoleValue =
-  | "athlete"
-  | "coach"
-  | "referee"
-  | "official"
-  | "doctor"
-  | "physiotherapist"
-  | "volunteer"
-  | "staff"
-  | "media"
-  | "fan";
+
 
 export function getClubs() {
   return apiRequest<Club[] | PaginatedResponse<Club>>("/api/clubs/").then(unwrapListResponse);

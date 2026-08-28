@@ -8,6 +8,20 @@ from .models import GradePromotionHistory
 from .services import generate_next_ltf_license_id
 
 
+class CanonicalLicenseRoleField(serializers.ChoiceField):
+    """Accept mixed-case role input and persist the capitalized choice value."""
+
+    def to_internal_value(self, data):
+        if data in (None, ""):
+            if self.allow_blank:
+                return ""
+            self.fail("invalid_choice", input=data)
+        canonical = Member.canonicalize_license_role(data)
+        if not canonical:
+            self.fail("invalid_choice", input=data)
+        return super().to_internal_value(canonical)
+
+
 def _normalize_official_grade(value: str) -> str:
     normalized = str(value or "").strip()
     if not normalized:
@@ -19,12 +33,12 @@ def _normalize_official_grade(value: str) -> str:
 
 class MemberSerializer(serializers.ModelSerializer):
     sex = serializers.ChoiceField(choices=Member.Sex.choices, default=Member.Sex.MALE)
-    primary_license_role = serializers.ChoiceField(
+    primary_license_role = CanonicalLicenseRoleField(
         choices=Member.LicenseRole.choices,
         required=False,
         allow_blank=True,
     )
-    secondary_license_role = serializers.ChoiceField(
+    secondary_license_role = CanonicalLicenseRoleField(
         choices=Member.LicenseRole.choices,
         required=False,
         allow_blank=True,

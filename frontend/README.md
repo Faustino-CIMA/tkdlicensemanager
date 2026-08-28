@@ -54,7 +54,8 @@ License Card v2 designer capabilities:
 - LP798 geometry is aligned to card `85.00x55.00` with exact placement contract for preview/print parity.
 - Publish flow protects unsaved changes by persisting draft payload before publish (v0.3.3 gate-confirmed).
 - Asset upload flow supports reliable same-file reselect behavior and active-by-default uploads.
-- Role merge fields (`primary_license_role`, `secondary_license_role`) and locked date formatting are available in simulation/PDF.
+- Role merge fields (`primary_license_role`, `secondary_license_role`) print and store capitalized labels (`Athlete`, `Coach`, …). Locked date formatting is available in simulation/PDF.
+- Club and LTF member Current licenses show the published Standard 3C card above the license table (`GET /api/members/{id}/license-card-preview/`).
 - Simulation refresh path is deterministic and font-size parity with PDF preview is enforced (v2.1).
 
 Relevant frontend API client helpers (`src/lib/license-card-api.ts`):
@@ -62,4 +63,5 @@ Relevant frontend API client helpers (`src/lib/license-card-api.ts`):
 - `getCardTemplateVersionCardPreviewPdf()`
 - `getCardTemplateVersionSheetPreviewPdf()`
 - `getCardTemplateVersionCardPreviewHtml()`
+- `getMemberLicenseCardPreview()`
 - `createPrintJob()`, `executePrintJob()`, `retryPrintJob()`, `cancelPrintJob()`, `downloadPrintJobPdf()`

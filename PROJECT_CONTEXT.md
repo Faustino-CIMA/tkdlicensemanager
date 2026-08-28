@@ -1,7 +1,8 @@
 **LTF Taekwondo License Manager — Master Summary (May 2026)**
-Last updated: 2026-08-25
+Last updated: 2026-08-27
 
 Current main branch state:
+- Version: v0.6.2 on `feature/ui-refresh-and-designer` — member license-card preview, capitalized license roles (2026-08-27)
 - Version: v0.6.1 on `feature/ui-refresh-and-designer` — member transfers, login notice, first-password username (2026-08-25)
 - Version: v0.6.0 on `feature/ui-refresh-and-designer` — club admin assignment, club email, flattened lists (2026-08-25)
 - Version: v0.5.0 on `feature/ui-refresh-and-designer` — finance books, LTF ID prefix/digits, pending licenses, What's new (2026-08-20)
@@ -37,6 +38,8 @@ Rules we follow:
 ## Major Features & Status (from transcripts)
 - Multi-role system (LTF Admin, LTF Finance (strict), Club Admin, Coach, Member) — completed
 - Member license-role taxonomy expanded (Volunteer, Staff, Media, Fan) across backend/frontend/import contracts with compatibility normalization — completed
+- License roles stored capitalized (`Athlete`, `Coach`, …); import still accepts mixed CSV casing — completed (v0.6.2)
+- Published Standard 3C card preview on Club and LTF member Current licenses (member-scoped preview API, display-fit sharp scaling) — completed (v0.6.2)
 - Full Finance Module (Order, OrderItem, Invoice, Payment with card details, Stripe Checkout + webhooks + manual record payment, audit logs) — completed
 - License & Grade History tracking with django-simple-history — completed
 - Profile Picture system (upload, crop/framing for 8:10 print, @imgly/background-removal-js) — completed

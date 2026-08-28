@@ -1,6 +1,9 @@
 import { getToken } from "./auth";
 import { API_URL, apiRequest } from "./api";
+import type { LicenseRoleValue } from "./license-roles";
 import { PaginatedResponse, unwrapListResponse } from "./pagination";
+
+export type { LicenseRoleValue } from "./license-roles";
 
 type ApiCallOptions = {
   signal?: AbortSignal;
@@ -168,18 +171,6 @@ export type MemberInput = {
   secondary_license_role?: LicenseRoleValue | "";
   is_active?: boolean;
 };
-
-export type LicenseRoleValue =
-  | "athlete"
-  | "coach"
-  | "referee"
-  | "official"
-  | "doctor"
-  | "physiotherapist"
-  | "volunteer"
-  | "staff"
-  | "media"
-  | "fan";
 
 export type FederationProfile = {
   id: number;

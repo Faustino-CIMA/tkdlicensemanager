@@ -33,6 +33,11 @@ import {
 } from "@/lib/club-admin-api";
 import { apiRequest } from "@/lib/api";
 import { formatDateInputValue, formatDisplayDate, parseDisplayDateToIso } from "@/lib/date-display";
+import {
+  LICENSE_ROLE_VALUES,
+  type LicenseRoleValue,
+  canonicalizeLicenseRole,
+} from "@/lib/license-roles";
 
 function normalizeMemberSex(value: unknown): "M" | "F" {
   const normalized = String(value ?? "").trim().toUpperCase();
@@ -42,27 +47,8 @@ function normalizeMemberSex(value: unknown): "M" | "F" {
   return "M";
 }
 
-const LICENSE_ROLE_VALUES = [
-  "athlete",
-  "coach",
-  "referee",
-  "official",
-  "doctor",
-  "physiotherapist",
-  "volunteer",
-  "staff",
-  "media",
-  "fan",
-] as const;
-
-type LicenseRoleValue = (typeof LICENSE_ROLE_VALUES)[number];
-
 function normalizeLicenseRole(value: unknown): LicenseRoleValue | "" {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  if ((LICENSE_ROLE_VALUES as readonly string[]).includes(normalized)) {
-    return normalized as LicenseRoleValue;
-  }
-  return "";
+  return canonicalizeLicenseRole(value);
 }
 
 const memberSchema = z.object({
@@ -152,16 +138,16 @@ export default function ClubMemberDetailPage() {
   });
   const roleLabelByValue = useMemo(
     () => ({
-      athlete: t("licenseRoleAthlete"),
-      coach: t("licenseRoleCoach"),
-      referee: t("licenseRoleReferee"),
-      official: t("licenseRoleOfficial"),
-      doctor: t("licenseRoleDoctor"),
-      physiotherapist: t("licenseRolePhysiotherapist"),
-      volunteer: t("licenseRoleVolunteer"),
-      staff: t("licenseRoleStaff"),
-      media: t("licenseRoleMedia"),
-      fan: t("licenseRoleFan"),
+      Athlete: t("licenseRoleAthlete"),
+      Coach: t("licenseRoleCoach"),
+      Referee: t("licenseRoleReferee"),
+      Official: t("licenseRoleOfficial"),
+      Doctor: t("licenseRoleDoctor"),
+      Physiotherapist: t("licenseRolePhysiotherapist"),
+      Volunteer: t("licenseRoleVolunteer"),
+      Staff: t("licenseRoleStaff"),
+      Media: t("licenseRoleMedia"),
+      Fan: t("licenseRoleFan"),
     }),
     [t]
   );
@@ -628,16 +614,16 @@ export default function ClubMemberDetailPage() {
                   <div className="flex flex-col gap-1">
                     <span className="text-xs text-muted">{t("primaryLicenseRoleLabel")}</span>
                     <span className="font-medium">
-                      {member.primary_license_role
-                        ? roleLabelByValue[member.primary_license_role]
+                      {canonicalizeLicenseRole(member.primary_license_role)
+                        ? roleLabelByValue[canonicalizeLicenseRole(member.primary_license_role)]
                         : "-"}
                     </span>
                   </div>
                   <div className="flex flex-col gap-1">
                     <span className="text-xs text-muted">{t("secondaryLicenseRoleLabel")}</span>
                     <span className="font-medium">
-                      {member.secondary_license_role
-                        ? roleLabelByValue[member.secondary_license_role]
+                      {canonicalizeLicenseRole(member.secondary_license_role)
+                        ? roleLabelByValue[canonicalizeLicenseRole(member.secondary_license_role)]
                         : "-"}
                     </span>
                   </div>
@@ -652,6 +638,7 @@ export default function ClubMemberDetailPage() {
             </section>
 
             <CurrentLicensesPanel
+              memberId={member.id}
               licenses={member.current_licenses ?? []}
               title={t("currentLicensesTitle")}
               subtitle={t("currentLicensesSubtitle")}
@@ -664,6 +651,10 @@ export default function ClubMemberDetailPage() {
               activeLabel={t("statusActive")}
               expiredLabel={t("statusExpired")}
               revokedLabel={t("statusRevoked")}
+              cardPreviewTitle={t("cardPreviewTitle")}
+              cardPreviewFrontLabel={t("cardPreviewFrontLabel")}
+              cardPreviewBackLabel={t("cardPreviewBackLabel")}
+              cardPreviewUnavailable={t("cardPreviewUnavailable")}
             />
 
             <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">

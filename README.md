@@ -4,10 +4,10 @@ Modern, secure Taekwondo license management for the Luxembourg Taekwondo Federat
 
 ## Release Notes
 
-This working tree is **v0.6.1**: club-to-club member transfers, transfer login notice, and prefilled username on first password set. Millimetre print output is unchanged.
+This working tree is **v0.6.2**: published Standard 3C card preview on member Current licenses, and capitalized primary/secondary license roles. Millimetre print output is unchanged.
 
-- See `CHANGELOG.md` **0.6.1** for this patch, **0.6.0** for club admin assignment and club email, and **0.4.0** for the UI refresh and license-card designer.
-- Current tagged release: `v0.6.1`.
+- See `CHANGELOG.md` **0.6.2** for this patch, **0.6.1** for member transfers, and **0.4.0** for the UI refresh and license-card designer.
+- Current tagged release: `v0.6.2`.
 
 ## CI (GitHub Actions)
 

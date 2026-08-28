@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-08-27
+
+### User-facing
+- **License card on member pages:** Club and LTF member Current licenses show the published Standard 3C card (print-accurate, sharp on 1× and retina) above the license table.
+- **License roles:** Primary and secondary roles are stored capitalized (`Athlete`, `Coach`, …). Import still accepts mixed CSV casing (`athlete`, `ATHLETE`) and saves the capitalized value.
+
+### Technical
+- `GET /api/members/{id}/license-card-preview/` returns the published template simulation for the member's current license.
+- Member card preview scales the millimetre canvas to the iframe (no 72/96 letterbox, no CSS-scaled iframe).
+- `Member.canonicalize_license_role()` plus migration `0015_capitalize_member_license_roles`.
+
 ## [0.6.1] - 2026-08-25
 
 ### User-facing

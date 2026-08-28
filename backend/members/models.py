@@ -14,16 +14,25 @@ class Member(models.Model):
         FEMALE = "F", _("Female")
 
     class LicenseRole(models.TextChoices):
-        ATHLETE = "athlete", _("Athlete")
-        COACH = "coach", _("Coach")
-        REFEREE = "referee", _("Referee")
-        OFFICIAL = "official", _("Official")
-        DOCTOR = "doctor", _("Doctor")
-        PHYSIOTHERAPIST = "physiotherapist", _("Physiotherapist")
-        VOLUNTEER = "volunteer", _("Volunteer")
-        STAFF = "staff", _("Staff")
-        MEDIA = "media", _("Media")
-        FAN = "fan", _("Fan")
+        ATHLETE = "Athlete", _("Athlete")
+        COACH = "Coach", _("Coach")
+        REFEREE = "Referee", _("Referee")
+        OFFICIAL = "Official", _("Official")
+        DOCTOR = "Doctor", _("Doctor")
+        PHYSIOTHERAPIST = "Physiotherapist", _("Physiotherapist")
+        VOLUNTEER = "Volunteer", _("Volunteer")
+        STAFF = "Staff", _("Staff")
+        MEDIA = "Media", _("Media")
+        FAN = "Fan", _("Fan")
+
+    @classmethod
+    def canonicalize_license_role(cls, value) -> str:
+        raw = str(value or "").strip()
+        if not raw:
+            return ""
+        collapsed = " ".join(raw.lower().replace("_", " ").replace("-", " ").split())
+        lookup = {str(choice.value).lower(): str(choice.value) for choice in cls.LicenseRole}
+        return lookup.get(collapsed, "")
 
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -134,6 +143,12 @@ class Member(models.Model):
                 else:
                     formatted_words.append(word.upper())
             self.last_name = " ".join(formatted_words)
+        primary_role = self.canonicalize_license_role(self.primary_license_role)
+        if primary_role:
+            self.primary_license_role = primary_role
+        secondary_role = self.canonicalize_license_role(self.secondary_license_role)
+        if secondary_role:
+            self.secondary_license_role = secondary_role
         super().save(*args, **kwargs)
 
     def __str__(self):

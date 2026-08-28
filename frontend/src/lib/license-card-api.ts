@@ -473,6 +473,8 @@ export type CardPreviewDataResponse = {
 export type CardPreviewHtmlResponse = {
   template_version_id: number;
   template_id: number;
+  template_name?: string;
+  license_id?: number | null;
   active_side: CardSide;
   available_sides: CardSide[];
   side_summary: Partial<
@@ -1068,5 +1070,23 @@ export function getCardTemplateVersionCardPreviewHtml(
       body: JSON.stringify(payload),
       signal: options?.signal,
     }
+  );
+}
+
+export function getMemberLicenseCardPreview(
+  memberId: number,
+  options?: { licenseId?: number; side?: CardSide; signal?: AbortSignal }
+) {
+  const search = new URLSearchParams();
+  if (options?.licenseId) {
+    search.set("license_id", String(options.licenseId));
+  }
+  if (options?.side) {
+    search.set("side", options.side);
+  }
+  const suffix = search.toString();
+  return apiRequest<CardPreviewHtmlResponse>(
+    `/api/members/${memberId}/license-card-preview/${suffix ? `?${suffix}` : ""}`,
+    { signal: options?.signal }
   );
 }

@@ -25,19 +25,7 @@ import {
 import { apiRequest } from "@/lib/api";
 import { Club, createMember, getClubs } from "@/lib/club-admin-api";
 import { parseDisplayDateToIso } from "@/lib/date-display";
-
-const LICENSE_ROLE_VALUES = [
-  "athlete",
-  "coach",
-  "referee",
-  "official",
-  "doctor",
-  "physiotherapist",
-  "volunteer",
-  "staff",
-  "media",
-  "fan",
-] as const;
+import { LICENSE_ROLE_VALUES } from "@/lib/license-roles";
 
 const createMemberSchema = z
   .object({
@@ -122,16 +110,16 @@ export default function ClubAdminMemberCreatePage() {
 
   const roleLabelByValue = useMemo(
     () => ({
-      athlete: t("licenseRoleAthlete"),
-      coach: t("licenseRoleCoach"),
-      referee: t("licenseRoleReferee"),
-      official: t("licenseRoleOfficial"),
-      doctor: t("licenseRoleDoctor"),
-      physiotherapist: t("licenseRolePhysiotherapist"),
-      volunteer: t("licenseRoleVolunteer"),
-      staff: t("licenseRoleStaff"),
-      media: t("licenseRoleMedia"),
-      fan: t("licenseRoleFan"),
+      Athlete: t("licenseRoleAthlete"),
+      Coach: t("licenseRoleCoach"),
+      Referee: t("licenseRoleReferee"),
+      Official: t("licenseRoleOfficial"),
+      Doctor: t("licenseRoleDoctor"),
+      Physiotherapist: t("licenseRolePhysiotherapist"),
+      Volunteer: t("licenseRoleVolunteer"),
+      Staff: t("licenseRoleStaff"),
+      Media: t("licenseRoleMedia"),
+      Fan: t("licenseRoleFan"),
     }),
     [t]
   );

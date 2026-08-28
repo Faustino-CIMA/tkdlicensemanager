@@ -21,28 +21,18 @@ import {
   confirmImport,
   previewImport,
 } from "@/lib/import-api";
+import {
+  LICENSE_ROLE_VALUES,
+  type LicenseRoleValue,
+  canonicalizeLicenseRole,
+  licenseRoleMessageKey,
+} from "@/lib/license-roles";
 
 type ImportType = "clubs" | "members";
 type WizardStep = "source" | "mapping" | "preview" | "confirm" | "result";
 type RowAction = "create" | "skip";
 type PreviewFilter = "all" | "ready" | "duplicate" | "invalid" | "skipped";
 type DateFormat = "YYYY-MM-DD" | "DD/MM/YYYY" | "DD-MM-YYYY" | "DD.MM.YYYY";
-
-// License role values matching backend
-const LICENSE_ROLE_VALUES = [
-  "athlete",
-  "coach",
-  "referee",
-  "official",
-  "doctor",
-  "physiotherapist",
-  "volunteer",
-  "staff",
-  "media",
-  "fan",
-] as const;
-
-type LicenseRoleValue = (typeof LICENSE_ROLE_VALUES)[number];
 
 // Role override for a single row
 type RowRoleOverride = {
@@ -153,7 +143,8 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// Normalize role input like backend: lowercase, trim, replace _ and - with spaces
+// Normalize role input like backend: lowercase, trim, replace _ and - with spaces.
+// Used only for equality checks so "athlete" and "Athlete" still compare equal.
 function normalizeRoleInput(value: string | null | undefined): string {
   if (!value) return "";
   return value
@@ -163,13 +154,10 @@ function normalizeRoleInput(value: string | null | undefined): string {
     .replace(/-/g, " ");
 }
 
-// Check if a normalized role value is a valid enum value
+// Check if a role value is valid in any casing used by CSV, preview, or overrides.
 function isValidLicenseRole(value: string): value is LicenseRoleValue {
   if (!value) return false;
-  const normalized = normalizeRoleInput(value);
-  // Collapse multiple spaces to single space for matching
-  const collapsed = normalized.replace(/\s+/g, " ").trim();
-  return LICENSE_ROLE_VALUES.includes(collapsed as LicenseRoleValue);
+  return canonicalizeLicenseRole(value) !== "";
 }
 
 // Check if an error message is role-related
@@ -212,16 +200,12 @@ function getTrimmedRoleValue(
   return String(value).trim();
 }
 
-// Normalize a role for the confirm payload: valid enum value or empty string.
+// Normalize a role for the confirm payload: capitalized canonical value or empty string.
 function sanitizeRoleForOverride(value: string): string {
   if (!value || isEmptyRoleValue(value)) {
     return "";
   }
-  const trimmed = String(value).trim();
-  if (!isValidLicenseRole(trimmed)) {
-    return "";
-  }
-  return normalizeRoleInput(trimmed).replace(/\s+/g, " ").trim();
+  return canonicalizeLicenseRole(String(value).trim());
 }
 
 // Check if a row has a license-role issue that should show as Review.
@@ -1385,9 +1369,7 @@ export function ImportWizardPage({
                       const getDefaultRoleValue = (field: "primary_license_role" | "secondary_license_role"): string => {
                         const csvValue = getCsvRoleValue(field);
                         if (!csvValue) return "__none__";
-                        const normalized = normalizeRoleInput(csvValue);
-                        const collapsed = normalized.replace(/\s+/g, " ").trim();
-                        return LICENSE_ROLE_VALUES.includes(collapsed as LicenseRoleValue) ? collapsed : "__none__";
+                        return canonicalizeLicenseRole(csvValue) || "__none__";
                       };
 
                       // Current values (override takes precedence, then CSV, then empty)
@@ -1417,7 +1399,7 @@ export function ImportWizardPage({
 
                       // Available secondary options exclude the selected primary
                       const secondaryOptions = LICENSE_ROLE_VALUES.filter(
-                        (role) => role !== primaryValue
+                        (role) => role.toLowerCase() !== String(primaryValue).toLowerCase()
                       );
 
                       return (
@@ -1486,9 +1468,7 @@ export function ImportWizardPage({
                                           const rLabel =
                                             value === "__none__"
                                               ? clubT("roleNoneOption")
-                                              : clubT(
-                                                  `licenseRole${value.charAt(0).toUpperCase() + value.slice(1)}` as const
-                                                );
+                                              : clubT(licenseRoleMessageKey(value));
                                           setRoleConfirm({
                                             rowIndex: row.row_index,
                                             field: "primary_license_role",
@@ -1506,9 +1486,7 @@ export function ImportWizardPage({
                                           <SelectItem value="__none__">{clubT("roleNoneOption")}</SelectItem>
                                           {LICENSE_ROLE_VALUES.map((role) => (
                                             <SelectItem key={role} value={role}>
-                                              {clubT(
-                                                `licenseRole${role.charAt(0).toUpperCase() + role.slice(1)}` as const
-                                              )}
+                                              {clubT(licenseRoleMessageKey(role))}
                                             </SelectItem>
                                           ))}
                                         </SelectContent>
@@ -1528,9 +1506,7 @@ export function ImportWizardPage({
                                           const rLabel =
                                             value === "__none__"
                                               ? clubT("roleNoneOption")
-                                              : clubT(
-                                                  `licenseRole${value.charAt(0).toUpperCase() + value.slice(1)}` as const
-                                                );
+                                              : clubT(licenseRoleMessageKey(value));
                                           setRoleConfirm({
                                             rowIndex: row.row_index,
                                             field: "secondary_license_role",
@@ -1551,9 +1527,7 @@ export function ImportWizardPage({
                                           <SelectItem value="__none__">{clubT("roleNoneOption")}</SelectItem>
                                           {secondaryOptions.map((role) => (
                                             <SelectItem key={role} value={role}>
-                                              {clubT(
-                                                `licenseRole${role.charAt(0).toUpperCase() + role.slice(1)}` as const
-                                              )}
+                                              {clubT(licenseRoleMessageKey(role))}
                                             </SelectItem>
                                           ))}
                                         </SelectContent>

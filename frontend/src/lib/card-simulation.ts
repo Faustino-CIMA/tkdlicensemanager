@@ -51,12 +51,29 @@ export function calculateCardSimulationFrameLayout(
   };
 }
 
-export function buildCardSimulationSrcDoc(payload: CardPreviewHtmlResponse | null) {
+export function buildCardSimulationSrcDoc(
+  payload: CardPreviewHtmlResponse | null,
+  options?: { pixelRatio?: number; targetWidthPx?: number }
+) {
   if (!payload) {
     return "";
   }
   const layout = calculateCardSimulationFrameLayout(payload);
   const simulationHtml = payload.html || "";
   const simulationCss = payload.css || "";
-  return `<!doctype html><html><head><meta charset="utf-8"><style>${simulationCss}</style><style>html,body{margin:0;padding:0;overflow:hidden;-webkit-text-size-adjust:100%;text-size-adjust:100%;width:${layout.naturalWidthPx}px;height:${layout.naturalHeightPx}px;}#card-simulation-root{width:${layout.naturalWidthPx}px;height:${layout.naturalHeightPx}px;display:inline-block;transform-origin:top left;transform:scale(${layout.scale.toFixed(6)});will-change:transform;contain:layout style paint;}</style></head><body><div id="card-simulation-root">${simulationHtml}</div></body></html>`;
+  const targetWidthPx = options?.targetWidthPx;
+  // Display-fit path: scale the CSS-mm canvas so it fills the iframe.
+  // Do not apply the designer 72/96 PDF scale here — that leaves a 25% white
+  // letterbox around the card. Retina is left to the browser's devicePixelRatio.
+  if (targetWidthPx != null) {
+    const docWidth = Math.max(1, toFiniteNumber(targetWidthPx, layout.renderedWidthPx));
+    const docHeight = docWidth * (layout.renderedHeightPx / layout.renderedWidthPx);
+    const fillScale = docWidth / layout.renderedWidthPx;
+    return `<!doctype html><html><head><meta charset="utf-8"><style>${simulationCss}</style><style>html,body{margin:0;padding:0;overflow:hidden;-webkit-text-size-adjust:100%;text-size-adjust:100%;width:${docWidth}px;height:${docHeight}px;background:transparent;}#card-simulation-root{width:${layout.renderedWidthPx}px;height:${layout.renderedHeightPx}px;display:block;transform-origin:top left;transform:scale(${fillScale.toFixed(6)});}</style></head><body><div id="card-simulation-root">${simulationHtml}</div></body></html>`;
+  }
+  const pixelRatio = Math.max(1, toFiniteNumber(options?.pixelRatio, 1));
+  const docWidth = layout.renderedWidthPx * pixelRatio;
+  const docHeight = layout.renderedHeightPx * pixelRatio;
+  const scale = layout.scale * pixelRatio;
+  return `<!doctype html><html><head><meta charset="utf-8"><style>${simulationCss}</style><style>html,body{margin:0;padding:0;overflow:hidden;-webkit-text-size-adjust:100%;text-size-adjust:100%;width:${docWidth}px;height:${docHeight}px;}#card-simulation-root{width:${layout.naturalWidthPx}px;height:${layout.naturalHeightPx}px;display:inline-block;transform-origin:top left;transform:scale(${scale.toFixed(6)});will-change:transform;contain:layout style paint;}</style></head><body><div id="card-simulation-root">${simulationHtml}</div></body></html>`;
 }

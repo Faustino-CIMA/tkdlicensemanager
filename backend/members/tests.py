@@ -9,13 +9,23 @@ from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.utils import ProgrammingError
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 from PIL import Image
 
 from accounts.models import User
 from clubs.models import Club
-from licenses.models import License, LicenseHistoryEvent, LicenseType
+from licenses.card_rendering import resolve_published_standard_card_version
+from licenses.models import (
+    CardFormatPreset,
+    CardTemplate,
+    CardTemplateVersion,
+    License,
+    LicenseHistoryEvent,
+    LicenseType,
+    PaperProfile,
+)
 
 from .models import GradePromotionHistory, Member, MemberLicenseIdCounter
 from .services import add_grade_promotion, delete_grade_promotion, generate_next_ltf_license_id
@@ -393,6 +403,22 @@ class MemberApiTests(TestCase):
         self.member.refresh_from_db()
         self.assertTrue(self.member.is_active)
 
+    def test_canonicalize_license_role_accepts_mixed_casing(self):
+        self.assertEqual(Member.canonicalize_license_role("athlete"), "Athlete")
+        self.assertEqual(Member.canonicalize_license_role("ATHLETE"), "Athlete")
+        self.assertEqual(Member.canonicalize_license_role(" Athlete "), "Athlete")
+        self.assertEqual(Member.canonicalize_license_role("physiotherapist"), "Physiotherapist")
+        self.assertEqual(Member.canonicalize_license_role(""), "")
+        self.assertEqual(Member.canonicalize_license_role("InvalidRole"), "")
+
+    def test_member_save_stores_capitalized_license_roles(self):
+        self.member.primary_license_role = "athlete"
+        self.member.secondary_license_role = "COACH"
+        self.member.save()
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.primary_license_role, "Athlete")
+        self.assertEqual(self.member.secondary_license_role, "Coach")
+
     def test_club_admin_can_patch_member_license_roles(self):
         self.client.force_authenticate(user=self.club_admin)
         response = self.client.patch(
@@ -405,8 +431,8 @@ class MemberApiTests(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.member.refresh_from_db()
-        self.assertEqual(self.member.primary_license_role, "athlete")
-        self.assertEqual(self.member.secondary_license_role, "coach")
+        self.assertEqual(self.member.primary_license_role, "Athlete")
+        self.assertEqual(self.member.secondary_license_role, "Coach")
 
     def test_club_admin_can_patch_member_with_new_license_roles(self):
         self.client.force_authenticate(user=self.club_admin)
@@ -420,8 +446,8 @@ class MemberApiTests(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.member.refresh_from_db()
-        self.assertEqual(self.member.primary_license_role, "volunteer")
-        self.assertEqual(self.member.secondary_license_role, "staff")
+        self.assertEqual(self.member.primary_license_role, "Volunteer")
+        self.assertEqual(self.member.secondary_license_role, "Staff")
 
     def test_member_update_rejects_secondary_role_without_primary(self):
         self.client.force_authenticate(user=self.club_admin)
@@ -1041,6 +1067,32 @@ class MemberImportTests(TestCase):
         self.assertEqual(len(response.data["rows"]), 1)
         self.assertTrue(response.data["rows"][0]["errors"])
 
+    def test_preview_canonicalizes_lowercase_license_roles(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        csv_data = "first_name,last_name,primary_role,secondary_role\nAna,Ng,athlete,coach\n"
+        file_obj = BytesIO(csv_data.encode("utf-8"))
+        file_obj.name = "members_lowercase_roles.csv"
+        mapping = {
+            "first_name": "first_name",
+            "last_name": "last_name",
+            "primary_license_role": "primary_role",
+            "secondary_license_role": "secondary_role",
+        }
+        response = self.client.post(
+            "/api/imports/members/preview/",
+            {
+                "file": file_obj,
+                "mapping": json.dumps(mapping),
+                "club_id": self.club.id,
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = response.data["rows"][0]
+        self.assertEqual(row["data"]["primary_license_role"], "Athlete")
+        self.assertEqual(row["data"]["secondary_license_role"], "Coach")
+        self.assertEqual(row["errors"], [])
+
     def test_confirm_creates_members_with_license_roles(self):
         self.client.force_authenticate(user=self.ltf_admin)
         csv_data = "first_name,last_name,primary_role,secondary_role\nAna,Ng,Athlete,Coach\n"
@@ -1063,12 +1115,12 @@ class MemberImportTests(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         created = Member.objects.get(first_name="Ana", last_name="NG")
-        self.assertEqual(created.primary_license_role, "athlete")
-        self.assertEqual(created.secondary_license_role, "coach")
+        self.assertEqual(created.primary_license_role, "Athlete")
+        self.assertEqual(created.secondary_license_role, "Coach")
 
     def test_confirm_creates_members_with_new_license_roles(self):
         self.client.force_authenticate(user=self.ltf_admin)
-        csv_data = "first_name,last_name,primary_role,secondary_role\nBen,Kay,Volunteer,Media\n"
+        csv_data = "first_name,last_name,primary_role,secondary_role\nBen,Kay,volunteer,media\n"
         file_obj = BytesIO(csv_data.encode("utf-8"))
         file_obj.name = "members_roles_new.csv"
         mapping = {
@@ -1088,8 +1140,8 @@ class MemberImportTests(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         created = Member.objects.get(first_name="Ben", last_name="KAY")
-        self.assertEqual(created.primary_license_role, "volunteer")
-        self.assertEqual(created.secondary_license_role, "media")
+        self.assertEqual(created.primary_license_role, "Volunteer")
+        self.assertEqual(created.secondary_license_role, "Media")
 
     def test_confirm_applies_row_overrides_for_invalid_csv_roles(self):
         self.client.force_authenticate(user=self.ltf_admin)
@@ -1123,8 +1175,8 @@ class MemberImportTests(TestCase):
         self.assertEqual(response.data["created"], 1)
         self.assertEqual(response.data["errors"], [])
         created = Member.objects.get(first_name="Ana", last_name="NG")
-        self.assertEqual(created.primary_license_role, "athlete")
-        self.assertEqual(created.secondary_license_role, "coach")
+        self.assertEqual(created.primary_license_role, "Athlete")
+        self.assertEqual(created.secondary_license_role, "Coach")
 
     def test_confirm_applies_row_overrides_array_payload(self):
         self.client.force_authenticate(user=self.ltf_admin)
@@ -1159,7 +1211,7 @@ class MemberImportTests(TestCase):
         self.assertEqual(response.data["created"], 1)
         self.assertEqual(response.data["errors"], [])
         created = Member.objects.get(first_name="Ben", last_name="KAY")
-        self.assertEqual(created.primary_license_role, "athlete")
+        self.assertEqual(created.primary_license_role, "Athlete")
         self.assertEqual(created.secondary_license_role, "")
 
     def test_import_rewrites_ltf_prefix_when_enabled_and_leaves_wt_untouched(self):
@@ -1468,4 +1520,166 @@ class MemberTransferApiTests(TestCase):
         self.assertEqual(cancelled.data["status"], "cancelled")
         self.athlete.refresh_from_db()
         self.assertEqual(self.athlete.club_id, self.source_club.id)
+
+
+def _preview_design_payload() -> dict:
+    return {
+        "elements": [
+            {
+                "id": "member-name",
+                "type": "text",
+                "x_mm": "2.00",
+                "y_mm": "2.00",
+                "width_mm": "40.00",
+                "height_mm": "8.00",
+                "text": "{{member.first_name}} {{member.last_name}}",
+            }
+        ],
+        "metadata": {"unit": "mm"},
+    }
+
+
+class MemberLicenseCardPreviewApiTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.ltf_admin = User.objects.create_user(
+            username="card-preview-ltf",
+            password="pass12345",
+            role=User.Roles.LTF_ADMIN,
+        )
+        self.club_admin = User.objects.create_user(
+            username="card-preview-club",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+        )
+        self.other_club_admin = User.objects.create_user(
+            username="card-preview-other-club",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+        )
+        self.club = Club.objects.create(name="Preview Club", created_by=self.ltf_admin)
+        self.club.admins.add(self.club_admin)
+        self.other_club = Club.objects.create(name="Other Preview Club", created_by=self.ltf_admin)
+        self.other_club.admins.add(self.other_club_admin)
+        self.member = Member.objects.create(
+            club=self.club,
+            first_name="Mia",
+            last_name="Lee",
+            ltf_licenseid="LTF-CARD-001",
+        )
+        self.license_type = LicenseType.objects.create(
+            name="Preview Annual",
+            code="preview-card-annual",
+        )
+        self.active_license = License.objects.create(
+            member=self.member,
+            club=self.club,
+            license_type=self.license_type,
+            year=2026,
+            status=License.Status.ACTIVE,
+        )
+        self.card_format = CardFormatPreset.objects.get(code="3c")
+        self.paper_profile = PaperProfile.objects.get(code="sigel-lp798")
+        self.template = CardTemplate.objects.create(
+            name="Standard 3C Card",
+            is_default=True,
+            created_by=self.ltf_admin,
+            updated_by=self.ltf_admin,
+        )
+        self.published_version = CardTemplateVersion.objects.create(
+            template=self.template,
+            version_number=1,
+            status=CardTemplateVersion.Status.PUBLISHED,
+            card_format=self.card_format,
+            paper_profile=self.paper_profile,
+            design_payload=_preview_design_payload(),
+            created_by=self.ltf_admin,
+            published_by=self.ltf_admin,
+            published_at=timezone.now(),
+        )
+
+    def test_resolve_prefers_default_published_template(self):
+        named = CardTemplate.objects.create(
+            name="Standard 3C Card Alternate",
+            is_default=False,
+            created_by=self.ltf_admin,
+            updated_by=self.ltf_admin,
+        )
+        CardTemplateVersion.objects.create(
+            template=named,
+            version_number=2,
+            status=CardTemplateVersion.Status.PUBLISHED,
+            card_format=self.card_format,
+            paper_profile=self.paper_profile,
+            design_payload=_preview_design_payload(),
+            created_by=self.ltf_admin,
+            published_by=self.ltf_admin,
+            published_at=timezone.now(),
+        )
+        resolved = resolve_published_standard_card_version()
+        self.assertIsNotNone(resolved)
+        self.assertEqual(resolved.template_id, self.template.id)
+
+    def test_resolve_falls_back_to_named_standard_3c_template(self):
+        self.template.is_default = False
+        self.template.save(update_fields=["is_default", "updated_at"])
+        other = CardTemplate.objects.create(
+            name="Club Badge Card",
+            is_default=False,
+            created_by=self.ltf_admin,
+            updated_by=self.ltf_admin,
+        )
+        CardTemplateVersion.objects.create(
+            template=other,
+            version_number=1,
+            status=CardTemplateVersion.Status.PUBLISHED,
+            card_format=self.card_format,
+            paper_profile=self.paper_profile,
+            design_payload=_preview_design_payload(),
+            created_by=self.ltf_admin,
+            published_by=self.ltf_admin,
+            published_at=timezone.now(),
+        )
+        resolved = resolve_published_standard_card_version()
+        self.assertIsNotNone(resolved)
+        self.assertEqual(resolved.template_id, self.template.id)
+
+    def test_ltf_admin_gets_member_license_card_preview(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.get(
+            f"/api/members/{self.member.id}/license-card-preview/?license_id={self.active_license.id}&side=front"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["template_name"], "Standard 3C Card")
+        self.assertEqual(response.data["license_id"], self.active_license.id)
+        self.assertEqual(response.data["active_side"], "front")
+        self.assertIn("Mia LEE", response.data["html"])
+        self.assertTrue(response.data["html"])
+        self.assertTrue(response.data["css"])
+        self.assertEqual(response.data["card_format"]["code"], "3c")
+
+    def test_club_admin_can_preview_own_club_member(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.get(f"/api/members/{self.member.id}/license-card-preview/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["license_id"], self.active_license.id)
+
+    def test_other_club_admin_cannot_preview_member(self):
+        self.client.force_authenticate(user=self.other_club_admin)
+        response = self.client.get(f"/api/members/{self.member.id}/license-card-preview/")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_unauthenticated_cannot_preview(self):
+        response = self.client.get(f"/api/members/{self.member.id}/license-card-preview/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_returns_404_when_no_published_template(self):
+        CardTemplateVersion.objects.all().delete()
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.get(f"/api/members/{self.member.id}/license-card-preview/")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(
+            response.data["detail"],
+            "No published license card template is available.",
+        )
 

@@ -15,6 +15,7 @@ from urllib.parse import unquote_to_bytes, urljoin, urlparse
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.db.models import Q
 from django.http import HttpRequest
 from django.utils import timezone
 
@@ -612,6 +613,13 @@ def _resolve_entities(
     return member, license_record, club
 
 
+def _format_license_role_label(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    return Member.canonicalize_license_role(raw) or raw.replace("_", " ").title()
+
+
 def _build_context(
     *,
     member: Member | None,
@@ -673,6 +681,9 @@ def _build_context(
     flattened_sample_data = _flatten_sample_data(sample_data or {})
     for key, value in flattened_sample_data.items():
         context[key] = _stringify_context_value(value)
+
+    for key in ("primary_license_role", "secondary_license_role"):
+        context[key] = _format_license_role_label(context.get(key, ""))
 
     return {key: context.get(key, "") for key in _SORTED_ALLOWED_MERGE_FIELDS}
 
@@ -1331,6 +1342,24 @@ def build_sheet_layout_metadata(
         sheet_width_mm=Decimal(str(paper_profile.sheet_width_mm)),
         sheet_height_mm=Decimal(str(paper_profile.sheet_height_mm)),
     )
+
+
+def resolve_published_standard_card_version() -> CardTemplateVersion | None:
+    published = (
+        CardTemplateVersion.objects.filter(
+            status=CardTemplateVersion.Status.PUBLISHED,
+            template__is_active=True,
+        )
+        .select_related("template", "card_format")
+        .order_by("-version_number", "-published_at", "-id")
+    )
+    default = published.filter(template__is_default=True).first()
+    if default:
+        return default
+    named = published.filter(
+        Q(template__name__icontains="3C") | Q(template__name__icontains="Standard")
+    ).first()
+    return named or published.first()
 
 
 def build_preview_data(

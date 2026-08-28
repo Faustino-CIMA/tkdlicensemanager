@@ -138,25 +138,12 @@ def parse_boolean(value, errors, field_name):
     return None
 
 
-_LICENSE_ROLE_LOOKUP = {
-    "athlete": "athlete",
-    "coach": "coach",
-    "referee": "referee",
-    "official": "official",
-    "doctor": "doctor",
-    "physiotherapist": "physiotherapist",
-    "volunteer": "volunteer",
-    "staff": "staff",
-    "media": "media",
-    "fan": "fan",
-}
-
-
 def normalize_license_role(value, errors, field_name):
+    # Accept any casing from CSV/overrides ("athlete", "ATHLETE", "Athlete")
+    # and persist the capitalized canonical value used in the member table.
     if value is None or value == "":
         return ""
-    normalized = str(value).strip().lower().replace("_", " ").replace("-", " ")
-    canonical = _LICENSE_ROLE_LOOKUP.get(" ".join(normalized.split()))
+    canonical = Member.canonicalize_license_role(value)
     if canonical:
         return canonical
     errors.append(

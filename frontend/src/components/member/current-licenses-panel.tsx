@@ -1,5 +1,6 @@
 "use client";
 
+import { PublishedLicenseCardPreview } from "@/components/member/published-license-card-preview";
 import { StatusBadge } from "@/components/ui/status-badge";
 
 export type CurrentLicense = {
@@ -11,6 +12,7 @@ export type CurrentLicense = {
 };
 
 type CurrentLicensesPanelProps = {
+  memberId?: number;
   licenses: CurrentLicense[];
   title: string;
   subtitle: string;
@@ -23,6 +25,10 @@ type CurrentLicensesPanelProps = {
   activeLabel: string;
   expiredLabel: string;
   revokedLabel: string;
+  cardPreviewTitle: string;
+  cardPreviewFrontLabel: string;
+  cardPreviewBackLabel: string;
+  cardPreviewUnavailable: string;
 };
 
 function statusTone(status: string): "success" | "warning" | "neutral" | "danger" {
@@ -58,6 +64,7 @@ function statusLabelFor(
 }
 
 export function CurrentLicensesPanel({
+  memberId,
   licenses,
   title,
   subtitle,
@@ -70,12 +77,30 @@ export function CurrentLicensesPanel({
   activeLabel,
   expiredLabel,
   revokedLabel,
+  cardPreviewTitle,
+  cardPreviewFrontLabel,
+  cardPreviewBackLabel,
+  cardPreviewUnavailable,
 }: CurrentLicensesPanelProps) {
   const hasPending = licenses.some((license) => license.status === "pending");
+  const previewLicense =
+    licenses.find((license) => license.status === "active") ?? licenses[0] ?? null;
   return (
     <section className="app-panel p-6">
       <h2 className="text-section text-foreground">{title}</h2>
       <p className="mt-1 text-sm text-muted">{subtitle}</p>
+      {memberId && previewLicense ? (
+        <div className="mt-4">
+          <PublishedLicenseCardPreview
+            memberId={memberId}
+            licenseId={previewLicense.id}
+            title={cardPreviewTitle}
+            frontLabel={cardPreviewFrontLabel}
+            backLabel={cardPreviewBackLabel}
+            unavailableLabel={cardPreviewUnavailable}
+          />
+        </div>
+      ) : null}
       {licenses.length === 0 ? (
         <p className="mt-4 text-sm text-muted">{emptyLabel}</p>
       ) : (

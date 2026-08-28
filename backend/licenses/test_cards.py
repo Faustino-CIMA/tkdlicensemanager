@@ -1971,8 +1971,8 @@ class LicenseCardPreviewApiTests(TestCase):
         self.assertEqual(context["member.date_of_birth"], "09 Nov 2016")
         self.assertEqual(context["license.start_date"], "09 Jan 2016")
         self.assertEqual(context["license.end_date"], "09 Nov 2016")
-        self.assertEqual(context["primary_license_role"], "athlete")
-        self.assertEqual(context["secondary_license_role"], "coach")
+        self.assertEqual(context["primary_license_role"], "Athlete")
+        self.assertEqual(context["secondary_license_role"], "Coach")
         self.assertEqual(context["member.current_grade"], "Blue Belt")
 
         resolved_by_id = {
@@ -1983,8 +1983,8 @@ class LicenseCardPreviewApiTests(TestCase):
         self.assertEqual(resolved_by_id["dob-text"], "DOB 09 Nov 2016")
         self.assertEqual(resolved_by_id["start-text"], "START 09 Jan 2016")
         self.assertEqual(resolved_by_id["end-text"], "END 09 Nov 2016")
-        self.assertEqual(resolved_by_id["primary-role-text"], "PRIMARY athlete")
-        self.assertEqual(resolved_by_id["secondary-role-text"], "SECONDARY coach")
+        self.assertEqual(resolved_by_id["primary-role-text"], "PRIMARY Athlete")
+        self.assertEqual(resolved_by_id["secondary-role-text"], "SECONDARY Coach")
         self.assertEqual(resolved_by_id["current-grade-text"], "GRADE Blue Belt")
 
         preview_html_response = self.client.post(self.preview_card_html_url, payload, format="json")
@@ -1992,8 +1992,8 @@ class LicenseCardPreviewApiTests(TestCase):
         self.assertIn("DOB 09 Nov 2016", preview_html_response.data["html"])
         self.assertIn("START 09 Jan 2016", preview_html_response.data["html"])
         self.assertIn("END 09 Nov 2016", preview_html_response.data["html"])
-        self.assertIn("PRIMARY athlete", preview_html_response.data["html"])
-        self.assertIn("SECONDARY coach", preview_html_response.data["html"])
+        self.assertIn("PRIMARY Athlete", preview_html_response.data["html"])
+        self.assertIn("SECONDARY Coach", preview_html_response.data["html"])
         self.assertIn("GRADE Blue Belt", preview_html_response.data["html"])
 
     def test_preview_card_pdf_receives_ltf_date_formatted_context(self):
@@ -3725,8 +3725,8 @@ class PrintJobExecutionPipelineTests(TestCase):
         self.assertIn("DOB 09 Nov 2016", rendered_html)
         self.assertIn("START 09 Jan 2016", rendered_html)
         self.assertIn("END 09 Nov 2016", rendered_html)
-        self.assertIn("PRIMARY athlete", rendered_html)
-        self.assertIn("SECONDARY coach", rendered_html)
+        self.assertIn("PRIMARY Athlete", rendered_html)
+        self.assertIn("SECONDARY Coach", rendered_html)
 
     def test_enqueue_failure_moves_job_to_failed_with_retryable_state(self):
         created_job = self._create_print_job(

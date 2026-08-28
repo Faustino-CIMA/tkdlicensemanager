@@ -32,6 +32,12 @@ from .services import (
     rewrite_existing_lux_ltf_license_ids,
     update_grade_promotion,
 )
+from licenses.card_rendering import (
+    CardRenderError,
+    build_card_simulation_payload,
+    build_preview_data,
+    resolve_published_standard_card_version,
+)
 from licenses.models import License, LicenseHistoryEvent
 
 
@@ -196,6 +202,60 @@ class MemberViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
             "club_admin",
             "member",
         ]
+
+    @action(detail=True, methods=["get"], url_path="license-card-preview")
+    def license_card_preview(self, request, *args, **kwargs):
+        member = self.get_object()
+        license_id_raw = str(request.query_params.get("license_id") or "").strip()
+        side = str(request.query_params.get("side") or "front").strip() or "front"
+        current_licenses = member.licenses.filter(
+            status__in=[License.Status.ACTIVE, License.Status.PENDING]
+        ).order_by("-year", "-id")
+        license_record = None
+        if license_id_raw:
+            try:
+                license_record = member.licenses.filter(id=int(license_id_raw)).first()
+            except (TypeError, ValueError):
+                license_record = None
+        if license_record is None:
+            license_record = current_licenses.filter(status=License.Status.ACTIVE).first()
+        if license_record is None:
+            license_record = current_licenses.first()
+        version = resolve_published_standard_card_version()
+        if version is None:
+            return Response(
+                {"detail": "No published license card template is available."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        try:
+            preview_payload = build_preview_data(
+                template_version=version,
+                side=side,
+                member_id=member.id,
+                license_id=license_record.id if license_record else None,
+                club_id=member.club_id,
+                include_bleed_guide=False,
+                include_safe_area_guide=False,
+                request=request,
+            )
+            simulation_payload = build_card_simulation_payload(preview_payload)
+        except CardRenderError as exc:
+            return Response({"detail": exc.detail}, status=exc.status_code)
+        return Response(
+            {
+                "template_version_id": preview_payload["template_version_id"],
+                "template_id": preview_payload["template_id"],
+                "template_name": version.template.name,
+                "license_id": license_record.id if license_record else None,
+                "active_side": preview_payload.get("active_side", "front"),
+                "available_sides": preview_payload.get("available_sides", ["front"]),
+                "side_summary": preview_payload.get("side_summary", {}),
+                "card_format": preview_payload["card_format"],
+                "render_metadata": preview_payload.get("render_metadata", {}),
+                "html": simulation_payload["html"],
+                "css": simulation_payload["css"],
+            }
+        )
 
     @action(detail=True, methods=["get"], url_path="license-history")
     def license_history(self, request, *args, **kwargs):

@@ -156,6 +156,7 @@ export default function LtfMemberDetailPage() {
             </FormPanel>
 
             <CurrentLicensesPanel
+              memberId={member.id}
               licenses={member.current_licenses ?? []}
               title={t("currentLicensesTitle")}
               subtitle={t("currentLicensesSubtitle")}
@@ -168,6 +169,10 @@ export default function LtfMemberDetailPage() {
               activeLabel={t("statusActive")}
               expiredLabel={t("statusExpired")}
               revokedLabel={t("statusRevoked")}
+              cardPreviewTitle={t("cardPreviewTitle")}
+              cardPreviewFrontLabel={t("cardPreviewFrontLabel")}
+              cardPreviewBackLabel={t("cardPreviewBackLabel")}
+              cardPreviewUnavailable={t("cardPreviewUnavailable")}
             />
 
             <FormPanel>
