@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { PageNotice } from "@/components/ui/list-page-chrome";
 import { Modal } from "@/components/ui/modal";
 import {
@@ -18,9 +19,16 @@ import {
   ConfirmResponse,
   ImportRow,
   LtfLicensePrefixRewritePolicy,
+  MembershipYearPoliciesPayload,
+  MembershipYearPolicy,
   confirmImport,
   previewImport,
 } from "@/lib/import-api";
+import {
+  applySuggestedMapping,
+  detectMembershipEndDateHeader,
+  unusedSourceHeaders,
+} from "@/lib/import-mapping";
 import {
   LICENSE_ROLE_VALUES,
   type LicenseRoleValue,
@@ -44,6 +52,7 @@ type ConfirmRowOverridePayload = {
   row_index: number;
   primary_license_role: string;
   secondary_license_role: string;
+  is_active?: boolean;
 };
 
 // Build row_overrides payload for confirm import from effective preview rows
@@ -52,7 +61,8 @@ type ConfirmRowOverridePayload = {
 function buildConfirmRowOverrides(
   rows: ImportRow[],
   overrides: Record<number, RowRoleOverride>,
-  rowActions: Record<number, RowAction>
+  rowActions: Record<number, RowAction>,
+  statusOverrides?: Record<number, boolean>
 ): ConfirmRowOverridePayload[] | undefined {
   const result: ConfirmRowOverridePayload[] = [];
 
@@ -72,11 +82,15 @@ function buildConfirmRowOverrides(
         ? explicit.secondary_license_role
         : getTrimmedRoleValue(row, "secondary_license_role");
 
-    result.push({
+    const payload: ConfirmRowOverridePayload = {
       row_index: row.row_index,
       primary_license_role: sanitizeRoleForOverride(primaryRaw),
       secondary_license_role: sanitizeRoleForOverride(secondaryRaw),
-    });
+    };
+    if (statusOverrides && Object.prototype.hasOwnProperty.call(statusOverrides, row.row_index)) {
+      payload.is_active = statusOverrides[row.row_index];
+    }
+    result.push(payload);
   }
 
   return result.length > 0 ? result : undefined;
@@ -122,15 +136,48 @@ const DATE_FORMAT_OPTIONS: DateFormat[] = [
   "DD.MM.YYYY",
 ];
 
-function buildAutoMapping(fields: FieldOption[], headers: string[]) {
-  const normalizedHeaders = headers.map((header) => header.trim().toLowerCase());
-  return fields.reduce<Record<string, string>>((accumulator, field) => {
-    const index = normalizedHeaders.indexOf(field.key.toLowerCase());
-    if (index >= 0) {
-      accumulator[field.key] = headers[index];
+
+
+function membershipEndYearFromRow(row: ImportRow): number | null {
+  const raw = row.data.membership_end_year;
+  if (raw === null || raw === undefined || raw === "") {
+    return null;
+  }
+  const year = Number(raw);
+  return Number.isInteger(year) ? year : null;
+}
+
+function defaultMembershipYearPolicy(year: number | null, currentYear: number): MembershipYearPolicy {
+  if (year == null) {
+    return "skip";
+  }
+  return year >= currentYear ? "active" : "skip";
+}
+
+function applyMembershipYearPolicies(options: {
+  rows: ImportRow[];
+  enabled: boolean;
+  yearPolicies: Record<number, MembershipYearPolicy>;
+  unknownPolicy: MembershipYearPolicy;
+}): { actions: Record<number, RowAction>; statusOverrides: Record<number, boolean> } {
+  const actions: Record<number, RowAction> = {};
+  const statusOverrides: Record<number, boolean> = {};
+  for (const row of options.rows) {
+    if (!options.enabled) {
+      actions[row.row_index] = "create";
+      continue;
     }
-    return accumulator;
-  }, {});
+    const year = membershipEndYearFromRow(row);
+    const policy =
+      year == null ? options.unknownPolicy : options.yearPolicies[year] ?? options.unknownPolicy;
+    if (policy === "skip") {
+      actions[row.row_index] = "skip";
+    } else {
+      actions[row.row_index] = "create";
+      statusOverrides[row.row_index] = policy === "active";
+    }
+  }
+  return { actions, statusOverrides };
 }
 
 function formatFileSize(bytes: number): string {
@@ -495,6 +542,14 @@ export function ImportWizardPage({
   const [result, setResult] = useState<ConfirmResponse | null>(null);
   const [hasPreviewRun, setHasPreviewRun] = useState(false);
   const [rewritePolicy, setRewritePolicy] = useState<LtfLicensePrefixRewritePolicy | null>(null);
+  const [membershipYearRulesEnabled, setMembershipYearRulesEnabled] = useState(false);
+  const [membershipYearPolicies, setMembershipYearPolicies] = useState<
+    Record<number, MembershipYearPolicy>
+  >({});
+  const [membershipUnknownPolicy, setMembershipUnknownPolicy] =
+    useState<MembershipYearPolicy>("skip");
+  const [membershipEndDateHeader, setMembershipEndDateHeader] = useState<string | null>(null);
+  const [statusOverrides, setStatusOverrides] = useState<Record<number, boolean>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const canSwitchType = allowedTypes.length > 1;
@@ -508,6 +563,45 @@ export function ImportWizardPage({
     () => requiredFields.every((field) => Boolean(mapping[field.key])),
     [mapping, requiredFields]
   );
+  const membershipYearSummary = useMemo(() => {
+    const counts = new Map<number, number>();
+    let unknown = 0;
+    for (const row of previewRows) {
+      const year = membershipEndYearFromRow(row);
+      if (year == null) {
+        unknown += 1;
+      } else {
+        counts.set(year, (counts.get(year) ?? 0) + 1);
+      }
+    }
+    const years = Array.from(counts.entries()).sort((left, right) => right[0] - left[0]);
+    return { years, unknown };
+  }, [previewRows]);
+  const showMembershipYearPanel =
+    isMembersImport && Boolean(membershipEndDateHeader) && previewRows.length > 0;
+  const unmappedSourceHeaders = useMemo(
+    () => unusedSourceHeaders(headers, mapping, [membershipEndDateHeader]),
+    [headers, mapping, membershipEndDateHeader]
+  );
+  const mappingSourceHeaders = useMemo(
+    () => headers.filter((header) => header && header !== membershipEndDateHeader),
+    [headers, membershipEndDateHeader]
+  );
+
+  const applyYearPolicyState = (
+    enabled: boolean,
+    yearPolicies: Record<number, MembershipYearPolicy>,
+    unknownPolicy: MembershipYearPolicy
+  ) => {
+    const applied = applyMembershipYearPolicies({
+      rows: previewRows,
+      enabled,
+      yearPolicies,
+      unknownPolicy,
+    });
+    setActions(applied.actions);
+    setStatusOverrides(applied.statusOverrides);
+  };
 
   const selectedClubName = useMemo(() => {
     if (!selectedClubId) {
@@ -640,6 +734,11 @@ export function ImportWizardPage({
     setPreviewRows([]);
     setActions({});
     setRoleOverrides({});
+    setStatusOverrides({});
+    setMembershipYearRulesEnabled(false);
+    setMembershipYearPolicies({});
+    setMembershipUnknownPolicy("skip");
+    setMembershipEndDateHeader(null);
     setPreviewFilter("all");
     setIsPreviewDirty(false);
     setHasPreviewRun(false);
@@ -659,6 +758,11 @@ export function ImportWizardPage({
     setPreviewRows([]);
     setActions({});
     setRoleOverrides({});
+    setStatusOverrides({});
+    setMembershipYearRulesEnabled(false);
+    setMembershipYearPolicies({});
+    setMembershipUnknownPolicy("skip");
+    setMembershipEndDateHeader(null);
     setPreviewFilter("all");
     setIsPreviewDirty(false);
     setHasPreviewRun(false);
@@ -725,6 +829,7 @@ export function ImportWizardPage({
       setPreviewRows([]);
       setActions({});
       setResult(null);
+      setMembershipEndDateHeader(null);
       setHasPreviewRun(false);
       setIsPreviewDirty(false);
       return;
@@ -750,7 +855,15 @@ export function ImportWizardPage({
       setHeaders(preview.headers ?? []);
       setSampleRows(preview.sample_rows ?? []);
       setRewritePolicy(isMembersImport ? preview.ltf_license_prefix_rewrite ?? null : null);
-      setMapping(buildAutoMapping(currentFields, preview.headers ?? []));
+      setMembershipEndDateHeader(
+        isMembersImport
+          ? preview.membership_end_date_header ||
+              detectMembershipEndDateHeader(preview.headers ?? [])
+          : null
+      );
+      setMapping(
+        applySuggestedMapping(currentFields, preview.headers ?? [], preview.suggested_mapping)
+      );
       setPreviewRows([]);
       setActions({});
       setPreviewFilter("all");
@@ -788,7 +901,7 @@ export function ImportWizardPage({
   };
 
   const handleAutoMap = () => {
-    setMapping(buildAutoMapping(currentFields, headers));
+    setMapping(applySuggestedMapping(currentFields, headers));
     invalidatePreview();
     if (step !== "mapping") {
       setStep("mapping");
@@ -814,12 +927,32 @@ export function ImportWizardPage({
         isMembersImport ? dateFormat : undefined
       );
       const rows = preview.rows ?? [];
-      const defaultActions = rows.reduce<Record<number, RowAction>>((accumulator, row) => {
-        accumulator[row.row_index] = "create";
-        return accumulator;
-      }, {});
+      const helperHeader =
+        preview.membership_end_date_header ||
+        membershipEndDateHeader ||
+        detectMembershipEndDateHeader(preview.headers ?? headers);
+      const mappedEndDate = isMembersImport && Boolean(helperHeader);
+      const currentYear = new Date().getFullYear();
+      const nextPolicies: Record<number, MembershipYearPolicy> = {};
+      for (const row of rows) {
+        const year = membershipEndYearFromRow(row);
+        if (year != null && nextPolicies[year] === undefined) {
+          nextPolicies[year] = defaultMembershipYearPolicy(year, currentYear);
+        }
+      }
+      const applied = applyMembershipYearPolicies({
+        rows,
+        enabled: mappedEndDate,
+        yearPolicies: nextPolicies,
+        unknownPolicy: "skip",
+      });
       setPreviewRows(rows);
-      setActions(defaultActions);
+      setActions(applied.actions);
+      setStatusOverrides(applied.statusOverrides);
+      setMembershipEndDateHeader(isMembersImport ? helperHeader : null);
+      setMembershipYearRulesEnabled(mappedEndDate);
+      setMembershipYearPolicies(nextPolicies);
+      setMembershipUnknownPolicy("skip");
       setRewritePolicy(isMembersImport ? preview.ltf_license_prefix_rewrite ?? null : null);
       setRoleOverrides({}); // Clear role overrides on new preview
       setPreviewFilter("all");
@@ -853,8 +986,23 @@ export function ImportWizardPage({
         action: actions[row.row_index] ?? "create",
       }));
       const rowOverrides = isMembersImport
-        ? buildConfirmRowOverrides(effectivePreviewRows, roleOverrides, actions)
+        ? buildConfirmRowOverrides(
+            effectivePreviewRows,
+            roleOverrides,
+            actions,
+            membershipYearRulesEnabled ? statusOverrides : undefined
+          )
         : undefined;
+      const membershipYearPoliciesPayload: MembershipYearPoliciesPayload | undefined =
+        isMembersImport && membershipYearRulesEnabled
+          ? {
+              enabled: true,
+              years: Object.fromEntries(
+                Object.entries(membershipYearPolicies).map(([year, policy]) => [year, policy])
+              ),
+              unknown: membershipUnknownPolicy,
+            }
+          : undefined;
       const importResult = await confirmImport(
         importType,
         file,
@@ -862,7 +1010,8 @@ export function ImportWizardPage({
         actionList,
         selectedClubId ?? undefined,
         isMembersImport ? dateFormat : undefined,
-        rowOverrides
+        rowOverrides,
+        membershipYearPoliciesPayload
       );
       setResult(importResult);
       setRewritePolicy(isMembersImport ? importResult.ltf_license_prefix_rewrite ?? rewritePolicy : null);
@@ -1023,6 +1172,13 @@ export function ImportWizardPage({
     ? "stale"
     : "current";
 
+  const membershipHelperNotice =
+    isMembersImport && membershipEndDateHeader ? (
+      <PageNotice tone="info">
+        {t("membershipEndDateHelperNotice", { column: membershipEndDateHeader })}
+      </PageNotice>
+    ) : null;
+
   const prefixNotice =
     isMembersImport && rewritePolicy ? (
       <PageNotice tone="info">
@@ -1079,6 +1235,7 @@ export function ImportWizardPage({
                 <p className="text-sm text-muted">{t("sourceStepSubtitle")}</p>
               </div>
               {prefixNotice}
+              {membershipHelperNotice}
 
               {canSwitchType ? (
                 <div className="space-y-2">
@@ -1225,6 +1382,7 @@ export function ImportWizardPage({
                 <p className="text-sm text-muted">{t("mappingStepSubtitle")}</p>
               </div>
               {prefixNotice}
+              {membershipHelperNotice}
 
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" size="sm" onClick={handleAutoMap} disabled={headers.length === 0}>
@@ -1243,7 +1401,7 @@ export function ImportWizardPage({
                 </Button>
               </div>
 
-              <div className="max-h-[520px] overflow-auto rounded-[var(--radius-form)] border border-border">
+              <div className="rounded-[var(--radius-form)] border border-border">
                 <table className="w-full text-sm">
                   <thead className="bg-secondary text-left text-xs uppercase text-muted">
                     <tr>
@@ -1265,10 +1423,10 @@ export function ImportWizardPage({
                             <SelectTrigger className="w-72">
                               <SelectValue placeholder={t("selectColumnPlaceholder")} />
                             </SelectTrigger>
-                            <SelectContent>
+                            <SelectContent position="popper">
                               <SelectItem value="__none__">{t("notMappedOption")}</SelectItem>
-                              {headers.map((header) => (
-                                <SelectItem key={header} value={header}>
+                              {mappingSourceHeaders.map((header, headerIndex) => (
+                                <SelectItem key={`${headerIndex}-${header}`} value={header}>
                                   {header}
                                 </SelectItem>
                               ))}
@@ -1280,6 +1438,12 @@ export function ImportWizardPage({
                   </tbody>
                 </table>
               </div>
+
+              {unmappedSourceHeaders.length > 0 ? (
+                <p className="text-sm text-muted">
+                  {t("unusedColumnsLabel")}: {unmappedSourceHeaders.join(", ")}
+                </p>
+              ) : null}
 
               <p className="text-sm text-muted">
                 {t("mappingProgressLabel", {
@@ -1297,6 +1461,115 @@ export function ImportWizardPage({
                 <p className="text-sm text-muted">{t("previewStepSubtitle")}</p>
               </div>
               {prefixNotice}
+              {membershipHelperNotice}
+
+              {showMembershipYearPanel ? (
+                <div className="space-y-3 rounded-[var(--radius-card)] border border-border bg-secondary/40 p-4">
+                  <label className="flex items-start gap-3 text-sm text-foreground">
+                    <Checkbox
+                      checked={membershipYearRulesEnabled}
+                      onCheckedChange={(checked) => {
+                        const enabled = checked === true;
+                        setMembershipYearRulesEnabled(enabled);
+                        applyYearPolicyState(
+                          enabled,
+                          membershipYearPolicies,
+                          membershipUnknownPolicy
+                        );
+                      }}
+                    />
+                    <span>
+                      <span className="font-medium">{t("membershipYearRulesLabel")}</span>
+                      <span className="mt-1 block text-xs text-muted">
+                        {t("membershipYearRulesHint")}
+                      </span>
+                    </span>
+                  </label>
+                  {membershipYearRulesEnabled ? (
+                    <div className="overflow-x-auto rounded-[var(--radius-form)] border border-border bg-card">
+                      <table className="w-full text-sm">
+                        <thead className="bg-secondary text-left text-xs uppercase text-muted">
+                          <tr>
+                            <th className="px-3 py-2 font-medium">{t("membershipYearColumn")}</th>
+                            <th className="px-3 py-2 font-medium">{t("membershipYearCountColumn")}</th>
+                            <th className="px-3 py-2 font-medium">{t("membershipYearActionColumn")}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {membershipYearSummary.years.map(([year, count]) => (
+                            <tr key={year} className="border-t border-border text-foreground">
+                              <td className="px-3 py-2 font-medium">{year}</td>
+                              <td className="px-3 py-2">{count}</td>
+                              <td className="px-3 py-2">
+                                <Select
+                                  value={membershipYearPolicies[year] ?? "skip"}
+                                  onValueChange={(value) => {
+                                    const policy = value as MembershipYearPolicy;
+                                    const nextPolicies = {
+                                      ...membershipYearPolicies,
+                                      [year]: policy,
+                                    };
+                                    setMembershipYearPolicies(nextPolicies);
+                                    applyYearPolicyState(
+                                      true,
+                                      nextPolicies,
+                                      membershipUnknownPolicy
+                                    );
+                                  }}
+                                >
+                                  <SelectTrigger className="w-64">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="skip">{t("membershipYearSkip")}</SelectItem>
+                                    <SelectItem value="active">
+                                      {t("membershipYearImportActive")}
+                                    </SelectItem>
+                                    <SelectItem value="inactive">
+                                      {t("membershipYearImportInactive")}
+                                    </SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </td>
+                            </tr>
+                          ))}
+                          {membershipYearSummary.unknown > 0 ? (
+                            <tr className="border-t border-border text-foreground">
+                              <td className="px-3 py-2 font-medium">
+                                {t("membershipYearUnknown")}
+                              </td>
+                              <td className="px-3 py-2">{membershipYearSummary.unknown}</td>
+                              <td className="px-3 py-2">
+                                <Select
+                                  value={membershipUnknownPolicy}
+                                  onValueChange={(value) => {
+                                    const policy = value as MembershipYearPolicy;
+                                    setMembershipUnknownPolicy(policy);
+                                    applyYearPolicyState(true, membershipYearPolicies, policy);
+                                  }}
+                                >
+                                  <SelectTrigger className="w-64">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="skip">{t("membershipYearSkip")}</SelectItem>
+                                    <SelectItem value="active">
+                                      {t("membershipYearImportActive")}
+                                    </SelectItem>
+                                    <SelectItem value="inactive">
+                                      {t("membershipYearImportInactive")}
+                                    </SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </td>
+                            </tr>
+                          ) : null}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
               {isPreviewDirty ? (
                 <p className="rounded-[var(--radius-form)] border px-3 py-2 text-sm banner-warning">
@@ -1432,7 +1705,12 @@ export function ImportWizardPage({
                           </td>
                           <td className="px-2 py-2 text-xs">
                             {Object.entries(row.data)
-                              .filter(([, value]) => value !== null && value !== "")
+                              .filter(
+                                ([key, value]) =>
+                                  value !== null &&
+                                  value !== "" &&
+                                  key !== "membership_end_year"
+                              )
                               .map(([key, value]) => `${key}: ${value}`)
                               .join(", ")}
                           </td>
@@ -1607,6 +1885,7 @@ export function ImportWizardPage({
                 <p className="text-sm text-muted">{t("confirmStepSubtitle")}</p>
               </div>
               {prefixNotice}
+              {membershipHelperNotice}
 
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="rounded-[var(--radius-form)] border border-border bg-secondary px-3 py-2 text-sm text-foreground">
@@ -1655,6 +1934,7 @@ export function ImportWizardPage({
                 <p className="text-sm text-muted">{t("resultStepSubtitle")}</p>
               </div>
               {prefixNotice}
+              {membershipHelperNotice}
 
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="rounded-[var(--radius-form)] border px-3 py-2 text-sm banner-success">

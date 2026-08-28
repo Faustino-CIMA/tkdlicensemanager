@@ -1285,6 +1285,128 @@ class MemberImportTests(TestCase):
         self.assertEqual(member.wt_licenseid, "LUX-000321")
         self.assertEqual(member.ltf_licenseid, "LUX-000321")
 
+    def test_preview_without_mapping_suggests_membership_end_date(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        csv_data = (
+            '\ufeff"Member ID","Preferred First Name","Preferred Last Name","Gender",'
+            '"Date of Birth","Primary Member Role","Secondary Role","Membership End Date"\n'
+            '"LUX-2583","Armand","Scholtes","Male","08/11/1973","Athlete","Staff","31/12/2025"\n'
+        )
+        file_obj = BytesIO(csv_data.encode("utf-8"))
+        file_obj.name = "simplycompete.csv"
+        response = self.client.post(
+            "/api/imports/members/preview/",
+            {
+                "file": file_obj,
+                "club_id": self.club.id,
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        suggested = response.data["suggested_mapping"]
+        self.assertNotIn("membership_end_date", suggested)
+        self.assertEqual(response.data["membership_end_date_header"], "Membership End Date")
+        self.assertEqual(suggested["first_name"], "Preferred First Name")
+        self.assertEqual(suggested["last_name"], "Preferred Last Name")
+        self.assertEqual(suggested["sex"], "Gender")
+        self.assertEqual(suggested["date_of_birth"], "Date of Birth")
+        self.assertEqual(suggested["primary_license_role"], "Primary Member Role")
+        self.assertEqual(suggested["secondary_license_role"], "Secondary Role")
+        self.assertEqual(suggested["ltf_licenseid"], "Member ID")
+
+    def test_preview_includes_membership_end_year_without_storing_or_failing(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        csv_data = (
+            "first_name,last_name,Membership End Date\n"
+            "Ana,Ng,31/12/2026\n"
+            "Ben,Kay,31/12/2025\n"
+        )
+        file_obj = BytesIO(csv_data.encode("utf-8"))
+        file_obj.name = "members_end_dates.csv"
+        mapping = {
+            "first_name": "first_name",
+            "last_name": "last_name",
+        }
+        response = self.client.post(
+            "/api/imports/members/preview/",
+            {
+                "file": file_obj,
+                "mapping": json.dumps(mapping),
+                "club_id": self.club.id,
+                "date_format": "YYYY-MM-DD",
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        rows = response.data["rows"]
+        self.assertEqual(rows[0]["data"]["membership_end_year"], 2026)
+        self.assertEqual(rows[1]["data"]["membership_end_year"], 2025)
+        self.assertEqual(response.data["membership_end_date_header"], "Membership End Date")
+        self.assertEqual(rows[0]["errors"], [])
+        self.assertEqual(rows[1]["errors"], [])
+
+    def test_confirm_membership_year_policies_skip_and_set_active_status(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        csv_data = (
+            "first_name,last_name,Membership End Date\n"
+            "Ana,Ng,31/12/2026\n"
+            "Ben,Kay,31/12/2025\n"
+            "Cam,Ort,31/12/2024\n"
+        )
+        file_obj = BytesIO(csv_data.encode("utf-8"))
+        file_obj.name = "members_year_policies.csv"
+        mapping = {
+            "first_name": "first_name",
+            "last_name": "last_name",
+        }
+        policies = {
+            "enabled": True,
+            "years": {"2026": "active", "2025": "inactive", "2024": "skip"},
+            "unknown": "skip",
+        }
+        response = self.client.post(
+            "/api/imports/members/confirm/",
+            {
+                "file": file_obj,
+                "mapping": json.dumps(mapping),
+                "club_id": self.club.id,
+                "date_format": "DD/MM/YYYY",
+                "membership_year_policies": json.dumps(policies),
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["created"], 2)
+        self.assertEqual(response.data["skipped"], 1)
+        ana = Member.objects.get(first_name="Ana", last_name="NG")
+        ben = Member.objects.get(first_name="Ben", last_name="KAY")
+        self.assertTrue(ana.is_active)
+        self.assertFalse(ben.is_active)
+        self.assertFalse(Member.objects.filter(first_name="Cam").exists())
+
+    def test_confirm_without_membership_policies_is_unchanged(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        csv_data = "first_name,last_name,Membership End Date\nAna,Ng,31/12/2025\n"
+        file_obj = BytesIO(csv_data.encode("utf-8"))
+        file_obj.name = "members_no_policy.csv"
+        mapping = {
+            "first_name": "first_name",
+            "last_name": "last_name",
+        }
+        response = self.client.post(
+            "/api/imports/members/confirm/",
+            {
+                "file": file_obj,
+                "mapping": json.dumps(mapping),
+                "club_id": self.club.id,
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["created"], 1)
+        member = Member.objects.get(first_name="Ana", last_name="NG")
+        self.assertTrue(member.is_active)
+
 
 class LtfLicensePrefixRewriteTests(TestCase):
     def setUp(self):

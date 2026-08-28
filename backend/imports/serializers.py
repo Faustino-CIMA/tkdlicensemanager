@@ -16,6 +16,8 @@ class ImportPreviewResponseSerializer(serializers.Serializer):
     rows = serializers.ListField(child=serializers.DictField(), required=False)
     total_rows = serializers.IntegerField()
     club_id = serializers.IntegerField(required=False)
+    suggested_mapping = serializers.DictField(required=False)
+    membership_end_date_header = serializers.CharField(required=False, allow_null=True)
     ltf_license_prefix_rewrite = serializers.DictField(required=False)
 
 

@@ -435,9 +435,26 @@ class LicenseApiPermissionTests(TestCase):
         )
         self.assertEqual(update_response.status_code, status.HTTP_200_OK)
         self.assertEqual(update_response.data["status"], License.Status.ACTIVE)
+        self.assertIsNotNone(update_response.data["issued_at"])
 
         delete_response = self.client.delete(f"/api/licenses/{created_license_id}/")
         self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_ltf_admin_create_active_license_sets_issued_at(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        payload = self._payload()
+        payload["status"] = License.Status.ACTIVE
+        response = self.client.post("/api/licenses/", payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["status"], License.Status.ACTIVE)
+        self.assertIsNotNone(response.data["issued_at"])
+
+    def test_pending_license_create_leaves_issued_at_empty(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.post("/api/licenses/", self._payload(), format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["status"], License.Status.PENDING)
+        self.assertIsNone(response.data["issued_at"])
 
 
 class FinanceModelTests(TestCase):

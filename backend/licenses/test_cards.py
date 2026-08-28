@@ -16,7 +16,7 @@ from rest_framework.test import APIClient
 from PIL import Image
 
 from accounts.models import User
-from clubs.models import Club
+from clubs.models import BrandingAsset, Club
 from members.models import Member
 
 from .models import (
@@ -2798,6 +2798,168 @@ class LicenseCardPreviewApiTests(TestCase):
         self.assertIn("html,body{margin:0;padding:0;}", response.data["css"])
         self.assertNotIn("card-simulation-root", response.data["html"])
         self.assertNotIn("--card-simulation-scale", response.data["css"])
+
+    def test_empty_image_slot_omits_dashed_no_image_placeholder(self):
+        from licenses.card_rendering import _render_element_html
+
+        html = _render_element_html(
+            {
+                "type": "image",
+                "x_mm": "2.00",
+                "y_mm": "2.00",
+                "width_mm": "20.00",
+                "height_mm": "25.00",
+                "opacity": "1.00",
+                "rotation_deg": "0.00",
+                "z_index": 1,
+                "visible": True,
+                "style": {},
+                "resolved_source": "",
+            }
+        )
+        self.assertNotIn("No image", html)
+        self.assertNotIn("dashed", html)
+
+    def test_text_html_does_not_force_aggressive_word_breaks(self):
+        from licenses.card_rendering import _render_element_html
+
+        html = _render_element_html(
+            {
+                "type": "text",
+                "x_mm": "2.00",
+                "y_mm": "2.00",
+                "width_mm": "70.00",
+                "height_mm": "8.00",
+                "opacity": "1.00",
+                "rotation_deg": "0.00",
+                "z_index": 1,
+                "visible": True,
+                "style": {},
+                "resolved_text": "Luxembourg Taekwondo Federation",
+            }
+        )
+        self.assertNotIn("word-break:break-word", html)
+        self.assertIn("overflow-wrap:break-word", html)
+        self.assertIn("-webkit-text-size-adjust:100%", html)
+
+        nowrap_html = _render_element_html(
+            {
+                "type": "text",
+                "x_mm": "2.00",
+                "y_mm": "2.00",
+                "width_mm": "70.00",
+                "height_mm": "8.00",
+                "opacity": "1.00",
+                "rotation_deg": "0.00",
+                "z_index": 1,
+                "visible": True,
+                "style": {"max_lines": 1},
+                "resolved_text": "Luxembourg Taekwondo Federation",
+            }
+        )
+        self.assertIn("white-space:nowrap", nowrap_html)
+
+    def test_missing_member_photo_falls_back_to_selected_club_logo(self):
+        with tempfile.TemporaryDirectory() as temp_media_root:
+            with self.settings(MEDIA_ROOT=temp_media_root):
+                self.member.profile_picture_processed = None
+                self.member.save(update_fields=["profile_picture_processed", "updated_at"])
+                BrandingAsset.objects.create(
+                    scope_type=BrandingAsset.ScopeType.CLUB,
+                    asset_type=BrandingAsset.AssetType.LOGO,
+                    usage_type=BrandingAsset.UsageType.PRINT,
+                    club=self.club,
+                    file=_build_uploaded_png("club-print-logo.png"),
+                    is_selected=True,
+                    uploaded_by=self.ltf_admin,
+                )
+                self.template_version.design_payload = {
+                    "elements": [
+                        {
+                            "id": "member-photo",
+                            "type": "image",
+                            "x_mm": "4.00",
+                            "y_mm": "4.00",
+                            "width_mm": "20.00",
+                            "height_mm": "25.00",
+                            "source": "member.profile_picture_processed",
+                        }
+                    ]
+                }
+                self.template_version.save(update_fields=["design_payload", "updated_at"])
+                self.client.force_authenticate(user=self.ltf_admin)
+                response = self.client.post(
+                    self.preview_data_url,
+                    {"member_id": self.member.id, "license_id": self.license.id},
+                    format="json",
+                )
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                image_element = response.data["elements"][0]
+                self.assertTrue(str(image_element["resolved_source"]).startswith("data:image/"))
+                self.assertEqual(
+                    image_element["resolved_source_meta"]["resolved_via"],
+                    "club.logo_print_url",
+                )
+                html_response = self.client.post(
+                    self.preview_card_html_url,
+                    {"member_id": self.member.id, "license_id": self.license.id},
+                    format="json",
+                )
+                self.assertEqual(html_response.status_code, status.HTTP_200_OK)
+                self.assertIn("data:image/", html_response.data["html"])
+                self.assertIn("object-fit:contain", html_response.data["html"])
+                self.assertIn("opacity:0.40", html_response.data["html"])
+                self.assertIn("background:#f5f5f5", html_response.data["html"])
+                self.assertNotIn("No image", html_response.data["html"])
+
+    def test_member_photo_is_preferred_over_club_logo_fallback(self):
+        with tempfile.TemporaryDirectory() as temp_media_root:
+            with self.settings(MEDIA_ROOT=temp_media_root):
+                self.member.profile_picture_processed = _build_uploaded_png("member-photo.png")
+                self.member.save(update_fields=["profile_picture_processed", "updated_at"])
+                BrandingAsset.objects.create(
+                    scope_type=BrandingAsset.ScopeType.CLUB,
+                    asset_type=BrandingAsset.AssetType.LOGO,
+                    usage_type=BrandingAsset.UsageType.PRINT,
+                    club=self.club,
+                    file=_build_uploaded_png("club-print-logo.png"),
+                    is_selected=True,
+                    uploaded_by=self.ltf_admin,
+                )
+                self.template_version.design_payload = {
+                    "elements": [
+                        {
+                            "id": "member-photo",
+                            "type": "image",
+                            "x_mm": "4.00",
+                            "y_mm": "4.00",
+                            "width_mm": "20.00",
+                            "height_mm": "25.00",
+                            "source": "member.profile_picture_processed",
+                        }
+                    ]
+                }
+                self.template_version.save(update_fields=["design_payload", "updated_at"])
+                self.client.force_authenticate(user=self.ltf_admin)
+                response = self.client.post(
+                    self.preview_data_url,
+                    {"member_id": self.member.id, "license_id": self.license.id},
+                    format="json",
+                )
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                image_element = response.data["elements"][0]
+                self.assertEqual(
+                    image_element["resolved_source_meta"]["resolved_via"],
+                    "member.profile_picture_processed",
+                )
+                html_response = self.client.post(
+                    self.preview_card_html_url,
+                    {"member_id": self.member.id, "license_id": self.license.id},
+                    format="json",
+                )
+                self.assertEqual(html_response.status_code, status.HTTP_200_OK)
+                self.assertNotIn("opacity:0.40", html_response.data["html"])
+                self.assertNotIn("background:#f5f5f5", html_response.data["html"])
 
     def test_preview_refresh_override_is_deterministic_for_multiple_elements(self):
         self.client.force_authenticate(user=self.ltf_admin)

@@ -36,6 +36,7 @@ describe("card simulation utilities", () => {
     expect(srcDoc).not.toContain("--card-simulation-scale");
     expect(srcDoc).toContain("#card-simulation-root");
     expect(srcDoc).toContain("transform:scale(0.750000)");
+    expect(srcDoc).toContain("-webkit-text-size-adjust:none");
   });
 
   it("renders a 2x backing store for retina display", () => {

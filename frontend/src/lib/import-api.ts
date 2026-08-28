@@ -14,6 +14,8 @@ type PreviewResponse = {
   rows?: ImportRow[];
   total_rows: number;
   club_id?: number;
+  suggested_mapping?: Record<string, string>;
+  membership_end_date_header?: string | null;
   ltf_license_prefix_rewrite?: LtfLicensePrefixRewritePolicy;
 };
 
@@ -61,6 +63,15 @@ type ConfirmRowOverridePayload = {
   row_index: number;
   primary_license_role: string;
   secondary_license_role: string;
+  is_active?: boolean;
+};
+
+export type MembershipYearPolicy = "skip" | "active" | "inactive";
+
+export type MembershipYearPoliciesPayload = {
+  enabled: boolean;
+  years: Record<string, MembershipYearPolicy>;
+  unknown: MembershipYearPolicy;
 };
 
 export async function confirmImport(
@@ -70,7 +81,8 @@ export async function confirmImport(
   actions: Array<{ row_index: number; action: "create" | "skip" }>,
   clubId?: number,
   dateFormat?: string,
-  rowOverrides?: ConfirmRowOverridePayload[]
+  rowOverrides?: ConfirmRowOverridePayload[],
+  membershipYearPolicies?: MembershipYearPoliciesPayload
 ) {
   const formData = new FormData();
   formData.append("file", file);
@@ -84,6 +96,9 @@ export async function confirmImport(
   }
   if (rowOverrides !== undefined && rowOverrides.length > 0) {
     formData.append("row_overrides", JSON.stringify(rowOverrides));
+  }
+  if (membershipYearPolicies?.enabled) {
+    formData.append("membership_year_policies", JSON.stringify(membershipYearPolicies));
   }
 
   return upload<ConfirmResponse>(`/api/imports/${type}/confirm/`, formData);

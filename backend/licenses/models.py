@@ -159,6 +159,11 @@ class License(models.Model):
             year = cast(int, self.year)
             self.start_date = date(year, 1, 1)
             self.end_date = date(year, 12, 31)
+        if self.status == self.Status.ACTIVE and self.issued_at is None:
+            self.issued_at = timezone.now()
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None:
+                kwargs["update_fields"] = list({*update_fields, "issued_at"})
         super().save(*args, **kwargs)
 
     def __str__(self):

@@ -14,6 +14,7 @@ from members.models import Member
 from members.services import apply_ltf_license_id_import_prefix, ltf_license_prefix_rewrite_policy
 
 from .csv_utils import read_csv, to_row_dict
+from .mapping import detect_membership_end_date_header, suggest_member_mapping
 from .serializers import (
     ImportBaseSerializer,
     ImportConfirmResponseSerializer,
@@ -69,23 +70,95 @@ def parse_row_overrides(raw_overrides):
             row_index = item.get("row_index")
             if row_index is None:
                 continue
-            parsed[int(row_index)] = {
-                "primary_license_role": item.get("primary_license_role", ""),
-                "secondary_license_role": item.get("secondary_license_role", ""),
-            }
+            parsed[int(row_index)] = _normalize_row_override(item)
         return parsed
 
     if isinstance(overrides, dict):
         for row_index, override in overrides.items():
             if not isinstance(override, dict):
                 continue
-            parsed[int(row_index)] = {
-                "primary_license_role": override.get("primary_license_role", ""),
-                "secondary_license_role": override.get("secondary_license_role", ""),
-            }
+            parsed[int(row_index)] = _normalize_row_override(override)
         return parsed
 
     return {}
+
+
+def _normalize_row_override(item: dict) -> dict:
+    payload = {
+        "primary_license_role": item.get("primary_license_role", ""),
+        "secondary_license_role": item.get("secondary_license_role", ""),
+    }
+    if "is_active" in item:
+        payload["is_active"] = item.get("is_active")
+    return payload
+
+
+_ALLOWED_MEMBERSHIP_YEAR_POLICIES = {"skip", "active", "inactive"}
+
+
+def parse_membership_year_policies(raw):
+    if not raw:
+        return None
+    if isinstance(raw, (bytes, bytearray)):
+        raw = raw.decode("utf-8")
+    if isinstance(raw, str):
+        raw = raw.strip()
+        if not raw:
+            return None
+        data = json.loads(raw)
+    else:
+        data = raw
+    if not isinstance(data, dict) or not data.get("enabled"):
+        return None
+    years_in = data.get("years") or {}
+    years: dict[int, str] = {}
+    if isinstance(years_in, dict):
+        for key, value in years_in.items():
+            policy = str(value or "").strip().lower()
+            if policy not in _ALLOWED_MEMBERSHIP_YEAR_POLICIES:
+                continue
+            try:
+                years[int(key)] = policy
+            except (TypeError, ValueError):
+                continue
+    unknown = str(data.get("unknown") or "skip").strip().lower()
+    if unknown not in _ALLOWED_MEMBERSHIP_YEAR_POLICIES:
+        unknown = "skip"
+    return {"years": years, "unknown": unknown}
+
+
+def parse_membership_end_year(value, date_format):
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    local_errors: list[str] = []
+    parsed = parse_date(raw, local_errors, "membership_end_date", date_format)
+    if parsed:
+        return parsed.year
+    for pattern in ("%d/%m/%Y", "%d.%m.%Y", "%d-%m-%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(raw, pattern).date().year
+        except Exception:
+            continue
+    return None
+
+
+def membership_end_year_for_row(row_data, mapping, date_format, headers=None):
+    header = detect_membership_end_date_header(
+        headers if headers is not None else list(row_data.keys()),
+        mapping,
+    )
+    if not header:
+        return None
+    return parse_membership_end_year(row_data.get(header, ""), date_format)
+
+
+def membership_year_policy_for(year, policies):
+    if not policies:
+        return None
+    if year is None:
+        return policies["unknown"]
+    return policies["years"].get(year, policies["unknown"])
 
 
 def resolve_license_role_value(has_row_override, override, field_name, csv_value, errors):
@@ -384,6 +457,8 @@ class MemberImportPreviewView(views.APIView):
                     "headers": headers,
                     "sample_rows": sample_rows,
                     "total_rows": len(rows),
+                    "suggested_mapping": suggest_member_mapping(headers),
+                    "membership_end_date_header": detect_membership_end_date_header(headers),
                     "ltf_license_prefix_rewrite": ltf_license_prefix_rewrite_policy(),
                 }
             )
@@ -481,6 +556,9 @@ class MemberImportPreviewView(views.APIView):
                 if ltf_licenseid in existing_ltf_ids or ltf_licenseid in seen_ltf_ids:
                     errors.append("ltf_licenseid must be unique")
                 seen_ltf_ids.add(ltf_licenseid)
+            membership_end_year = membership_end_year_for_row(
+                row_data, mapping, date_format, headers
+            )
 
             preview_rows.append(
                 {
@@ -497,6 +575,7 @@ class MemberImportPreviewView(views.APIView):
                         "is_active": is_active_value,
                         "primary_license_role": primary_license_role,
                         "secondary_license_role": secondary_license_role,
+                        "membership_end_year": membership_end_year,
                     },
                     "errors": errors,
                     "duplicate": bool(duplicate_id),
@@ -510,6 +589,9 @@ class MemberImportPreviewView(views.APIView):
                 "rows": preview_rows,
                 "total_rows": len(rows),
                 "club_id": club_id,
+                "membership_end_date_header": detect_membership_end_date_header(
+                    headers, mapping
+                ),
                 "ltf_license_prefix_rewrite": ltf_license_prefix_rewrite_policy(
                     rewritten_count=rewritten_count
                 ),
@@ -535,6 +617,9 @@ class MemberImportConfirmView(views.APIView):
         mapping = parse_mapping(request.data.get("mapping"))
         actions = parse_actions(request.data.get("actions"))
         row_overrides = parse_row_overrides(request.data.get("row_overrides"))
+        membership_year_policies = parse_membership_year_policies(
+            request.data.get("membership_year_policies")
+        )
         if not file_obj or not mapping:
             return response.Response(
                 {"detail": "file and mapping are required."}, status=400
@@ -584,6 +669,13 @@ class MemberImportConfirmView(views.APIView):
                     continue
 
                 row_data = to_row_dict(headers, row)
+                year_policy = membership_year_policy_for(
+                    membership_end_year_for_row(row_data, mapping, date_format, headers),
+                    membership_year_policies,
+                )
+                if year_policy == "skip":
+                    skipped += 1
+                    continue
                 errors = []
                 first_name = row_data.get(first_header, "").strip()
                 last_name = row_data.get(last_header, "").strip()
@@ -661,6 +753,14 @@ class MemberImportConfirmView(views.APIView):
                 }
                 if sex_value:
                     member_payload["sex"] = sex_value
+                if has_row_override and "is_active" in override:
+                    override_active = override.get("is_active")
+                    if override_active is True or override_active is False:
+                        is_active_value = override_active
+                if year_policy == "active":
+                    is_active_value = True
+                elif year_policy == "inactive":
+                    is_active_value = False
                 if is_active_value is not None:
                     member_payload["is_active"] = is_active_value
                 Member.objects.create(**member_payload)
