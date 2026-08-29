@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { X } from "lucide-react";
 
@@ -9,7 +10,7 @@ import { EmptyState } from "@/components/club-admin/empty-state";
 import { Button } from "@/components/ui/button";
 import { DeleteConfirmModal } from "@/components/ui/delete-confirm-modal";
 import { Input } from "@/components/ui/input";
-import { FloatingNotice, FormPanel } from "@/components/ui/list-page-chrome";
+import { FloatingNotice, FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
 import { Modal } from "@/components/ui/modal";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Switch } from "@/components/ui/switch";
@@ -122,6 +123,8 @@ export default function ClubAdminsBoardPage() {
   const t = useTranslations("LtfAdmin");
   const common = useTranslations("Common");
   const locale = useLocale();
+  const searchParams = useSearchParams();
+  const noAdminIssue = searchParams.get("issue") === "no_admin";
   const boardRef = useRef<HTMLDivElement | null>(null);
   const memberCardRefs = useRef<Record<number, HTMLButtonElement | null>>({});
   const clubCardRefs = useRef<Record<number, HTMLButtonElement | null>>({});
@@ -180,6 +183,18 @@ export default function ClubAdminsBoardPage() {
   useEffect(() => {
     void loadBoard();
   }, [loadBoard]);
+
+  const didAutoSelectNoAdmin = useRef(false);
+  useEffect(() => {
+    if (!noAdminIssue || didAutoSelectNoAdmin.current || clubs.length === 0) {
+      return;
+    }
+    const firstWithoutAdmin = clubs.find((club) => club.admin_count === 0);
+    if (firstWithoutAdmin) {
+      setFilterClubId(firstWithoutAdmin.id);
+      didAutoSelectNoAdmin.current = true;
+    }
+  }, [clubs, noAdminIssue]);
 
   const selectedAdmin = useMemo(
     () => admins.find((admin) => admin.id === selectedAdminId) ?? null,
@@ -254,6 +269,7 @@ export default function ClubAdminsBoardPage() {
     const query = clubQuery.trim().toLowerCase();
     const ranked = [...clubs]
       .filter((club) => matchesQuery(`${club.name} ${club.locality}`, query))
+      .filter((club) => (noAdminIssue ? club.admin_count === 0 : true))
       .sort((left, right) => {
         if (left.admin_count === 0 && right.admin_count !== 0) {
           return -1;
@@ -264,7 +280,7 @@ export default function ClubAdminsBoardPage() {
         return left.name.localeCompare(right.name);
       });
     return pinAndLimit(ranked, clubLimit, [filterClubId]);
-  }, [clubLimit, clubQuery, clubs, filterClubId]);
+  }, [clubLimit, clubQuery, clubs, filterClubId, noAdminIssue]);
 
   const compactSelectedClub = !isLg && Boolean(filterClub) && !clubQuery.trim();
   const visibleClubs = compactSelectedClub && filterClub ? [filterClub] : clubResults.items;
@@ -600,6 +616,9 @@ export default function ClubAdminsBoardPage() {
           <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
         ) : (
           <>
+            {noAdminIssue ? (
+              <PageNotice tone="info">{t("clubsWithoutAdminFilterMessage")}</PageNotice>
+            ) : null}
             <FormPanel>
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>

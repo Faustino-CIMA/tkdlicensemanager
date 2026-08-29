@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { useClubSelection } from "@/components/club-selection-provider";
 import { EmptyState } from "@/components/club-admin/empty-state";
@@ -33,6 +33,8 @@ export default function LtfFinancePaymentsPage() {
   const common = useTranslations("Common");
   const locale = useLocale();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const failedPaymentIssue = searchParams.get("issue") === "failed_or_cancelled_30d";
   const [payments, setPayments] = useState<Payment[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -77,8 +79,9 @@ export default function LtfFinancePaymentsPage() {
             page: currentPage,
             pageSize: resolveListPageSize(pageSize, LIST_PAGE_SIZE_CAP),
             q: searchQuery || undefined,
-            status: statusFilter === "all" ? undefined : statusFilter,
+            status: failedPaymentIssue ? undefined : statusFilter === "all" ? undefined : statusFilter,
             clubId: selectedClubId ?? undefined,
+            issue: failedPaymentIssue ? "failed_or_cancelled_30d" : undefined,
           },
           { signal: controller.signal }
         );
@@ -141,7 +144,7 @@ export default function LtfFinancePaymentsPage() {
         }
       }
     },
-    [currentPage, pageSize, searchQuery, selectedClubId, statusFilter, t]
+    [currentPage, failedPaymentIssue, pageSize, searchQuery, selectedClubId, statusFilter, t]
   );
 
   useEffect(() => {
@@ -150,7 +153,7 @@ export default function LtfFinancePaymentsPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedClubId, searchQuery, pageSize, statusFilter]);
+  }, [selectedClubId, searchQuery, pageSize, statusFilter, failedPaymentIssue]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -278,6 +281,9 @@ export default function LtfFinancePaymentsPage() {
   return (
     <LtfFinanceLayout title={t("paymentsTitle")} subtitle={t("paymentsSubtitle")}>
       {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      {failedPaymentIssue ? (
+        <PageNotice tone="info">{t("failedOrCancelledPaymentsFilterMessage")}</PageNotice>
+      ) : null}
 
       <div className="flex flex-col gap-4">
         <ListToolbarPanel

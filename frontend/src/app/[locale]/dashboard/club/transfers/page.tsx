@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
@@ -75,6 +76,7 @@ export default function ClubTransfersPage() {
   const t = useTranslations("ClubAdmin");
   const common = useTranslations("Common");
   const locale = useLocale();
+  const searchParams = useSearchParams();
   const { selectedClubId, clubs, isLoading: clubsLoading } = useClubSelection();
   const selectedClub = clubs.find((club) => club.id === selectedClubId) ?? null;
 
@@ -131,7 +133,10 @@ export default function ClubTransfersPage() {
     if (didScrollToRequests.current || isLoading || clubsLoading) {
       return;
     }
-    if (typeof window === "undefined" || window.location.hash !== "#requests") {
+    const shouldFocusRequests =
+      searchParams.get("focus") === "requests" ||
+      (typeof window !== "undefined" && window.location.hash === "#requests");
+    if (!shouldFocusRequests) {
       return;
     }
     const firstIncoming = transfers.find(
@@ -149,7 +154,7 @@ export default function ClubTransfersPage() {
     window.requestAnimationFrame(() => {
       target.scrollIntoView({ behavior: "smooth", block: "start" });
     });
-  }, [clubsLoading, isLoading, selectedClubId, selectedTransferId, transfers]);
+  }, [clubsLoading, isLoading, searchParams, selectedClubId, selectedTransferId, transfers]);
 
   useEffect(() => {
     if (!selectedClubId) {

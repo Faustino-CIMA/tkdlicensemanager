@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { X } from "lucide-react";
 
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
@@ -39,6 +40,8 @@ export default function ClubAdminInvoicesPage() {
   const common = useTranslations("Common");
   const locale = useLocale();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const overdueIssue = searchParams.get("issue") === "overdue_7d";
   const { selectedClubId } = useClubSelection();
   const [invoices, setInvoices] = useState<FinanceInvoice[]>([]);
   const [searchInput, setSearchInput] = useState("");
@@ -62,7 +65,11 @@ export default function ClubAdminInvoicesPage() {
   const requestAbortRef = useRef<AbortController | null>(null);
 
   const pageSizeOptions = ["50", "150", "300", "all"];
-  const statusFilterParam = invoiceStatusFilter === "all" ? undefined : invoiceStatusFilter;
+  const statusFilterParam = overdueIssue
+    ? "issued"
+    : invoiceStatusFilter === "all"
+      ? undefined
+      : invoiceStatusFilter;
 
   const invoicesListPageSize = useMemo(() => {
     if (pageSize === "all") {
@@ -100,6 +107,7 @@ export default function ClubAdminInvoicesPage() {
                 clubId,
                 q,
                 status: statusFilterParam,
+                issue: overdueIssue ? "overdue_7d" : undefined,
               },
               { signal: controller.signal }
             ),
@@ -147,7 +155,7 @@ export default function ClubAdminInvoicesPage() {
         }
       }
     },
-    [currentPage, invoicesListPageSize, searchQuery, selectedClubId, statusFilterParam, t]
+    [currentPage, invoicesListPageSize, overdueIssue, searchQuery, selectedClubId, statusFilterParam, t]
   );
 
   useEffect(() => {
@@ -240,7 +248,7 @@ export default function ClubAdminInvoicesPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, pageSize, selectedClubId, invoiceStatusFilter]);
+  }, [searchQuery, pageSize, selectedClubId, invoiceStatusFilter, overdueIssue]);
 
   const columns = [
     { key: "invoice_number", header: t("invoiceNumberLabel") },
@@ -302,6 +310,19 @@ export default function ClubAdminInvoicesPage() {
       <div className="space-y-6">
         {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
         {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
+        {overdueIssue ? (
+          <div className="flex items-start justify-between gap-3 rounded-[var(--radius-form)] border px-4 py-3 text-sm banner-info">
+            <p className="min-w-0 flex-1">{t("issuedInvoicesOverdueFilterMessage")}</p>
+            <button
+              type="button"
+              className="inline-flex h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] shrink-0 items-center justify-center rounded-[var(--radius-form)]"
+              aria-label={common("modalClose")}
+              onClick={() => router.replace(`/${locale}/dashboard/club/invoices`)}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        ) : null}
 
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-end gap-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm">
@@ -334,8 +355,9 @@ export default function ClubAdminInvoicesPage() {
             <div className="min-w-0 flex-1 border-t border-[var(--border)] pt-4 sm:border-t-0 sm:pt-0">
               <FilterPills
                 ariaLabel={t("invoicesStatusFilterAriaLabel")}
-                value={invoiceStatusFilter}
+                value={overdueIssue ? "issued" : invoiceStatusFilter}
                 onChange={setInvoiceStatusFilter}
+                disabled={overdueIssue}
                 options={[
                   { value: "all", title: t("filterAllTitle"), count: invoiceFacetCounts.all },
                   { value: "draft", title: common("statusDraft"), count: invoiceFacetCounts.draft },

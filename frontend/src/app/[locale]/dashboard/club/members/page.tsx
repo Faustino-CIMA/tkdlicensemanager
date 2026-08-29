@@ -25,6 +25,7 @@ import {
 import { apiRequest } from "@/lib/api";
 import {
   Member,
+  MemberIssueFilter,
   getClubs,
   getMember,
   getMembersPage,
@@ -38,6 +39,16 @@ type MemberStatusFilter = "all" | "active" | "inactive";
 
 function isMemberStatusFilter(value: unknown): value is MemberStatusFilter {
   return value === "all" || value === "active" || value === "inactive";
+}
+
+function parseMemberIssue(value: string | null, legacyFilter: string | null): MemberIssueFilter | null {
+  if (value === "no_valid_license" || value === "missing_ltf_licenseid") {
+    return value;
+  }
+  if (legacyFilter === "without_valid_license") {
+    return "no_valid_license";
+  }
+  return null;
 }
 
 function memberStatusFilterFromLegacySwitches(parsed: {
@@ -112,8 +123,7 @@ export default function ClubAdminMembersPage() {
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
   const [actionsHintOpen, setActionsHintOpen] = useState(false);
   const [bulkStatusBusy, setBulkStatusBusy] = useState(false);
-  const [licenseGapFilterIds, setLicenseGapFilterIds] = useState<number[] | null>(null);
-  const [showLicenseGapMessage, setShowLicenseGapMessage] = useState(false);
+  const issue = parseMemberIssue(searchParams.get("issue"), searchParams.get("filter"));
 
   const pageSizeOptions = ["50", "150", "300", "all"];
 
@@ -129,6 +139,9 @@ export default function ClubAdminMembersPage() {
   }, [pageSize, totalCount]);
 
   const isActiveFilter = useMemo(() => {
+    if (issue) {
+      return true;
+    }
     if (memberStatusFilter === "all") {
       return undefined;
     }
@@ -136,7 +149,7 @@ export default function ClubAdminMembersPage() {
       return true;
     }
     return false;
-  }, [memberStatusFilter]);
+  }, [issue, memberStatusFilter]);
 
   const [memberFacetCounts, setMemberFacetCounts] = useState({
     all: 0,
@@ -159,7 +172,7 @@ export default function ClubAdminMembersPage() {
             q,
             clubId,
             isActive: isActiveFilter,
-            ids: licenseGapFilterIds ?? undefined,
+            issue: issue ?? undefined,
           }),
           getMembersPage({
             page: 1,
@@ -206,7 +219,7 @@ export default function ClubAdminMembersPage() {
     selectedClubId,
     setSelectedClubId,
     isActiveFilter,
-    licenseGapFilterIds,
+    issue,
   ]);
 
   useEffect(() => {
@@ -262,33 +275,10 @@ export default function ClubAdminMembersPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedClubId, pageSize, isActiveFilter, licenseGapFilterIds]);
+  }, [searchQuery, selectedClubId, pageSize, isActiveFilter, issue]);
 
-  useEffect(() => {
-    const filter = searchParams.get("filter");
-    const idsParam = searchParams.get("ids");
-    if (filter === "without_valid_license" && idsParam) {
-      const ids = idsParam
-        .split(",")
-        .map((value) => Number(value.trim()))
-        .filter((value) => Number.isInteger(value) && value > 0);
-      if (ids.length > 0) {
-        setLicenseGapFilterIds(ids);
-        setShowLicenseGapMessage(true);
-        setMemberStatusFilter("active");
-        return;
-      }
-    }
-    setLicenseGapFilterIds(null);
-    setShowLicenseGapMessage(false);
-  }, [searchParams]);
-
-  const dismissLicenseGapMessage = () => {
-    setShowLicenseGapMessage(false);
-    setLicenseGapFilterIds(null);
-    if (searchParams.get("filter") === "without_valid_license") {
-      router.replace(`/${locale}/dashboard/club/members`);
-    }
+  const dismissIssueFilter = () => {
+    router.replace(`/${locale}/dashboard/club/members`);
   };
 
   useEffect(() => {
@@ -329,7 +319,7 @@ export default function ClubAdminMembersPage() {
       setStatusFilterHydrated(true);
       return;
     }
-    if (searchParams.get("filter") === "without_valid_license") {
+    if (issue) {
       setMemberStatusFilter("active");
       setStatusFilterHydrated(true);
       return;
@@ -371,7 +361,7 @@ export default function ClubAdminMembersPage() {
     } finally {
       setStatusFilterHydrated(true);
     }
-  }, [searchParams, statusSwitchesStorageKey]);
+  }, [issue, searchParams, statusSwitchesStorageKey]);
 
   useEffect(() => {
     if (!selectionHydrated || typeof window === "undefined") {
@@ -735,7 +725,7 @@ export default function ClubAdminMembersPage() {
             <div className="min-w-0 flex-1 border-t border-[var(--border)] pt-4 sm:border-t-0 sm:pt-0">
               <FilterPills
                 ariaLabel={t("membersStatusFilterAriaLabel")}
-                disabled={!statusFilterHydrated}
+                disabled={!statusFilterHydrated || Boolean(issue)}
                 value={memberStatusFilter}
                 onChange={setMemberStatusFilter}
                 options={[
@@ -759,14 +749,18 @@ export default function ClubAdminMembersPage() {
             </div>
           </div>
 
-          {showLicenseGapMessage ? (
+          {issue ? (
             <div className="flex items-start justify-between gap-3 rounded-[var(--radius-form)] border px-4 py-3 text-sm banner-info">
-              <p className="min-w-0 flex-1">{t("membersWithoutValidLicenseFilterMessage")}</p>
+              <p className="min-w-0 flex-1">
+                {issue === "missing_ltf_licenseid"
+                  ? t("membersMissingLtfLicenseIdFilterMessage")
+                  : t("membersWithoutValidLicenseFilterMessage")}
+              </p>
               <button
                 type="button"
                 className="inline-flex h-[var(--control-height)] min-h-[var(--control-height)] w-[var(--control-height)] shrink-0 items-center justify-center rounded-[var(--radius-form)]"
                 aria-label={common("modalClose")}
-                onClick={dismissLicenseGapMessage}
+                onClick={dismissIssueFilter}
               >
                 <X className="h-4 w-4" />
               </button>

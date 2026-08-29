@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { X } from "lucide-react";
 
 import { useClubSelection } from "@/components/club-selection-provider";
 import { EmptyState } from "@/components/club-admin/empty-state";
@@ -39,6 +40,8 @@ export default function LtfFinanceInvoicesPage() {
   const common = useTranslations("Common");
   const locale = useLocale();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const overdueIssue = searchParams.get("issue") === "overdue_7d";
   const [invoices, setInvoices] = useState<FinanceInvoice[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -86,8 +89,9 @@ export default function LtfFinanceInvoicesPage() {
             page: currentPage,
             pageSize: resolveListPageSize(pageSize, LIST_PAGE_SIZE_CAP),
             q: searchQuery || undefined,
-            status: statusFilter === "all" ? undefined : statusFilter,
+            status: overdueIssue ? "issued" : statusFilter === "all" ? undefined : statusFilter,
             clubId: selectedClubId ?? undefined,
+            issue: overdueIssue ? "overdue_7d" : undefined,
           },
           { signal: controller.signal }
         );
@@ -154,7 +158,7 @@ export default function LtfFinanceInvoicesPage() {
         }
       }
     },
-    [currentPage, pageSize, searchQuery, selectedClubId, statusFilter, t]
+    [currentPage, overdueIssue, pageSize, searchQuery, selectedClubId, statusFilter, t]
   );
 
   useEffect(() => {
@@ -163,7 +167,7 @@ export default function LtfFinanceInvoicesPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedClubId, searchQuery, pageSize, statusFilter]);
+  }, [selectedClubId, searchQuery, pageSize, statusFilter, overdueIssue]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -297,6 +301,21 @@ export default function LtfFinanceInvoicesPage() {
     <LtfFinanceLayout title={t("invoicesTitle")} subtitle={t("invoicesSubtitle")}>
       {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
       {actionError ? <PageNotice tone="danger">{actionError}</PageNotice> : null}
+      {overdueIssue ? (
+        <PageNotice tone="info">
+          <span className="flex items-start justify-between gap-3">
+            <span>{t("issuedInvoicesOverdueFilterMessage")}</span>
+            <button
+              type="button"
+              className="inline-flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-form)]"
+              aria-label={common("modalClose")}
+              onClick={() => router.replace(`/${locale}/dashboard/ltf-finance/invoices`)}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </span>
+        </PageNotice>
+      ) : null}
 
       <section className="grid gap-4 md:grid-cols-3">
         <SummaryCard
@@ -329,8 +348,9 @@ export default function LtfFinanceInvoicesPage() {
           filters={
             <FilterPills
               ariaLabel={t("invoicesStatusFilterAriaLabel")}
-              value={statusFilter}
+              value={overdueIssue ? "issued" : statusFilter}
               onChange={setStatusFilter}
+              disabled={overdueIssue}
               options={[
                 { value: "all", title: t("filterAllTitle"), count: invoiceFacetCounts.all },
                 { value: "draft", title: common("statusDraft"), count: invoiceFacetCounts.draft },

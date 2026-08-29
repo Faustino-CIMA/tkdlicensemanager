@@ -275,11 +275,14 @@ export function deleteClub(id: number) {
   });
 }
 
+export type MemberIssueFilter = "no_valid_license" | "missing_ltf_licenseid";
+
 type MemberListQueryParams = {
   q?: string;
   clubId?: number;
   isActive?: boolean;
   ids?: number[];
+  issue?: MemberIssueFilter;
 };
 
 type MemberPageParams = MemberListQueryParams & {
@@ -300,6 +303,9 @@ function buildMemberListQuery(params?: MemberListQueryParams) {
   }
   if (params?.ids && params.ids.length > 0) {
     search.set("ids", params.ids.join(","));
+  }
+  if (params?.issue) {
+    search.set("issue", params.issue);
   }
   return search;
 }

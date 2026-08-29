@@ -94,7 +94,7 @@ export function IncomingTransferNotice() {
         {t("incomingTransferNotice", { count })}
       </p>
       <Link
-        href={`/${locale}/dashboard/club/transfers#requests`}
+        href={`/${locale}/dashboard/club/transfers?focus=requests#requests`}
         className="mt-1 inline-block font-semibold underline underline-offset-4"
         onClick={dismiss}
       >

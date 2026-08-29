@@ -2494,7 +2494,7 @@ class OverviewApiTests(TestCase):
         queue = {item["key"]: item for item in response.data["action_queue"]}
         self.assertEqual(
             queue["clubs_without_admin"]["link"]["path"],
-            "/dashboard/ltf/club-admins",
+            "/dashboard/ltf/club-admins?issue=no_admin",
         )
         self.assertEqual(
             queue["members_missing_ltf_licenseid"]["link"]["path"],
@@ -2527,6 +2527,23 @@ class OverviewApiTests(TestCase):
                 item["key"] == "license_types_without_active_price"
                 for item in response.data["action_queue"]
             )
+        )
+        finance_queue = {item["key"]: item for item in response.data["action_queue"]}
+        self.assertEqual(
+            finance_queue["issued_invoices_overdue_7d"]["link"]["path"],
+            "/dashboard/ltf-finance/invoices?issue=overdue_7d",
+        )
+        self.assertEqual(
+            finance_queue["license_types_without_active_price"]["link"]["path"],
+            "/dashboard/ltf-finance/license-settings?issue=missing_price",
+        )
+        self.assertEqual(
+            finance_queue["paid_orders_with_pending_licenses"]["link"]["path"],
+            "/dashboard/ltf-finance/orders?issue=paid_pending_licenses",
+        )
+        self.assertEqual(
+            finance_queue["failed_or_cancelled_payments_30d"]["link"]["path"],
+            "/dashboard/ltf-finance/payments?issue=failed_or_cancelled_30d",
         )
         activity = response.data["recent_activity"]
         self.assertGreaterEqual(len(activity), 1)

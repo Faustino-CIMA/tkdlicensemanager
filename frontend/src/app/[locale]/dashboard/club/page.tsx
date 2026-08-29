@@ -244,31 +244,28 @@ export default function ClubAdminOverviewPage() {
         label: t("overviewActionMembersMissingLtfId"),
         count: membersMissingLtfId,
         severity: "info",
-        href: `/${locale}/dashboard/club/members`,
+        href: `/${locale}/dashboard/club/members?issue=missing_ltf_licenseid`,
       },
       {
         id: "members_without_valid_license",
         label: t("overviewActionMembersWithoutValidLicense"),
         count: membersWithoutValidLicense,
         severity: "critical",
-        href:
-          membersWithoutValidLicenseIds.length > 0
-            ? `/${locale}/dashboard/club/members?filter=without_valid_license&ids=${membersWithoutValidLicenseIds.join(",")}`
-            : `/${locale}/dashboard/club/members`,
+        href: `/${locale}/dashboard/club/members?issue=no_valid_license`,
       },
       {
         id: "issued_invoices_overdue_7d",
         label: t("overviewActionIssuedInvoicesOverdue7d"),
         count: issuedInvoicesOverdue7d,
         severity: "warning",
-        href: `/${locale}/dashboard/club/invoices`,
+        href: `/${locale}/dashboard/club/invoices?issue=overdue_7d`,
       },
       {
         id: "incoming_member_transfers",
         label: t("overviewActionIncomingTransfers"),
         count: incomingTransferCount,
         severity: "warning",
-        href: `/${locale}/dashboard/club/transfers#requests`,
+        href: `/${locale}/dashboard/club/transfers?focus=requests#requests`,
       },
     ],
     [
@@ -277,7 +274,6 @@ export default function ClubAdminOverviewPage() {
       locale,
       membersMissingLtfId,
       membersWithoutValidLicense,
-      membersWithoutValidLicenseIds,
       t,
     ]
   );

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Trash2 } from "lucide-react";
 
 import { EmptyState } from "@/components/club-admin/empty-state";
@@ -43,6 +43,8 @@ export default function LtfFinanceLicenseSettingsPage() {
   const common = useTranslations("Common");
   const locale = useLocale();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const missingPriceIssue = searchParams.get("issue") === "missing_price";
   const [licenseTypes, setLicenseTypes] = useState<FinanceLicenseType[]>([]);
   const [prices, setPrices] = useState<LicensePrice[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -88,17 +90,26 @@ export default function LtfFinanceLicenseSettingsPage() {
   }, [loadData]);
 
   const filteredLicenseTypes = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const pricedTypeIds = new Set(
+      prices
+        .filter((price) => price.effective_from <= today)
+        .map((price) => price.license_type)
+    );
     const normalized = searchQuery.trim().toLowerCase();
-    if (!normalized) {
-      return licenseTypes;
-    }
     return licenseTypes.filter((licenseType) => {
+      if (missingPriceIssue && pricedTypeIds.has(licenseType.id)) {
+        return false;
+      }
+      if (!normalized) {
+        return true;
+      }
       return (
         licenseType.name.toLowerCase().includes(normalized) ||
         licenseType.code.toLowerCase().includes(normalized)
       );
     });
-  }, [licenseTypes, searchQuery]);
+  }, [licenseTypes, missingPriceIssue, prices, searchQuery]);
 
   const pricesByLicenseType = useMemo(() => {
     const grouped: Record<number, LicensePrice[]> = {};
@@ -193,6 +204,9 @@ export default function LtfFinanceLicenseSettingsPage() {
     <LtfFinanceLayout title={t("licenseSettingsTitle")} subtitle={t("licenseSettingsSubtitle")}>
       {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
       {successMessage ? <PageNotice tone="success">{successMessage}</PageNotice> : null}
+      {missingPriceIssue ? (
+        <PageNotice tone="info">{t("missingActivePriceFilterMessage")}</PageNotice>
+      ) : null}
 
       <div className="flex flex-col gap-4">
         <ListToolbarPanel

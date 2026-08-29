@@ -178,6 +178,35 @@ def _parse_csv_ints(raw_value: str | None) -> list[int]:
     return values
 
 
+def _apply_invoice_issue_filter(queryset, issue):
+    if (issue or "").strip() != "overdue_7d":
+        return queryset
+    overdue_cutoff = timezone.now() - timedelta(days=7)
+    return queryset.filter(status=Invoice.Status.ISSUED).filter(
+        Q(issued_at__lte=overdue_cutoff)
+        | Q(issued_at__isnull=True, created_at__lte=overdue_cutoff)
+    )
+
+
+def _apply_order_issue_filter(queryset, issue):
+    if (issue or "").strip() != "paid_pending_licenses":
+        return queryset
+    return queryset.filter(
+        status=Order.Status.PAID,
+        items__license__status=License.Status.PENDING,
+    ).distinct()
+
+
+def _apply_payment_issue_filter(queryset, issue):
+    if (issue or "").strip() != "failed_or_cancelled_30d":
+        return queryset
+    thirty_days_ago = timezone.now() - timedelta(days=30)
+    return queryset.filter(
+        status__in=[Payment.Status.FAILED, Payment.Status.CANCELLED],
+        created_at__gte=thirty_days_ago,
+    )
+
+
 class LicenseViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
     serializer_class = LicenseSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -374,6 +403,9 @@ class OrderViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
                     | Q(member__last_name__icontains=search_value)
                     | Q(currency__icontains=search_value)
                 )
+            queryset = _apply_order_issue_filter(
+                queryset, self.request.query_params.get("issue")
+            )
             return queryset.order_by("-created_at")
         if user.role == "ltf_admin" and self.action in ["confirm_payment", "activate_licenses"]:
             queryset = self._base_queryset()
@@ -683,6 +715,9 @@ class InvoiceViewSet(OptionalPaginationListMixin, viewsets.ReadOnlyModelViewSet)
                     | Q(order__order_number__icontains=search_value)
                     | Q(currency__icontains=search_value)
                 )
+            queryset = _apply_invoice_issue_filter(
+                queryset, self.request.query_params.get("issue")
+            )
             return queryset.order_by("-created_at")
         return Invoice.objects.none()
 
@@ -776,6 +811,9 @@ class PaymentViewSet(OptionalPaginationListMixin, viewsets.ReadOnlyModelViewSet)
                 | Q(order__order_number__icontains=search_value)
                 | Q(order__club__name__icontains=search_value)
             )
+        queryset = _apply_payment_issue_filter(
+            queryset, self.request.query_params.get("issue")
+        )
         return queryset.order_by("-created_at")
 
     def get_permissions(self):
@@ -822,7 +860,7 @@ class LtfAdminOverviewView(APIView):
     permission_classes = [IsLtfAdmin]
 
     def get(self, request):
-        cache_key = "dashboard:overview:ltf_admin:v3"
+        cache_key = "dashboard:overview:ltf_admin:v4"
         cached_payload = cache.get(cache_key)
         if cached_payload is not None:
             return Response(cached_payload, status=status.HTTP_200_OK)
@@ -916,7 +954,8 @@ class LtfAdminOverviewView(APIView):
                     "count": clubs_without_admin,
                     "severity": "warning",
                     "link": _overview_link(
-                        "LtfAdmin.navClubAdmins", "/dashboard/ltf/club-admins"
+                        "LtfAdmin.navClubAdmins",
+                        "/dashboard/ltf/club-admins?issue=no_admin",
                     ),
                 },
                 {
@@ -973,7 +1012,7 @@ class LtfFinanceOverviewView(APIView):
     permission_classes = [IsLtfFinance]
 
     def get(self, request):
-        cache_key = "dashboard:overview:ltf_finance:v3"
+        cache_key = "dashboard:overview:ltf_finance:v4"
         cached_payload = cache.get(cache_key)
         if cached_payload is not None:
             return Response(cached_payload, status=status.HTTP_200_OK)
@@ -1096,7 +1135,10 @@ class LtfFinanceOverviewView(APIView):
                     "key": "issued_invoices_overdue_7d",
                     "count": issued_invoices_overdue_7d.count(),
                     "severity": "critical",
-                    "link": _overview_link("LtfFinance.navInvoices", "/dashboard/ltf-finance/invoices"),
+                    "link": _overview_link(
+                        "LtfFinance.navInvoices",
+                        "/dashboard/ltf-finance/invoices?issue=overdue_7d",
+                    ),
                 },
                 {
                     "key": "license_types_without_active_price",
@@ -1104,20 +1146,26 @@ class LtfFinanceOverviewView(APIView):
                     "severity": "warning",
                     "link": _overview_link(
                         "LtfFinance.navLicenseSettings",
-                        "/dashboard/ltf-finance/license-settings",
+                        "/dashboard/ltf-finance/license-settings?issue=missing_price",
                     ),
                 },
                 {
                     "key": "paid_orders_with_pending_licenses",
                     "count": paid_orders_with_pending_licenses,
                     "severity": "warning",
-                    "link": _overview_link("LtfFinance.navOrders", "/dashboard/ltf-finance/orders"),
+                    "link": _overview_link(
+                        "LtfFinance.navOrders",
+                        "/dashboard/ltf-finance/orders?issue=paid_pending_licenses",
+                    ),
                 },
                 {
                     "key": "failed_or_cancelled_payments_30d",
                     "count": failed_or_cancelled_payments_30d,
                     "severity": "info",
-                    "link": _overview_link("LtfFinance.navPayments", "/dashboard/ltf-finance/payments"),
+                    "link": _overview_link(
+                        "LtfFinance.navPayments",
+                        "/dashboard/ltf-finance/payments?issue=failed_or_cancelled_30d",
+                    ),
                 },
             ],
             "distributions": {
@@ -1923,6 +1971,9 @@ class ClubInvoiceViewSet(OptionalPaginationListMixin, viewsets.ReadOnlyModelView
                 | Q(order__order_number__icontains=search_value)
                 | Q(currency__icontains=search_value)
             )
+        queryset = _apply_invoice_issue_filter(
+            queryset, self.request.query_params.get("issue")
+        )
         return queryset.order_by("-created_at")
 
     def get_permissions(self):

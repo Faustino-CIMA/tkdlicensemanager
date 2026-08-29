@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { useClubSelection } from "@/components/club-selection-provider";
 import { EmptyState } from "@/components/club-admin/empty-state";
@@ -46,6 +46,8 @@ export default function LtfFinanceOrdersPage() {
   const common = useTranslations("Common");
   const locale = useLocale();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const pendingLicenseIssue = searchParams.get("issue") === "paid_pending_licenses";
   const [orders, setOrders] = useState<FinanceOrder[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -89,8 +91,9 @@ export default function LtfFinanceOrdersPage() {
             page: currentPage,
             pageSize: resolveListPageSize(pageSize, LIST_PAGE_SIZE_CAP),
             q: searchQuery || undefined,
-            status: orderStatusQuery(statusFilter),
+            status: pendingLicenseIssue ? undefined : orderStatusQuery(statusFilter),
             clubId: selectedClubId ?? undefined,
+            issue: pendingLicenseIssue ? "paid_pending_licenses" : undefined,
           },
           { signal: controller.signal }
         );
@@ -142,7 +145,7 @@ export default function LtfFinanceOrdersPage() {
         }
       }
     },
-    [currentPage, pageSize, searchQuery, selectedClubId, statusFilter, t]
+    [currentPage, pageSize, pendingLicenseIssue, searchQuery, selectedClubId, statusFilter, t]
   );
 
   useEffect(() => {
@@ -151,7 +154,7 @@ export default function LtfFinanceOrdersPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedClubId, searchQuery, pageSize, statusFilter]);
+  }, [selectedClubId, searchQuery, pageSize, statusFilter, pendingLicenseIssue]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -255,6 +258,9 @@ export default function LtfFinanceOrdersPage() {
   return (
     <LtfFinanceLayout title={t("ordersTitle")} subtitle={t("ordersSubtitle")}>
       {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      {pendingLicenseIssue ? (
+        <PageNotice tone="info">{t("paidOrdersPendingLicensesFilterMessage")}</PageNotice>
+      ) : null}
 
       <section className="grid gap-4 md:grid-cols-3">
         <SummaryCard title={t("ordersReceivedCountLabel")} value={String(orderFacetCounts.received)} />

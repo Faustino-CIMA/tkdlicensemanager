@@ -256,6 +256,7 @@ type FinanceOrderQueryParams = {
   q?: string;
   status?: string;
   clubId?: number;
+  issue?: string;
 };
 
 type FinanceOrderPageParams = FinanceOrderQueryParams & {
@@ -273,6 +274,9 @@ function buildFinanceOrderQuery(params?: FinanceOrderQueryParams) {
   }
   if (params?.clubId) {
     search.set("club_id", String(params.clubId));
+  }
+  if (params?.issue) {
+    search.set("issue", params.issue);
   }
   return search;
 }
@@ -323,6 +327,7 @@ type FinanceInvoiceQueryParams = {
   q?: string;
   status?: string;
   clubId?: number;
+  issue?: string;
 };
 
 type FinanceInvoicePageParams = FinanceInvoiceQueryParams & {
@@ -340,6 +345,9 @@ function buildFinanceInvoiceQuery(params?: FinanceInvoiceQueryParams) {
   }
   if (params?.clubId) {
     search.set("club_id", String(params.clubId));
+  }
+  if (params?.issue) {
+    search.set("issue", params.issue);
   }
   return search;
 }
@@ -406,6 +414,7 @@ type FinancePaymentQueryParams = {
   clubId?: number;
   status?: string;
   q?: string;
+  issue?: string;
 };
 
 type FinancePaymentPageParams = FinancePaymentQueryParams & {
@@ -429,6 +438,9 @@ function buildFinancePaymentQuery(params?: FinancePaymentQueryParams) {
   }
   if (params?.q) {
     search.set("q", params.q);
+  }
+  if (params?.issue) {
+    search.set("issue", params.issue);
   }
   return search;
 }

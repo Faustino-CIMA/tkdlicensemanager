@@ -10,6 +10,7 @@ type ClubListQueryParams = {
   clubId?: number | null;
   q?: string;
   status?: string;
+  issue?: string;
 };
 
 type ClubPageParams = ClubListQueryParams & {
@@ -27,6 +28,9 @@ function buildClubListQuery(params?: ClubListQueryParams) {
   }
   if (params?.status) {
     search.set("status", params.status);
+  }
+  if (params?.issue) {
+    search.set("issue", params.issue);
   }
   return search;
 }
