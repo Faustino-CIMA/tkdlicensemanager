@@ -50,10 +50,29 @@ class LicenseSerializer(serializers.ModelSerializer):
 
 class OrderItemSerializer(serializers.ModelSerializer):
     license = LicenseSerializer(read_only=True)
+    member_id = serializers.IntegerField(source="license.member_id", read_only=True)
+    member_first_name = serializers.CharField(
+        source="license.member.first_name", read_only=True
+    )
+    member_last_name = serializers.CharField(
+        source="license.member.last_name", read_only=True
+    )
+    member_ltf_licenseid = serializers.CharField(
+        source="license.member.ltf_licenseid", read_only=True
+    )
 
     class Meta:
         model = OrderItem
-        fields = ["id", "license", "price_snapshot", "quantity"]
+        fields = [
+            "id",
+            "license",
+            "price_snapshot",
+            "quantity",
+            "member_id",
+            "member_first_name",
+            "member_last_name",
+            "member_ltf_licenseid",
+        ]
 
 
 class InvoiceSerializer(serializers.ModelSerializer):

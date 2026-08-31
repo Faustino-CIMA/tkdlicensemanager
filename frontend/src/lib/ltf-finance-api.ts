@@ -11,7 +11,35 @@ export type FinanceOrderItem = {
   license: FinanceLicense;
   price_snapshot: string;
   quantity: number;
+  member_id?: number | null;
+  member_first_name?: string | null;
+  member_last_name?: string | null;
+  member_ltf_licenseid?: string | null;
 };
+
+export function orderItemMemberDisplay(
+  item: FinanceOrderItem,
+  membersById?: Record<number, { first_name: string; last_name: string; ltf_licenseid?: string }>,
+  unknownLabel = "Unknown member"
+): { name: string; ltfLicenseId: string } {
+  const fromItem = `${item.member_first_name ?? ""} ${item.member_last_name ?? ""}`.trim();
+  if (fromItem) {
+    return {
+      name: fromItem,
+      ltfLicenseId: (item.member_ltf_licenseid ?? "").trim() || "-",
+    };
+  }
+  const memberId = item.member_id ?? item.license.member;
+  const member = memberId != null ? membersById?.[memberId] : undefined;
+  if (member) {
+    const name = `${member.first_name} ${member.last_name}`.trim();
+    return {
+      name: name || unknownLabel,
+      ltfLicenseId: (member.ltf_licenseid ?? "").trim() || "-",
+    };
+  }
+  return { name: unknownLabel, ltfLicenseId: "-" };
+}
 
 export type Club = {
   id: number;

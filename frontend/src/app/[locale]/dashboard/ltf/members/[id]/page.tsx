@@ -12,6 +12,7 @@ import { ProfilePhotoManager } from "@/components/profile-photo/profile-photo-ma
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { Button } from "@/components/ui/button";
 import { FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
+import { MemberClubMovementPanel } from "@/components/member/member-club-movement-panel";
 import {
   downloadMemberProfilePicture,
   Member,
@@ -19,6 +20,7 @@ import {
   getMember,
   getMemberHistory,
 } from "@/lib/ltf-admin-api";
+import { getMemberClubTransfers, MemberClubTransferHistory } from "@/lib/club-admin-api";
 
 export default function LtfMemberDetailPage() {
   const t = useTranslations("LtfAdmin");
@@ -31,6 +33,7 @@ export default function LtfMemberDetailPage() {
 
   const [member, setMember] = useState<Member | null>(null);
   const [history, setHistory] = useState<MemberHistoryResponse | null>(null);
+  const [clubMoves, setClubMoves] = useState<MemberClubTransferHistory | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -43,12 +46,14 @@ export default function LtfMemberDetailPage() {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const [memberResponse, historyResponse] = await Promise.all([
+      const [memberResponse, historyResponse, movementResponse] = await Promise.all([
         getMember(memberId),
         getMemberHistory(memberId),
+        getMemberClubTransfers(memberId),
       ]);
       setMember(memberResponse);
       setHistory(historyResponse);
+      setClubMoves(movementResponse);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to load member.");
     } finally {
@@ -155,6 +160,10 @@ export default function LtfMemberDetailPage() {
               </div>
             </FormPanel>
 
+            {member.is_club_tourist ? (
+              <PageNotice tone="warning">{t("clubTouristMemberHint")}</PageNotice>
+            ) : null}
+
             <CurrentLicensesPanel
               memberId={member.id}
               licenses={member.current_licenses ?? []}
@@ -173,6 +182,20 @@ export default function LtfMemberDetailPage() {
               cardPreviewFrontLabel={t("cardPreviewFrontLabel")}
               cardPreviewBackLabel={t("cardPreviewBackLabel")}
               cardPreviewUnavailable={t("cardPreviewUnavailable")}
+            />
+
+            <MemberClubMovementPanel
+              title={t("clubMovementHistoryTitle")}
+              subtitle={t("clubMovementHistorySubtitle")}
+              emptyLabel={t("clubMovementHistoryEmpty")}
+              fromLabel={t("clubMovementFromLabel")}
+              toLabel={t("clubMovementToLabel")}
+              dateLabel={t("clubMovementDateLabel")}
+              statusLabel={t("statusLabel")}
+              countLabel={t("clubMovementCountLabel")}
+              touristLabel={t("clubTouristBadge")}
+              touristHint={t("clubTouristMemberHint")}
+              history={clubMoves}
             />
 
             <FormPanel>

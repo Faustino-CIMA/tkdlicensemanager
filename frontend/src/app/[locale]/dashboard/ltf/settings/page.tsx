@@ -41,6 +41,7 @@ const federationSchema = z.object({
     .string()
     .optional()
     .refine((value) => !value || isValidIban(value), "Enter a valid IBAN."),
+  club_tourist_transfer_threshold: z.coerce.number().int().min(1).max(99),
 });
 
 type FederationFormValues = z.infer<typeof federationSchema>;
@@ -78,6 +79,7 @@ export default function LtfAdminSettingsPage() {
       postal_code: "",
       locality: "",
       iban: "",
+      club_tourist_transfer_threshold: 3,
     },
   });
   const watchedIban = useWatch({ control, name: "iban", defaultValue: "" });
@@ -95,6 +97,7 @@ export default function LtfAdminSettingsPage() {
         postal_code: profile.postal_code ?? "",
         locality: profile.locality ?? "",
         iban: profile.iban ?? "",
+        club_tourist_transfer_threshold: profile.club_tourist_transfer_threshold ?? 3,
       });
       const rewriteEnabled = Boolean(profile.rewrite_lux_prefix_on_member_import);
       setRewriteOnImport(rewriteEnabled);
@@ -201,6 +204,7 @@ export default function LtfAdminSettingsPage() {
         postal_code: saved.postal_code ?? "",
         locality: saved.locality ?? "",
         iban: saved.iban ?? "",
+        club_tourist_transfer_threshold: saved.club_tourist_transfer_threshold ?? 3,
       });
       setSuccessMessage(t("federationSettingsSaved"));
     } catch (error) {
@@ -281,6 +285,24 @@ export default function LtfAdminSettingsPage() {
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">{t("bankNameLabel")}</label>
               <Input value={derivedBankName || "-"} readOnly />
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <label className="text-sm font-medium text-foreground">
+                {t("clubTouristThresholdLabel")}
+              </label>
+              <Input
+                type="number"
+                min={1}
+                max={99}
+                {...register("club_tourist_transfer_threshold")}
+              />
+              <p className="text-xs text-muted">{t("clubTouristThresholdHint")}</p>
+              {errors.club_tourist_transfer_threshold ? (
+                <p className="text-sm text-destructive">
+                  {errors.club_tourist_transfer_threshold.message}
+                </p>
+              ) : null}
             </div>
 
             <div className="flex items-center gap-3">

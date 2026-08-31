@@ -1232,6 +1232,24 @@ class LicenseOrderingPolicyTests(TestCase):
         self.assertEqual(order.invoice.status, Invoice.Status.ISSUED)
         self.assertIsNotNone(order.invoice.issued_at)
 
+    def test_club_order_detail_includes_item_member_names(self):
+        self.client.force_authenticate(user=self.club_admin)
+        created = self.client.post(
+            "/api/club-orders/batch/",
+            self._club_batch_payload(year=timezone.localdate().year),
+            format="json",
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED)
+        self.assertIsNone(created.data["member"])
+        item = created.data["items"][0]
+        self.assertEqual(item["member_id"], self.member.id)
+        self.assertEqual(item["member_first_name"], self.member.first_name)
+        self.assertEqual(item["member_last_name"], self.member.last_name)
+        detail = self.client.get(f"/api/club-orders/{created.data['id']}/")
+        self.assertEqual(detail.status_code, status.HTTP_200_OK)
+        self.assertEqual(detail.data["items"][0]["member_id"], self.member.id)
+        self.assertEqual(detail.data["items"][0]["member_first_name"], "Iva")
+
 
 class LicenseActivationRulesTests(TestCase):
     def setUp(self):

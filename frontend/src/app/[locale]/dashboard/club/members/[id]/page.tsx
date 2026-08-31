@@ -24,13 +24,17 @@ import {
   deleteMemberProfilePicture,
   downloadMemberProfilePicture,
   Member,
+  MemberClubTransferHistory,
   MemberHistoryResponse,
   getMember,
+  getMemberClubTransfers,
   getMemberHistory,
   promoteMemberGrade,
   updateMember,
   updateMemberGrade,
 } from "@/lib/club-admin-api";
+import { MemberClubMovementPanel } from "@/components/member/member-club-movement-panel";
+import { PageNotice } from "@/components/ui/list-page-chrome";
 import { apiRequest } from "@/lib/api";
 import { formatDateInputValue, formatDisplayDate, parseDisplayDateToIso } from "@/lib/date-display";
 import {
@@ -108,6 +112,7 @@ export default function ClubMemberDetailPage() {
   const isEditing = searchParams.get("edit") === "1";
   const [member, setMember] = useState<Member | null>(null);
   const [history, setHistory] = useState<MemberHistoryResponse | null>(null);
+  const [clubMoves, setClubMoves] = useState<MemberClubTransferHistory | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [currentRole, setCurrentRole] = useState<string | null>(null);
@@ -182,12 +187,14 @@ export default function ClubMemberDetailPage() {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const [memberResponse, historyResponse] = await Promise.all([
+      const [memberResponse, historyResponse, movementResponse] = await Promise.all([
         getMember(memberId),
         getMemberHistory(memberId),
+        getMemberClubTransfers(memberId),
       ]);
       setMember(memberResponse);
       setHistory(historyResponse);
+      setClubMoves(movementResponse);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to load member.");
     } finally {
@@ -637,6 +644,10 @@ export default function ClubMemberDetailPage() {
               )}
             </section>
 
+            {member.is_club_tourist ? (
+              <PageNotice tone="warning">{t("clubTouristMemberHint")}</PageNotice>
+            ) : null}
+
             <CurrentLicensesPanel
               memberId={member.id}
               licenses={member.current_licenses ?? []}
@@ -655,6 +666,20 @@ export default function ClubMemberDetailPage() {
               cardPreviewFrontLabel={t("cardPreviewFrontLabel")}
               cardPreviewBackLabel={t("cardPreviewBackLabel")}
               cardPreviewUnavailable={t("cardPreviewUnavailable")}
+            />
+
+            <MemberClubMovementPanel
+              title={t("clubMovementHistoryTitle")}
+              subtitle={t("clubMovementHistorySubtitle")}
+              emptyLabel={t("clubMovementHistoryEmpty")}
+              fromLabel={t("clubMovementFromLabel")}
+              toLabel={t("clubMovementToLabel")}
+              dateLabel={t("clubMovementDateLabel")}
+              statusLabel={t("statusLabel")}
+              countLabel={t("clubMovementCountLabel")}
+              touristLabel={t("clubTouristBadge")}
+              touristHint={t("clubTouristMemberHint")}
+              history={clubMoves}
             />
 
             <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">

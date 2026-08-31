@@ -19,6 +19,7 @@ import {
   getFinanceInvoice,
   getFinanceMembers,
   getFinanceOrder,
+  orderItemMemberDisplay,
 } from "@/lib/ltf-finance-api";
 
 type InvoiceItemRow = {
@@ -119,20 +120,16 @@ export default function LtfFinanceInvoiceDetailPage() {
     if (!order) {
       return [];
     }
-    return (order.items ?? []).map((item) => ({
-      id: item.id,
-      memberName: item.license.member
-        ? `${memberById[item.license.member]?.first_name ?? ""} ${
-            memberById[item.license.member]?.last_name ?? ""
-          }`.trim() || "-"
-        : "-",
-      ltfLicenseId:
-        (item.license.member
-          ? memberById[item.license.member]?.ltf_licenseid?.trim()
-          : "") || "-",
-      year: item.license.year,
-      quantity: item.quantity,
-    }));
+    return (order.items ?? []).map((item) => {
+      const display = orderItemMemberDisplay(item, memberById, "-");
+      return {
+        id: item.id,
+        memberName: display.name,
+        ltfLicenseId: display.ltfLicenseId,
+        year: item.license.year,
+        quantity: item.quantity,
+      };
+    });
   }, [order, memberById]);
 
   const totalQuantity = useMemo(() => {

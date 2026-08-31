@@ -2,6 +2,7 @@
 Last updated: 2026-08-28
 
 Current main branch state:
+- Version: v0.6.4 on `feature/ui-refresh-and-designer` — club movement history, club-tourist flag, order-item member names (2026-08-28)
 - Version: v0.6.3 on `feature/ui-refresh-and-designer` — member import helper dates, license issued_at, card photo fallback (2026-08-28)
 - Version: v0.6.2 on `feature/ui-refresh-and-designer` — member license-card preview, capitalized license roles (2026-08-27)
 - Version: v0.6.1 on `feature/ui-refresh-and-designer` — member transfers, login notice, first-password username (2026-08-25)
@@ -44,6 +45,8 @@ Rules we follow:
 - Member import treats SimplyCompete `Membership End Date` as an unmapped helper column (skip / Active / Inactive by year, not stored) — completed (v0.6.3)
 - License `issued_at` set when status becomes ACTIVE, with backfill for existing active licenses — completed (v0.6.3)
 - Card preview uses faded club logo as photo fallback; no dashed empty-photo placeholder; iPhone text-size-adjust — completed (v0.6.3)
+- Club movement history stays with the member; LTF monitors tourists (flag only) and club incoming/outgoing traffic — completed (v0.6.4)
+- Order/invoice line items include member names from the license so transferred members remain visible — completed (v0.6.4)
 - Full Finance Module (Order, OrderItem, Invoice, Payment with card details, Stripe Checkout + webhooks + manual record payment, audit logs) — completed
 - License & Grade History tracking with django-simple-history — completed
 - Profile Picture system (upload, crop/framing for 8:10 print, @imgly/background-removal-js) — completed

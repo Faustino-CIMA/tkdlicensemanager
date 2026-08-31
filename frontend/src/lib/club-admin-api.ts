@@ -80,6 +80,8 @@ export type Member = {
   created_at: string;
   updated_at: string;
   current_licenses?: CurrentLicense[];
+  completed_transfer_count?: number;
+  is_club_tourist?: boolean;
 };
 
 export type CurrentLicense = {
@@ -350,6 +352,63 @@ export function createMember(input: MemberInput) {
 
 export function getMember(id: number) {
   return apiRequest<Member>(`/api/members/${id}/`);
+}
+
+export type ClubMovementEvent = {
+  id: number;
+  status: string;
+  from_club: { id: number; name: string };
+  to_club: { id: number; name: string };
+  fee_amount: string;
+  fee_currency: string;
+  completed_at: string | null;
+  created_at: string;
+  member?: { id: number; first_name: string; last_name: string };
+};
+
+export type MemberClubTransferHistory = {
+  member: {
+    id: number;
+    first_name: string;
+    last_name: string;
+    club_id: number;
+    club_name: string;
+  };
+  threshold: number;
+  completed_transfer_count: number;
+  is_club_tourist: boolean;
+  transfers: ClubMovementEvent[];
+};
+
+export type TransferMovementMonitor = {
+  threshold: number;
+  flagged_member_count: number;
+  flagged_members: Array<{
+    id: number;
+    first_name: string;
+    last_name: string;
+    ltf_licenseid: string;
+    club_id: number;
+    club_name: string;
+    completed_transfer_count: number;
+    is_club_tourist: boolean;
+  }>;
+  clubs: Array<{
+    id: number;
+    name: string;
+    incoming: number;
+    outgoing: number;
+    total: number;
+  }>;
+  recent_completed: ClubMovementEvent[];
+};
+
+export function getMemberClubTransfers(memberId: number) {
+  return apiRequest<MemberClubTransferHistory>(`/api/members/${memberId}/club-transfers/`);
+}
+
+export function getTransferMovements() {
+  return apiRequest<TransferMovementMonitor>("/api/member-transfers/movements/");
 }
 
 export function updateMember(id: number, input: MemberInput) {

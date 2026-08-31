@@ -6,9 +6,11 @@ from .transfers import (
     TransferError,
     accept_transfer,
     add_transfer_message,
+    build_movement_monitor,
     cancel_transfer,
     create_transfer,
     get_transfer,
+    list_member_club_transfers,
     list_transfers,
     reject_transfer,
     search_destination_clubs,
@@ -65,6 +67,13 @@ class MemberTransferViewSet(viewsets.ViewSet):
                     query=request.query_params.get("q", ""),
                 )
             )
+        except TransferError as error:
+            return self._handle(error)
+
+    @action(detail=False, methods=["get"])
+    def movements(self, request):
+        try:
+            return Response(build_movement_monitor(user=request.user))
         except TransferError as error:
             return self._handle(error)
 

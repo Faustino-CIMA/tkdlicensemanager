@@ -358,7 +358,7 @@ class OrderViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
             .annotate(item_quantity=Coalesce(Sum("items__quantity"), 0))
         )
         if self.action != "list":
-            queryset = queryset.prefetch_related("items__license")
+            queryset = queryset.prefetch_related("items__license__member")
         return queryset
 
     def get_queryset(self):
@@ -1335,7 +1335,7 @@ class ClubOrderViewSet(OptionalPaginationListMixin, viewsets.ReadOnlyModelViewSe
             .filter(club__admins=self.request.user)
         )
         if self.action != "list":
-            queryset = queryset.prefetch_related("items__license")
+            queryset = queryset.prefetch_related("items__license__member")
         return queryset
 
     def get_queryset(self):

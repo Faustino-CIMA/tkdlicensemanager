@@ -3,9 +3,9 @@ from rest_framework import serializers
 from licenses.models import License, LicenseHistoryEvent
 
 from .grades import OFFICIAL_GRADE_SET
-from .models import Member
-from .models import GradePromotionHistory
+from .models import GradePromotionHistory, Member, MemberTransfer
 from .services import generate_next_ltf_license_id
+from .transfers import get_club_tourist_threshold, is_club_tourist
 
 
 class CanonicalLicenseRoleField(serializers.ChoiceField):
@@ -46,6 +46,8 @@ class MemberSerializer(serializers.ModelSerializer):
     profile_picture_url = serializers.SerializerMethodField()
     profile_picture_thumbnail_url = serializers.SerializerMethodField()
     current_licenses = serializers.SerializerMethodField()
+    completed_transfer_count = serializers.SerializerMethodField()
+    is_club_tourist = serializers.SerializerMethodField()
     ltf_license_prefix = serializers.ChoiceField(
         choices=[("LUX", "LUX"), ("LTF", "LTF")],
         write_only=True,
@@ -73,6 +75,8 @@ class MemberSerializer(serializers.ModelSerializer):
             "profile_picture_url",
             "profile_picture_thumbnail_url",
             "current_licenses",
+            "completed_transfer_count",
+            "is_club_tourist",
             "photo_edit_metadata",
             "photo_consent_attested_at",
             "photo_consent_attested_by",
@@ -86,6 +90,8 @@ class MemberSerializer(serializers.ModelSerializer):
             "profile_picture_url",
             "profile_picture_thumbnail_url",
             "current_licenses",
+            "completed_transfer_count",
+            "is_club_tourist",
             "photo_edit_metadata",
             "photo_consent_attested_at",
             "photo_consent_attested_by",
@@ -193,6 +199,22 @@ class MemberSerializer(serializers.ModelSerializer):
             return None
         path = f"/api/members/{obj.id}/profile-picture/thumbnail/"
         return request.build_absolute_uri(path) if request else path
+
+    def _tourist_threshold(self) -> int:
+        cached = getattr(self, "_club_tourist_threshold", None)
+        if cached is None:
+            cached = get_club_tourist_threshold()
+            self._club_tourist_threshold = cached
+        return cached
+
+    def get_completed_transfer_count(self, obj: Member):
+        count = getattr(obj, "completed_transfer_count", None)
+        if count is None:
+            return obj.transfers.filter(status=MemberTransfer.Status.COMPLETED).count()
+        return int(count)
+
+    def get_is_club_tourist(self, obj: Member):
+        return is_club_tourist(self.get_completed_transfer_count(obj), self._tourist_threshold())
 
     def get_current_licenses(self, obj: Member):
         prefetched = getattr(obj, "current_licenses_prefetched", None)

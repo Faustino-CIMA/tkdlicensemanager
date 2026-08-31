@@ -85,10 +85,20 @@ class FederationProfileSerializer(serializers.ModelSerializer):
             "iban",
             "bank_name",
             "rewrite_lux_prefix_on_member_import",
+            "club_tourist_transfer_threshold",
             "created_at",
             "updated_at",
         ]
         read_only_fields = ["bank_name", "created_at", "updated_at"]
+
+    def validate_club_tourist_transfer_threshold(self, value):
+        try:
+            threshold = int(value)
+        except (TypeError, ValueError) as error:
+            raise serializers.ValidationError("Enter a whole number.") from error
+        if threshold < 1 or threshold > 99:
+            raise serializers.ValidationError("Enter a number between 1 and 99.")
+        return threshold
 
     def validate_postal_code(self, value):
         return str(value or "").strip()

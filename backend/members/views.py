@@ -2,7 +2,7 @@ import mimetypes
 from pathlib import Path
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db.models import Exists, OuterRef, Prefetch, Q
+from django.db.models import Count, Exists, OuterRef, Prefetch, Q
 from django.db.models.deletion import ProtectedError
 from django.http import FileResponse
 from rest_framework import permissions, status, viewsets
@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from config.pagination import OptionalPaginationListMixin
-from .models import GradePromotionHistory, Member
+from .models import GradePromotionHistory, Member, MemberTransfer
 from .serializers import (
     GradePromotionCreateSerializer,
     GradePromotionHistorySerializer,
@@ -145,6 +145,12 @@ class MemberViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
                 queryset, self.request.query_params.get("issue")
             )
 
+        queryset = queryset.annotate(
+            completed_transfer_count=Count(
+                "transfers",
+                filter=Q(transfers__status=MemberTransfer.Status.COMPLETED),
+            )
+        )
         return queryset.prefetch_related(
             Prefetch(
                 "licenses",
@@ -289,6 +295,16 @@ class MemberViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
         )
         serializer = GradePromotionHistorySerializer(queryset, many=True)
         return Response(serializer.data)
+
+    @action(detail=True, methods=["get"], url_path="club-transfers")
+    def club_transfers(self, request, *args, **kwargs):
+        from .transfers import TransferError, list_member_club_transfers
+
+        member = self.get_object()
+        try:
+            return Response(list_member_club_transfers(user=request.user, member_id=member.id))
+        except TransferError as error:
+            return Response(error.payload, status=error.status_code)
 
     @action(detail=True, methods=["get"], url_path="history")
     def history(self, request, *args, **kwargs):

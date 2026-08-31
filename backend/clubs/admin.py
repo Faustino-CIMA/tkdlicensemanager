@@ -20,7 +20,15 @@ class ClubAdmin(admin.ModelAdmin):
 
 @admin.register(FederationProfile)
 class FederationProfileAdmin(admin.ModelAdmin):
-    list_display = ("name", "locality", "postal_code", "iban", "bank_name", "updated_at")
+    list_display = (
+        "name",
+        "locality",
+        "postal_code",
+        "iban",
+        "bank_name",
+        "club_tourist_transfer_threshold",
+        "updated_at",
+    )
     search_fields = ("name", "locality", "postal_code", "address_line1", "iban", "bank_name")
 
 

@@ -24,6 +24,7 @@ import {
   getClubOrder,
   getPayconiqPaymentStatus,
 } from "@/lib/club-finance-api";
+import { orderItemMemberDisplay } from "@/lib/ltf-finance-api";
 
 type InvoiceItemRow = {
   id: number;
@@ -131,16 +132,13 @@ export default function ClubInvoiceDetailPage() {
     if (!order) {
       return [];
     }
+    const membersById = Object.fromEntries(members.map((member) => [member.id, member]));
     return (order.items ?? []).map((item) => {
-      const member = members.find((record) => record.id === item.license.member);
-      const memberName = member
-        ? `${member.first_name} ${member.last_name}`
-        : t("unknownMember");
-      const ltfLicenseId = member?.ltf_licenseid?.trim() || "-";
+      const display = orderItemMemberDisplay(item, membersById, t("unknownMember"));
       return {
         id: item.id,
-        memberName,
-        ltfLicenseId,
+        memberName: display.name,
+        ltfLicenseId: display.ltfLicenseId,
         year: item.license.year,
         quantity: item.quantity,
       };

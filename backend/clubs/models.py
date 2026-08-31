@@ -87,6 +87,10 @@ class FederationProfile(models.Model):
     iban = models.CharField(max_length=34, blank=True)
     bank_name = models.CharField(max_length=255, blank=True)
     rewrite_lux_prefix_on_member_import = models.BooleanField(default=False)
+    club_tourist_transfer_threshold = models.PositiveIntegerField(
+        default=3,
+        help_text="Members with this many or more completed club changes are flagged as potential club tourists. No restrictions are applied.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

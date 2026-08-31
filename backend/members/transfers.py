@@ -13,11 +13,29 @@ from accounts.email_utils import (
     send_member_transfer_status_email,
 )
 from accounts.models import User
-from clubs.models import Club
+from clubs.models import Club, FederationProfile
 from licenses.history import create_license_history_event
 from licenses.models import License, LicenseHistoryEvent
 
 from .models import Member, MemberTransfer, MemberTransferMessage
+
+DEFAULT_CLUB_TOURIST_THRESHOLD = 3
+
+
+def get_club_tourist_threshold() -> int:
+    profile = (
+        FederationProfile.objects.filter(pk=1)
+        .only("club_tourist_transfer_threshold")
+        .first()
+    )
+    if not profile:
+        return DEFAULT_CLUB_TOURIST_THRESHOLD
+    return max(1, int(profile.club_tourist_transfer_threshold or DEFAULT_CLUB_TOURIST_THRESHOLD))
+
+
+def is_club_tourist(completed_count: int, threshold: int | None = None) -> bool:
+    limit = threshold if threshold is not None else get_club_tourist_threshold()
+    return int(completed_count or 0) >= max(1, int(limit))
 
 MEMBER_SEARCH_LIMIT = 25
 CLUB_SEARCH_LIMIT = 20
@@ -242,6 +260,135 @@ def list_transfers(*, user: User, fee_only: bool = False):
         )
     )
     return [serialize_transfer(item) for item in queryset]
+
+
+def serialize_movement_event(transfer: MemberTransfer) -> dict:
+    return {
+        "id": transfer.id,
+        "status": transfer.status,
+        "from_club": {"id": transfer.from_club_id, "name": transfer.from_club.name},
+        "to_club": {"id": transfer.to_club_id, "name": transfer.to_club.name},
+        "fee_amount": str(transfer.fee_amount),
+        "fee_currency": transfer.fee_currency,
+        "completed_at": transfer.completed_at.isoformat() if transfer.completed_at else None,
+        "created_at": transfer.created_at.isoformat(),
+    }
+
+
+def list_member_club_transfers(*, user: User, member_id: int) -> dict:
+    member = Member.objects.select_related("club").filter(id=member_id).first()
+    if not member:
+        raise TransferError({"detail": "Member not found."}, 404)
+    if user.role == User.Roles.CLUB_ADMIN:
+        if not _user_admins_club(user, member.club):
+            raise TransferError({"detail": "Not allowed."}, 403)
+    elif user.role not in {User.Roles.LTF_ADMIN, User.Roles.LTF_FINANCE}:
+        raise TransferError({"detail": "Not allowed."}, 403)
+
+    transfers = list(
+        MemberTransfer.objects.filter(member=member)
+        .select_related("from_club", "to_club")
+        .order_by("created_at", "id")
+    )
+    completed = [
+        item for item in transfers if item.status == MemberTransfer.Status.COMPLETED
+    ]
+    threshold = get_club_tourist_threshold()
+    return {
+        "member": {
+            "id": member.id,
+            "first_name": member.first_name,
+            "last_name": member.last_name,
+            "club_id": member.club_id,
+            "club_name": member.club.name,
+        },
+        "threshold": threshold,
+        "completed_transfer_count": len(completed),
+        "is_club_tourist": is_club_tourist(len(completed), threshold),
+        "transfers": [serialize_movement_event(item) for item in transfers],
+    }
+
+
+def build_movement_monitor(*, user: User) -> dict:
+    if user.role != User.Roles.LTF_ADMIN:
+        raise TransferError({"detail": "Not allowed."}, 403)
+
+    threshold = get_club_tourist_threshold()
+    completed = MemberTransfer.objects.filter(status=MemberTransfer.Status.COMPLETED)
+    member_rows = list(
+        completed.values(
+            "member_id",
+            "member__first_name",
+            "member__last_name",
+            "member__ltf_licenseid",
+            "member__club_id",
+            "member__club__name",
+        )
+        .annotate(completed_count=Count("id"))
+        .order_by("-completed_count", "member__last_name", "member__first_name")
+    )
+    flagged_members = [
+        {
+            "id": row["member_id"],
+            "first_name": row["member__first_name"],
+            "last_name": row["member__last_name"],
+            "ltf_licenseid": row["member__ltf_licenseid"] or "",
+            "club_id": row["member__club_id"],
+            "club_name": row["member__club__name"],
+            "completed_transfer_count": row["completed_count"],
+            "is_club_tourist": True,
+        }
+        for row in member_rows
+        if is_club_tourist(row["completed_count"], threshold)
+    ]
+
+    outgoing = {
+        row["from_club_id"]: row["total"]
+        for row in completed.values("from_club_id").annotate(total=Count("id"))
+    }
+    incoming = {
+        row["to_club_id"]: row["total"]
+        for row in completed.values("to_club_id").annotate(total=Count("id"))
+    }
+    club_ids = set(outgoing) | set(incoming)
+    club_names = {
+        club.id: club.name for club in Club.objects.filter(id__in=club_ids).only("id", "name")
+    }
+    clubs = []
+    for club_id in club_ids:
+        incoming_count = int(incoming.get(club_id, 0))
+        outgoing_count = int(outgoing.get(club_id, 0))
+        clubs.append(
+            {
+                "id": club_id,
+                "name": club_names.get(club_id, ""),
+                "incoming": incoming_count,
+                "outgoing": outgoing_count,
+                "total": incoming_count + outgoing_count,
+            }
+        )
+    clubs.sort(key=lambda item: (-item["total"], item["name"]))
+
+    recent = [
+        {
+            **serialize_movement_event(item),
+            "member": {
+                "id": item.member_id,
+                "first_name": item.member.first_name,
+                "last_name": item.member.last_name,
+            },
+        }
+        for item in completed.select_related("member", "from_club", "to_club").order_by(
+            "-completed_at", "-id"
+        )[:25]
+    ]
+    return {
+        "threshold": threshold,
+        "flagged_member_count": len(flagged_members),
+        "flagged_members": flagged_members,
+        "clubs": clubs,
+        "recent_completed": recent,
+    }
 
 
 def _transfer_queryset():

@@ -51,6 +51,8 @@ export type Member = {
   created_at: string;
   updated_at: string;
   current_licenses?: CurrentLicense[];
+  completed_transfer_count?: number;
+  is_club_tourist?: boolean;
 };
 
 export type CurrentLicense = {
@@ -182,6 +184,7 @@ export type FederationProfile = {
   iban: string;
   bank_name: string;
   rewrite_lux_prefix_on_member_import: boolean;
+  club_tourist_transfer_threshold: number;
   created_at: string;
   updated_at: string;
 };

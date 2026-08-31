@@ -1643,6 +1643,76 @@ class MemberTransferApiTests(TestCase):
         self.athlete.refresh_from_db()
         self.assertEqual(self.athlete.club_id, self.source_club.id)
 
+    def _complete_transfer(self, from_admin, to_admin, to_club):
+        self.client.force_authenticate(user=from_admin)
+        created = self.client.post(
+            "/api/member-transfers/",
+            {"member_id": self.athlete.id, "to_club_id": to_club.id, "fee_amount": "0"},
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201)
+        self.client.force_authenticate(user=to_admin)
+        accepted = self.client.post(
+            f"/api/member-transfers/{created.data['id']}/accept/",
+            {},
+            format="json",
+        )
+        self.assertEqual(accepted.status_code, 200)
+        return accepted.data
+
+    def test_member_keeps_completed_transfer_history_and_can_be_flagged(self):
+        from clubs.models import FederationProfile
+
+        third_admin = User.objects.create_user(
+            username="third-admin",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+        )
+        third_club = Club.objects.create(name="Third Club", created_by=self.ltf_admin)
+        third_club.admins.add(third_admin)
+
+        self._complete_transfer(self.source_admin, self.dest_admin, self.dest_club)
+        self._complete_transfer(self.dest_admin, third_admin, third_club)
+
+        self.client.force_authenticate(user=self.ltf_admin)
+        history = self.client.get(f"/api/members/{self.athlete.id}/club-transfers/")
+        self.assertEqual(history.status_code, 200)
+        self.assertEqual(history.data["completed_transfer_count"], 2)
+        self.assertFalse(history.data["is_club_tourist"])
+        self.assertEqual(len(history.data["transfers"]), 2)
+
+        detail = self.client.get(f"/api/members/{self.athlete.id}/")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.data["completed_transfer_count"], 2)
+        self.assertFalse(detail.data["is_club_tourist"])
+
+        profile, _ = FederationProfile.objects.get_or_create(pk=1)
+        profile.club_tourist_transfer_threshold = 2
+        profile.save(update_fields=["club_tourist_transfer_threshold"])
+
+        flagged = self.client.get(f"/api/members/{self.athlete.id}/")
+        self.assertTrue(flagged.data["is_club_tourist"])
+
+        monitor = self.client.get("/api/member-transfers/movements/")
+        self.assertEqual(monitor.status_code, 200)
+        self.assertEqual(monitor.data["threshold"], 2)
+        flagged_ids = {row["id"] for row in monitor.data["flagged_members"]}
+        self.assertIn(self.athlete.id, flagged_ids)
+        club_by_id = {row["id"]: row for row in monitor.data["clubs"]}
+        self.assertEqual(club_by_id[self.source_club.id]["outgoing"], 1)
+        self.assertEqual(club_by_id[self.dest_club.id]["incoming"], 1)
+        self.assertEqual(club_by_id[self.dest_club.id]["outgoing"], 1)
+        self.assertEqual(club_by_id[third_club.id]["incoming"], 1)
+
+        self.client.force_authenticate(user=self.source_admin)
+        forbidden = self.client.get("/api/member-transfers/movements/")
+        self.assertEqual(forbidden.status_code, 403)
+
+        self.client.force_authenticate(user=third_admin)
+        club_history = self.client.get(f"/api/members/{self.athlete.id}/club-transfers/")
+        self.assertEqual(club_history.status_code, 200)
+        self.assertEqual(club_history.data["completed_transfer_count"], 2)
+
 
 def _preview_design_payload() -> dict:
     return {

@@ -772,6 +772,17 @@ class FederationProfileApiTests(TestCase):
         self.assertEqual(profile.name, "LTF Federation")
         self.assertEqual(profile.postal_code, "1111")
 
+    def test_ltf_admin_can_patch_club_tourist_threshold(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.patch(
+            "/api/federation-profile/",
+            {"club_tourist_transfer_threshold": 4},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        profile = FederationProfile.objects.get(pk=1)
+        self.assertEqual(profile.club_tourist_transfer_threshold, 4)
+
     def test_ltf_admin_patch_iban_sets_bank_name(self):
         self.client.force_authenticate(user=self.ltf_admin)
         response = self.client.patch(

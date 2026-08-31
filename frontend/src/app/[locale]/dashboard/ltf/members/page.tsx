@@ -177,7 +177,12 @@ export default function LtfAdminMembersPage() {
       {
         key: "name",
         header: t("memberLabel"),
-        render: (row: Member) => `${row.first_name} ${row.last_name}`,
+        render: (row: Member) => (
+          <span className="inline-flex flex-wrap items-center gap-2">
+            <span>{`${row.first_name} ${row.last_name}`}</span>
+            {row.is_club_tourist ? <StatusBadge label={t("clubTouristBadge")} tone="warning" /> : null}
+          </span>
+        ),
       },
       {
         key: "club",

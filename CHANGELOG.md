@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-08-28
+
+### User-facing
+- **Club movement history:** Completed club changes stay with the member. LTF Admins can review frequent movers and clubs with high incoming or outgoing traffic. Members who reach the configured number of completed club changes are flagged as potential club tourists only; they are not restricted.
+- **Club-tourist threshold:** LTF Settings controls how many completed club changes trigger the flag (default 3).
+- **Order and invoice line items:** Member names on club and LTF Finance order/invoice details come from the license, so transferred members no longer show as Unknown member.
+
+### Technical
+- `FederationProfile.club_tourist_transfer_threshold` (migration `0008`).
+- `GET /api/member-transfers/movements/` and `GET /api/members/{id}/club-transfers/`.
+- Order items include `member_id`, `member_first_name`, `member_last_name`, and `member_ltf_licenseid`.
+
 ## [0.6.3] - 2026-08-28
 
 ### User-facing
