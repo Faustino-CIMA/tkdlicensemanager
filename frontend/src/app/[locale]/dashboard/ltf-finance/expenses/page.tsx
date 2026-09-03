@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 
@@ -15,9 +21,9 @@ import {
   ListActionsRow,
   ListPagination,
   ListToolbarPanel,
-  PageNotice,
   PageSizeSelect,
   resolveListPageSize,
+  ActionNotices
 } from "@/components/ui/list-page-chrome";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
@@ -147,7 +153,7 @@ export default function LtfFinanceExpensesPage() {
 
   return (
     <LtfFinanceLayout title={t("expensesTitle")} subtitle={t("expensesSubtitle")}>
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
       <div className="flex flex-col gap-4">
         <ListToolbarPanel
@@ -184,7 +190,7 @@ export default function LtfFinanceExpensesPage() {
         />
         <ListActionsRow
           actions={
-            <Button onClick={() => router.push(`/${locale}/dashboard/ltf-finance/expenses/new`)}>
+            <Button variant="primary" onClick={() => router.push(`/${locale}/dashboard/ltf-finance/expenses/new`)}>
               {t("recordExpenseAction")}
             </Button>
           }

@@ -13,13 +13,13 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Member, getMembers } from "@/lib/club-admin-api";
 import { formatDisplayDateTime } from "@/lib/date-display";
 import { FinanceOrder, getClubOrder } from "@/lib/club-finance-api";
-import { orderItemMemberDisplay } from "@/lib/ltf-finance-api";
+import { orderItemMemberDisplay, orderItemsAreClubFees, orderItemYearLabel } from "@/lib/ltf-finance-api";
 
 type OrderItemRow = {
   id: number;
   memberName: string;
   ltfLicenseId: string;
-  year: number;
+  year: string;
   quantity: number;
 };
 
@@ -88,18 +88,24 @@ export default function ClubOrderDetailPage() {
         id: item.id,
         memberName: display.name,
         ltfLicenseId: display.ltfLicenseId,
-        year: item.license.year,
+        year: orderItemYearLabel(item),
         quantity: item.quantity,
       };
     });
   }, [order, members, t]);
 
-  const columns = [
-    { key: "memberName", header: t("memberLabel") },
-    { key: "ltfLicenseId", header: t("ltfLicenseTableLabel") },
-    { key: "year", header: t("yearLabel") },
-    { key: "quantity", header: t("qtyLabel") },
-  ];
+  const feeOnly = orderItemsAreClubFees(order?.items);
+  const columns = feeOnly
+    ? [
+        { key: "memberName", header: t("orderItemDescriptionLabel") },
+        { key: "quantity", header: t("qtyLabel") },
+      ]
+    : [
+        { key: "memberName", header: t("memberLabel") },
+        { key: "ltfLicenseId", header: t("ltfLicenseTableLabel") },
+        { key: "year", header: t("yearLabel") },
+        { key: "quantity", header: t("qtyLabel") },
+      ];
 
   if (isLoading) {
     return (

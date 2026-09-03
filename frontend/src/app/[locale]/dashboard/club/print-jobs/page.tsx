@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 
+import { ActionNotices } from "@/components/ui/list-page-chrome";
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { Button } from "@/components/ui/button";
@@ -193,8 +194,7 @@ export default function ClubPrintJobsPage() {
 
   return (
     <ClubAdminLayout title={t("printJobsTitle")} subtitle={t("printJobsSubtitle")}>
-      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
-      {successMessage ? <p className="text-sm text-success">{successMessage}</p> : null}
+      <ActionNotices error={errorMessage} success={successMessage} onDismiss={() => { setErrorMessage(null); setSuccessMessage(null); }} />
 
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">

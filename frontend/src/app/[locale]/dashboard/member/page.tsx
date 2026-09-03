@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 
+import { ActionNotices } from "@/components/ui/list-page-chrome";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { MemberLayout } from "@/components/member/member-layout";
 import { MemberHistoryTimeline } from "@/components/history/member-history-timeline";
@@ -84,7 +85,7 @@ export default function MemberDashboardPage() {
   return (
     <MemberLayout title={t("title")} subtitle={t("subtitle")}>
       <div className="space-y-6">
-        {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+        <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
         {isLoading ? (
           <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />

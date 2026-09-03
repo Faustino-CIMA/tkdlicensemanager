@@ -20,6 +20,8 @@ from clubs.models import Club
 from members.models import Member
 
 from .models import (
+    ClubFeePrice,
+    ClubFeeType,
     Expense,
     ExpenseCategory,
     Income,
@@ -315,6 +317,158 @@ class LicenseTypeApiTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class ClubFeeApiTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.ltf_finance = User.objects.create_user(
+            username="ltffinance-club-fees",
+            password="pass12345",
+            role=User.Roles.LTF_FINANCE,
+        )
+        self.club_admin = User.objects.create_user(
+            username="clubadmin-club-fees",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+        )
+
+    def test_ltf_finance_can_create_fee_type_with_initial_amount(self):
+        self.client.force_authenticate(user=self.ltf_finance)
+        response = self.client.post(
+            "/api/club-fee-types/",
+            {
+                "name": "Affiliation",
+                "cadence": "annual",
+                "description": "Yearly club affiliation",
+                "initial_amount": "150.00",
+                "initial_currency": "EUR",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["name"], "Affiliation")
+        self.assertEqual(response.data["current_amount"], "150.00")
+        self.assertTrue(
+            ClubFeePrice.objects.filter(
+                fee_type_id=response.data["id"],
+                amount=Decimal("150.00"),
+            ).exists()
+        )
+
+    def test_ltf_finance_can_add_fee_price(self):
+        self.client.force_authenticate(user=self.ltf_finance)
+        fee_type = ClubFeeType.objects.create(name="Transfer fee", code="transfer-fee")
+        response = self.client.post(
+            "/api/club-fee-prices/",
+            {
+                "fee_type": fee_type.id,
+                "amount": "25.00",
+                "currency": "EUR",
+                "effective_from": "2026-09-01",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["amount"], "25.00")
+
+    def test_club_admin_cannot_create_fee_type(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.post(
+            "/api/club-fee-types/",
+            {"name": "Hidden fee"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_ltf_finance_can_bill_active_clubs(self):
+        from clubs.models import Club
+
+        from .models import Invoice
+
+        club = Club.objects.create(
+            name="Billable Club",
+            created_by=self.ltf_finance,
+            is_active=True,
+        )
+        inactive = Club.objects.create(
+            name="Inactive Club",
+            created_by=self.ltf_finance,
+            is_active=False,
+        )
+        self.client.force_authenticate(user=self.ltf_finance)
+        created = self.client.post(
+            "/api/club-fee-types/",
+            {"name": "Affiliation", "cadence": "annual", "initial_amount": "100.00"},
+            format="json",
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED)
+        with patch("licenses.tasks.send_invoice_email.delay"):
+            response = self.client.post(
+                "/api/club-fee-billings/",
+                {
+                    "fee_type_ids": [created.data["id"]],
+                    "billed_on": str(timezone.localdate()),
+                    "recurring": True,
+                    "recurrence": "annual",
+                },
+                format="json",
+            )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["invoice_count"], 1)
+        self.assertEqual(Invoice.objects.filter(club=club).count(), 1)
+        self.assertEqual(Invoice.objects.filter(club=inactive).count(), 0)
+
+    def test_confirm_payment_for_club_fee_order_without_licenses(self):
+        from clubs.models import Club
+
+        club = Club.objects.create(
+            name="Fee Payment Club",
+            created_by=self.ltf_finance,
+            is_active=True,
+        )
+        self.client.force_authenticate(user=self.ltf_finance)
+        created = self.client.post(
+            "/api/club-fee-types/",
+            {"name": "Affiliation", "cadence": "annual", "initial_amount": "100.00"},
+            format="json",
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED)
+        with patch("licenses.tasks.send_invoice_email.delay"):
+            billed = self.client.post(
+                "/api/club-fee-billings/",
+                {
+                    "fee_type_ids": [created.data["id"]],
+                    "billed_on": str(timezone.localdate()),
+                },
+                format="json",
+            )
+        self.assertEqual(billed.status_code, status.HTTP_201_CREATED)
+        invoice = Invoice.objects.get(club=club)
+        order = invoice.order
+        self.assertTrue(order.items.filter(license__isnull=True).exists())
+
+        with patch("licenses.tasks.send_invoice_email.delay"):
+            response = self.client.post(
+                f"/api/orders/{order.id}/confirm-payment/",
+                {
+                    "payment_method": "bank_transfer",
+                    "payment_provider": "manual",
+                    "payment_reference": invoice.invoice_number,
+                },
+                format="json",
+            )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        order.refresh_from_db()
+        invoice.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.PAID)
+        self.assertEqual(invoice.status, Invoice.Status.PAID)
+        self.assertTrue(Payment.objects.filter(order=order, status=Payment.Status.PAID).exists())
+        self.assertFalse(License.objects.filter(order_items__order=order).exists())
+        audit = FinanceAuditLog.objects.filter(order=order, action="order.paid").first()
+        self.assertIsNotNone(audit)
+        self.assertEqual(audit.message, "Payment confirmed.")
+        self.assertEqual(audit.metadata.get("activated_license_ids"), [])
 
 
 class InvoiceRecipientEmailTests(TestCase):
@@ -791,6 +945,53 @@ class OrderApiTests(TestCase):
         self.assertEqual(paged_response.data["count"], 1)
         self.assertEqual(len(paged_response.data["results"]), 1)
         self.assertEqual(paged_response.data["results"][0]["action"], "order.alpha")
+
+    def test_ltf_finance_audit_logs_include_display_names(self):
+        self.ltf_finance.first_name = "Finance"
+        self.ltf_finance.last_name = "Officer"
+        self.ltf_finance.save(update_fields=["first_name", "last_name"])
+        self.member.ltf_licenseid = "LTF-1001"
+        self.member.save(update_fields=["ltf_licenseid"])
+        self.client.force_authenticate(user=self.ltf_finance)
+        order = Order.objects.create(club=self.club, member=self.member)
+        invoice = Invoice.objects.create(
+            order=order,
+            club=self.club,
+            member=self.member,
+            total=Decimal("10.00"),
+        )
+        license_record = License.objects.create(
+            member=self.member,
+            club=self.club,
+            license_type=self.license_type,
+            year=2026,
+        )
+        FinanceAuditLog.objects.create(
+            action="order.paid",
+            message="Payment confirmed.",
+            actor=self.ltf_finance,
+            club=self.club,
+            member=self.member,
+            license=license_record,
+            order=order,
+            invoice=invoice,
+            metadata={"activated_license_ids": [license_record.id]},
+        )
+
+        response = self.client.get("/api/finance-audit-logs/?q=Payment confirmed")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = next(item for item in response.data if item["action"] == "order.paid")
+        self.assertEqual(row["actor_name"], "Finance Officer")
+        self.assertEqual(row["club_name"], self.club.name)
+        member_name = f"{self.member.first_name} {self.member.last_name}".strip()
+        self.assertEqual(row["member_name"], member_name)
+        self.assertEqual(row["member_ltf_licenseid"], "LTF-1001")
+        self.assertEqual(row["order_number"], order.order_number)
+        self.assertEqual(row["invoice_number"], invoice.invoice_number)
+        self.assertIn(member_name, row["license_label"])
+        self.assertIn("Orders Annual", row["license_label"])
+        metadata_display = {item["key"]: item["value"] for item in row["metadata_display"]}
+        self.assertIn(member_name, metadata_display["activated_license_ids"])
 
     def test_confirm_payment_allows_stripe_without_consent_confirmation(self):
         self.client.force_authenticate(user=self.ltf_finance)

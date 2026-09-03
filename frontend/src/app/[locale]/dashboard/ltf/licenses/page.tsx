@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useForm } from "react-hook-form";
@@ -20,10 +26,10 @@ import {
   ListActionsRow,
   ListPagination,
   ListToolbarPanel,
-  PageNotice,
   PageSizeSelect,
   SelectionMeta,
   resolveListPageSize,
+  ActionNotices
 } from "@/components/ui/list-page-chrome";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
@@ -477,7 +483,7 @@ export default function LtfAdminLicensesPage() {
 
   return (
     <LtfAdminLayout title={t("licensesTitle")} subtitle={t("licensesSubtitle")}>
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
       <div className="space-y-6">
         <div className="flex flex-col gap-4">

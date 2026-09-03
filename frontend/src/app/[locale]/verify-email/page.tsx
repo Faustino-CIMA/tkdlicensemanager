@@ -9,6 +9,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { resendVerification, verifyEmail } from "@/lib/auth-api";
+import { ActionNotices } from "@/components/ui/list-page-chrome";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -103,7 +104,7 @@ export default function VerifyEmailPage() {
         {isVerified ? (
           <p className="mt-2 text-sm text-muted">{t("redirecting")}</p>
         ) : null}
-        {errorMessage ? <p className="mt-4 text-sm text-destructive">{errorMessage}</p> : null}
+        <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit(onSubmit)}>
           <div className="space-y-2">
@@ -112,7 +113,7 @@ export default function VerifyEmailPage() {
             {errors.email ? <p className="text-sm text-destructive">{errors.email.message}</p> : null}
           </div>
 
-          <Button className="w-full" type="submit" disabled={isSubmitting}>
+          <Button className="w-full" type="submit" variant="primary" disabled={isSubmitting}>
             {isSubmitting ? t("verifying") : t("submit")}
           </Button>
         </form>

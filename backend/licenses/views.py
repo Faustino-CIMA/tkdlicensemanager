@@ -30,7 +30,11 @@ from config.pagination import OptionalPaginationListMixin
 from clubs.models import Club
 from members.models import Member, MemberTransfer
 
+from .club_fee_billing import ClubFeeBillingError, create_billing_run
 from .models import (
+    ClubFeeBillingSchedule,
+    ClubFeePrice,
+    ClubFeeType,
     Expense,
     ExpenseCategory,
     FinanceAuditLog,
@@ -48,6 +52,7 @@ from .models import (
 )
 from .history import log_license_created, log_license_status_change
 from .serializers import (
+    build_audit_label_maps,
     ActivateLicensesSerializer,
     ClubOrderEligibilitySerializer,
     CheckoutSessionSerializer,
@@ -63,6 +68,10 @@ from .serializers import (
     FinanceYearOpeningSerializer,
     InvoiceListSerializer,
     InvoiceSerializer,
+    ClubFeeBillingRequestSerializer,
+    ClubFeeBillingScheduleSerializer,
+    ClubFeePriceSerializer,
+    ClubFeeTypeSerializer,
     LicensePriceSerializer,
     LicenseSerializer,
     LicenseTypePolicySerializer,
@@ -612,6 +621,8 @@ class OrderViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
             conflict_license_ids = []
             for item in order.items.select_related("license").all():
                 license_record = item.license
+                if not license_record:
+                    continue
                 license_status_before[license_record.id] = license_record.status
                 if license_record.status != License.Status.ACTIVE:
                     if license_record.start_date > today or license_record.end_date < today:
@@ -837,6 +848,8 @@ class FinanceAuditLogViewSet(OptionalPaginationListMixin, viewsets.ReadOnlyModel
                     "club",
                     "member",
                     "license",
+                    "license__license_type",
+                    "license__member",
                     "order",
                     "invoice",
                 )
@@ -848,9 +861,33 @@ class FinanceAuditLogViewSet(OptionalPaginationListMixin, viewsets.ReadOnlyModel
                 queryset = queryset.filter(
                     Q(action__icontains=search_value)
                     | Q(message__icontains=search_value)
+                    | Q(club__name__icontains=search_value)
+                    | Q(actor__username__icontains=search_value)
+                    | Q(actor__first_name__icontains=search_value)
+                    | Q(actor__last_name__icontains=search_value)
+                    | Q(member__first_name__icontains=search_value)
+                    | Q(member__last_name__icontains=search_value)
+                    | Q(member__ltf_licenseid__icontains=search_value)
+                    | Q(order__order_number__icontains=search_value)
+                    | Q(invoice__invoice_number__icontains=search_value)
                 )
             return queryset
         return FinanceAuditLog.objects.none()
+
+    def get_serializer(self, *args, **kwargs):
+        kwargs.setdefault("context", self.get_serializer_context())
+        many = kwargs.get("many")
+        if args:
+            instance = args[0]
+            if instance is not None:
+                logs = list(instance) if many else [instance]
+                kwargs["context"] = {
+                    **kwargs["context"],
+                    **build_audit_label_maps(logs),
+                }
+                if many:
+                    args = (logs, *args[1:])
+        return super().get_serializer(*args, **kwargs)
 
     def get_permissions(self):
         return [IsLtfFinance()]
@@ -1917,6 +1954,82 @@ class LicensePriceViewSet(
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
+
+
+class ClubFeeTypeViewSet(viewsets.ModelViewSet):
+    serializer_class = ClubFeeTypeSerializer
+    queryset = ClubFeeType.objects.prefetch_related("prices").all().order_by("name")
+
+    def get_permissions(self):
+        if self.request.method in SAFE_METHODS:
+            return [IsLtfFinanceOrLtfAdmin()]
+        return [IsLtfFinance()]
+
+
+class ClubFeePriceViewSet(
+    OptionalPaginationListMixin,
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet,
+):
+    serializer_class = ClubFeePriceSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    queryset = ClubFeePrice.objects.all()
+
+    def get_permissions(self):
+        return [IsLtfFinanceOrLtfAdmin()]
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return ClubFeePrice.objects.none()
+        queryset = ClubFeePrice.objects.select_related("fee_type").all().order_by(
+            "-effective_from", "-created_at"
+        )
+        fee_type_id = self.request.query_params.get("fee_type")
+        if fee_type_id:
+            queryset = queryset.filter(fee_type_id=fee_type_id)
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
+
+
+class ClubFeeBillingScheduleViewSet(
+    mixins.ListModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    serializer_class = ClubFeeBillingScheduleSerializer
+    queryset = ClubFeeBillingSchedule.objects.select_related("fee_type").all()
+
+    def get_permissions(self):
+        return [IsLtfFinanceOrLtfAdmin()]
+
+
+class ClubFeeBillingView(APIView):
+    permission_classes = [IsLtfFinanceOrLtfAdmin]
+
+    def post(self, request):
+        serializer = ClubFeeBillingRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            result = create_billing_run(
+                fee_type_ids=data["fee_type_ids"],
+                club_ids=data.get("club_ids") or None,
+                billed_on=data["billed_on"],
+                recurring=bool(data.get("recurring")),
+                recurrence=data.get("recurrence"),
+                actor=request.user,
+            )
+        except ClubFeeBillingError as error:
+            return Response({"detail": error.detail}, status=error.status_code)
+        from .tasks import send_invoice_email
+
+        for invoice_id in result["invoice_ids"]:
+            send_invoice_email.delay(invoice_id)
+        return Response(result, status=status.HTTP_201_CREATED)
 
 
 class ClubInvoiceViewSet(OptionalPaginationListMixin, viewsets.ReadOnlyModelViewSet):

@@ -9,8 +9,9 @@ import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
 import { useClubSelection } from "@/components/club-selection-provider";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ActionNotices } from "@/components/ui/list-page-chrome";
 import { FilterPills } from "@/components/ui/filter-pills";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
@@ -308,8 +309,13 @@ export default function ClubAdminInvoicesPage() {
   return (
     <ClubAdminLayout title={t("invoicesTitle")} subtitle={t("invoicesSubtitle")}>
       <div className="space-y-6">
-        {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
-        {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
+        <ActionNotices
+          error={errorMessage || actionError}
+          onDismiss={() => {
+            setErrorMessage(null);
+            setActionError(null);
+          }}
+        />
         {overdueIssue ? (
           <div className="flex items-start justify-between gap-3 rounded-[var(--radius-form)] border px-4 py-3 text-sm banner-info">
             <p className="min-w-0 flex-1">{t("issuedInvoicesOverdueFilterMessage")}</p>

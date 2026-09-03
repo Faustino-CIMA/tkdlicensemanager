@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -180,11 +180,17 @@ export function PageNotice({
   tone,
   children,
 }: {
-  tone: "danger" | "success" | "info";
+  tone: "danger" | "success" | "info" | "warning";
   children: ReactNode;
 }) {
   const toneClass =
-    tone === "danger" ? "banner-danger" : tone === "success" ? "banner-success" : "banner-info";
+    tone === "danger"
+      ? "banner-danger"
+      : tone === "success"
+        ? "banner-success"
+        : tone === "warning"
+          ? "banner-warning"
+          : "banner-info";
   return (
     <p className={cn("rounded-[var(--radius-form)] border px-4 py-3 text-sm", toneClass)}>{children}</p>
   );
@@ -199,7 +205,7 @@ export function FloatingNotice({
   dismissLabel,
 }: {
   open: boolean;
-  tone: "danger" | "success" | "info";
+  tone: "danger" | "success" | "info" | "warning";
   token?: string;
   children: ReactNode;
   onDismiss?: () => void;
@@ -235,7 +241,9 @@ export function FloatingNotice({
       ? "banner-danger"
       : payload.tone === "success"
         ? "banner-success"
-        : "banner-info";
+        : payload.tone === "warning"
+          ? "banner-warning"
+          : "banner-info";
 
   return (
     <div
@@ -283,6 +291,47 @@ export function FloatingNotice({
         ) : null}
       </div>
     </div>
+  );
+}
+
+export function ActionNotices({
+  error,
+  success,
+  onDismiss,
+  dismissLabel = "Close",
+}: {
+  error?: string | null;
+  success?: string | null;
+  onDismiss: () => void;
+  dismissLabel?: string;
+}) {
+  const message = error || success || null;
+  const open = Boolean(message);
+  const tone = error ? "danger" : "success";
+  const onDismissRef = useRef(onDismiss);
+
+  useEffect(() => {
+    onDismissRef.current = onDismiss;
+  }, [onDismiss]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const timer = window.setTimeout(() => onDismissRef.current(), error ? 9000 : 7000);
+    return () => window.clearTimeout(timer);
+  }, [open, message, error]);
+
+  return (
+    <FloatingNotice
+      open={open}
+      token={message ?? ""}
+      tone={tone}
+      onDismiss={onDismiss}
+      dismissLabel={dismissLabel}
+    >
+      {message}
+    </FloatingNotice>
   );
 }
 

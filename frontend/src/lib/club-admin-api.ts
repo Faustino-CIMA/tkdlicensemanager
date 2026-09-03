@@ -21,6 +21,8 @@ export type Club = {
   iban: string;
   bank_name: string;
   email: string;
+  is_active: boolean;
+  communication_language: string;
   max_admins: number;
   created_by: number;
   admins: number[];
@@ -208,7 +210,7 @@ export type LicenseType = {
 };
 
 export type ClubInput = {
-  name: string;
+  name?: string;
   city?: string;
   address?: string;
   address_line1?: string;
@@ -217,6 +219,8 @@ export type ClubInput = {
   locality?: string;
   iban?: string;
   email?: string;
+  is_active?: boolean;
+  communication_language?: string;
 };
 
 
@@ -230,6 +234,15 @@ export function updateClub(id: number, input: ClubInput) {
     method: "PATCH",
     body: JSON.stringify(input),
   });
+}
+
+export type ClubCommunicationLanguage = {
+  code: string;
+  name: string;
+};
+
+export function getClubCommunicationLanguages() {
+  return apiRequest<ClubCommunicationLanguage[]>("/api/clubs/communication-languages/");
 }
 
 function buildLogoFormData(input: BrandingLogoUploadInput): FormData {

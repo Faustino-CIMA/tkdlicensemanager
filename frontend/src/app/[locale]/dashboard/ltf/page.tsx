@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { AlertTriangle, Building2, Clock3, IdCard, Users } from "lucide-react";
+import {
+  AlertTriangle,
+  Building2,
+  Clock3,
+  IdCard,
+  Users,
+} from "lucide-react";
 
 import { ActionQueue } from "@/components/club-admin/action-queue";
 import { EntityTable } from "@/components/club-admin/entity-table";
@@ -10,11 +16,9 @@ import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { SummaryCard } from "@/components/club-admin/summary-card";
 import { Button } from "@/components/ui/button";
-import { PageNotice } from "@/components/ui/list-page-chrome";
+import { ActionNotices } from "@/components/ui/list-page-chrome";
 import { formatDisplayDateTime } from "@/lib/date-display";
 import { LtfAdminOverviewResponse, getLtfAdminOverview } from "@/lib/ltf-admin-api";
-
-
 
 export default function LtfAdminOverviewPage() {
   const t = useTranslations("LtfAdmin");
@@ -77,7 +81,7 @@ export default function LtfAdminOverviewPage() {
 
   return (
     <LtfAdminLayout title={t("overviewTitle")} subtitle={t("overviewSubtitle")}>
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
       {isLoading ? (
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />

@@ -8,7 +8,10 @@ import { useLocale, useTranslations } from "next-intl";
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
-import { FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
+import {
+  FormPanel,
+  ActionNotices
+} from "@/components/ui/list-page-chrome";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   getMemberTransfers,
@@ -49,7 +52,7 @@ export default function LtfMemberTransfersPage() {
 
   return (
     <LtfAdminLayout title={t("memberTransfersTitle")} subtitle={t("memberMovementSubtitle")}>
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
       {isLoading ? (
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       ) : (

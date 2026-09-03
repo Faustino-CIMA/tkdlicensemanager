@@ -3,6 +3,7 @@ import re
 from rest_framework import serializers
 
 from .banking import derive_bank_name_from_iban, is_valid_iban, normalize_iban
+from .languages import normalize_club_language
 from .models import BrandingAsset, Club, FederationProfile
 
 
@@ -21,6 +22,8 @@ class ClubSerializer(serializers.ModelSerializer):
             "iban",
             "bank_name",
             "email",
+            "is_active",
+            "communication_language",
             "max_admins",
             "created_by",
             "admins",
@@ -40,6 +43,9 @@ class ClubSerializer(serializers.ModelSerializer):
 
     def validate_email(self, value):
         return str(value or "").strip()
+
+    def validate_communication_language(self, value):
+        return normalize_club_language(value)
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -69,6 +75,14 @@ class ClubSerializer(serializers.ModelSerializer):
             attrs["bank_name"] = derive_bank_name_from_iban(attrs["iban"])
         elif attrs.get("iban"):
             attrs["bank_name"] = derive_bank_name_from_iban(attrs["iban"])
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        role = getattr(user, "role", None)
+        if role == "ltf_finance":
+            attrs = {key: value for key, value in attrs.items() if key == "is_active"}
+        elif role == "club_admin":
+            attrs.pop("is_active", None)
         return attrs
 
 

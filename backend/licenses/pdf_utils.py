@@ -27,7 +27,7 @@ def build_invoice_context(invoice: Invoice) -> dict:
         license_type = (
             item.license.license_type.name
             if item.license and item.license.license_type
-            else "License"
+            else (item.description or "Fee")
         )
         item_rows.append(
             {

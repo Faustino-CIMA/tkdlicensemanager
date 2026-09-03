@@ -3,6 +3,7 @@
 import Cropper, { Area } from "react-easy-crop";
 import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { ActionNotices } from "@/components/ui/list-page-chrome";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -749,7 +750,7 @@ export function ProfilePhotoManager({
         <span>{labels.consentLabel}</span>
       </label>
 
-      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={handleCancel}>

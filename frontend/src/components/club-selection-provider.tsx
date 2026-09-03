@@ -121,7 +121,7 @@ export function ClubSelectionProvider({ children }: { children: React.ReactNode 
 
   const isDashboardRoute = Boolean(pathname?.includes("/dashboard"));
   const allowAllClubs = allowsAllClubsSelection(pathname);
-  const defaultToAllClubs = isLtfAdminPath(pathname);
+  const defaultToAllClubs = allowAllClubs;
 
   const setSelectedClubId = useCallback((id: number | null) => {
     const nextId = allowAllClubs

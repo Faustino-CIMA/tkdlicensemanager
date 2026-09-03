@@ -14,9 +14,9 @@ import {
   ListActionsRow,
   ListPagination,
   ListToolbarPanel,
-  PageNotice,
   PageSizeSelect,
   resolveListPageSize,
+  ActionNotices
 } from "@/components/ui/list-page-chrome";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useClubSelection } from "@/components/club-selection-provider";
@@ -235,7 +235,7 @@ export default function LtfAdminMembersPage() {
 
   return (
     <LtfAdminLayout title={t("membersTitle")} subtitle={t("membersSubtitle")}>
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
       <div className="space-y-6">
         {issue ? (

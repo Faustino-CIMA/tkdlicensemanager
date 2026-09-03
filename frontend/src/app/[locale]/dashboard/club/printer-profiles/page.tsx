@@ -10,7 +10,7 @@ import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { Button } from "@/components/ui/button";
-import { ListActionsRow, ListToolbarPanel } from "@/components/ui/list-page-chrome";
+import { ActionNotices, ListActionsRow, ListToolbarPanel } from "@/components/ui/list-page-chrome";
 import { DeleteConfirmModal } from "@/components/ui/delete-confirm-modal";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -246,8 +246,7 @@ export default function ClubAdminPrinterProfilesPage() {
 
   return (
     <ClubAdminLayout title={t("printerProfilesTitle")} subtitle={t("printerProfilesSubtitle")}>
-      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
-      {successMessage ? <p className="text-sm text-success">{successMessage}</p> : null}
+      <ActionNotices error={errorMessage} success={successMessage} onDismiss={() => { setErrorMessage(null); setSuccessMessage(null); }} />
 
       <div className="space-y-6">
         <div className="flex flex-col gap-4">
@@ -263,7 +262,7 @@ export default function ClubAdminPrinterProfilesPage() {
             }
           />
           <ListActionsRow
-            actions={<Button onClick={startCreate}>{t("printerProfilesCreateAction")}</Button>}
+            actions={<Button variant="primary" onClick={startCreate}>{t("printerProfilesCreateAction")}</Button>}
           />
         </div>
 

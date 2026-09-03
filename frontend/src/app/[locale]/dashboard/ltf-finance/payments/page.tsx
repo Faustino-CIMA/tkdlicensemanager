@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -19,6 +25,7 @@ import {
   PageNotice,
   PageSizeSelect,
   resolveListPageSize,
+  ActionNotices
 } from "@/components/ui/list-page-chrome";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDisplayDateTime } from "@/lib/date-display";
@@ -280,7 +287,7 @@ export default function LtfFinancePaymentsPage() {
 
   return (
     <LtfFinanceLayout title={t("paymentsTitle")} subtitle={t("paymentsSubtitle")}>
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
       {failedPaymentIssue ? (
         <PageNotice tone="info">{t("failedOrCancelledPaymentsFilterMessage")}</PageNotice>
       ) : null}

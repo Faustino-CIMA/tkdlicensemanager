@@ -10,7 +10,10 @@ import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
+import {
+  FormPanel,
+  ActionNotices
+} from "@/components/ui/list-page-chrome";
 import {
   Select,
   SelectContent,
@@ -260,8 +263,7 @@ export default function LtfFinanceLicenseTypeDetailPage() {
         </Link>
       </Button>
 
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
-      {successMessage ? <PageNotice tone="success">{successMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} success={successMessage} onDismiss={() => { setErrorMessage(null); setSuccessMessage(null); }} />
 
       <FormPanel className="space-y-4">
         <h2 className="text-section text-foreground">{t("licenseTypeLabel")}</h2>

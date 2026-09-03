@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 
+import { ActionNotices } from "@/components/ui/list-page-chrome";
 import { ActionQueue } from "@/components/club-admin/action-queue";
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { EntityTable } from "@/components/club-admin/entity-table";
@@ -366,7 +367,7 @@ export default function ClubAdminOverviewPage() {
 
   return (
     <ClubAdminLayout title={t("overviewTitle")} subtitle={t("overviewSubtitle")}>
-      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
       {isLoading ? (
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />

@@ -8,6 +8,7 @@ import { apiRequest } from "@/lib/api";
 import { clearToken } from "@/lib/auth";
 import { getDashboardRouteForRole } from "@/lib/dashboard-routing";
 import { Button } from "@/components/ui/button";
+import { ActionNotices } from "@/components/ui/list-page-chrome";
 
 type MeResponse = {
   id: number;
@@ -59,7 +60,7 @@ export default function DashboardPage() {
           </Button>
         </div>
 
-        {errorMessage ? <p className="mt-6 text-sm text-destructive">{errorMessage}</p> : null}
+        <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
         {user ? (
           <div className="mt-6 rounded-[var(--radius-card)] border border-border bg-[var(--surface-secondary)] p-6">

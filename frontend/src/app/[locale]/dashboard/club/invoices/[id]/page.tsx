@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
 import { PayconiqPaymentCard } from "@/components/club-admin/payconiq-payment-card";
 import { Button } from "@/components/ui/button";
+import { ActionNotices } from "@/components/ui/list-page-chrome";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Member, getMembers } from "@/lib/club-admin-api";
 import { formatDisplayDateTime } from "@/lib/date-display";
@@ -24,13 +25,13 @@ import {
   getClubOrder,
   getPayconiqPaymentStatus,
 } from "@/lib/club-finance-api";
-import { orderItemMemberDisplay } from "@/lib/ltf-finance-api";
+import { orderItemMemberDisplay, orderItemsAreClubFees, orderItemYearLabel } from "@/lib/ltf-finance-api";
 
 type InvoiceItemRow = {
   id: number;
   memberName: string;
   ltfLicenseId: string;
-  year: number;
+  year: string;
   quantity: number;
 };
 
@@ -139,18 +140,24 @@ export default function ClubInvoiceDetailPage() {
         id: item.id,
         memberName: display.name,
         ltfLicenseId: display.ltfLicenseId,
-        year: item.license.year,
+        year: orderItemYearLabel(item),
         quantity: item.quantity,
       };
     });
   }, [order, members, t]);
 
-  const columns = [
-    { key: "memberName", header: t("memberLabel") },
-    { key: "ltfLicenseId", header: t("ltfLicenseTableLabel") },
-    { key: "year", header: t("yearLabel") },
-    { key: "quantity", header: t("qtyLabel") },
-  ];
+  const feeOnly = orderItemsAreClubFees(order?.items);
+  const columns = feeOnly
+    ? [
+        { key: "memberName", header: t("orderItemDescriptionLabel") },
+        { key: "quantity", header: t("qtyLabel") },
+      ]
+    : [
+        { key: "memberName", header: t("memberLabel") },
+        { key: "ltfLicenseId", header: t("ltfLicenseTableLabel") },
+        { key: "year", header: t("yearLabel") },
+        { key: "quantity", header: t("qtyLabel") },
+      ];
 
   const isPayable = invoice ? ["draft", "issued"].includes(invoice.status) : false;
   const linkedOrderId = invoice?.order ?? order?.id ?? null;
@@ -245,6 +252,13 @@ export default function ClubInvoiceDetailPage() {
 
   return (
     <ClubAdminLayout title={t("invoiceDetailTitle")} subtitle={t("invoiceDetailSubtitle")}>
+      <ActionNotices
+        error={paymentError || payconiqError}
+        onDismiss={() => {
+          setPaymentError(null);
+          setPayconiqError(null);
+        }}
+      />
       <div className="mb-6">
         <Button asChild variant="outline">
           <Link href={`/${locale}/dashboard/club/invoices`}>{t("backToInvoices")}</Link>
@@ -293,11 +307,10 @@ export default function ClubInvoiceDetailPage() {
             <span className="font-medium">{formatDisplayDateTime(invoice.paid_at)}</span>
           </div>
         </div>
-        {paymentError ? <p className="mt-4 text-sm text-destructive">{paymentError}</p> : null}
         {order || isPayable ? (
           <div className="mt-4 flex flex-wrap gap-2">
             {isPayable ? (
-              <Button type="button" onClick={() => void handlePayNow()} disabled={isPaying}>
+              <Button type="button" variant="primary" onClick={() => void handlePayNow()} disabled={isPaying}>
                 {isPaying ? common("paymentProcessing") : common("payNow")}
               </Button>
             ) : null}
@@ -317,7 +330,6 @@ export default function ClubInvoiceDetailPage() {
 
       <PayconiqPaymentCard
         payment={payconiqPayment}
-        errorMessage={payconiqError}
         isBusy={isPayconiqBusy}
         onCreate={handleCreatePayconiqPayment}
         onRefresh={handleRefreshPayconiqPayment}

@@ -517,6 +517,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "licenses.tasks.reconcile_pending_stripe_orders",
         "schedule": CELERY_RECONCILE_PENDING_STRIPE_INTERVAL_SECONDS,
     },
+    "run-club-fee-billing-schedules-daily": {
+        "task": "licenses.tasks.run_club_fee_billing_schedules",
+        "schedule": crontab(hour=6, minute=15),
+    },
 }
 CELERY_TASK_ROUTES = {
     "licenses.tasks.execute_print_job_task": {"queue": CELERY_PRINT_JOB_QUEUE},

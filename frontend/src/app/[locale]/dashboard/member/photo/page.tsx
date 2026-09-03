@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 
+import { ActionNotices } from "@/components/ui/list-page-chrome";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { MemberLayout } from "@/components/member/member-layout";
 import { ProfilePhotoManager } from "@/components/profile-photo/profile-photo-manager";
@@ -53,7 +54,7 @@ export default function MemberProfilePhotoPage() {
   return (
     <MemberLayout title={t("photoModalTitle")} subtitle={t("photoModalDescription")}>
       <div className="space-y-6">
-        {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+        <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
         {isLoading ? (
           <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />

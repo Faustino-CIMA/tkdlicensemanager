@@ -8,6 +8,7 @@ import { Trash2, X } from "lucide-react";
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { DeleteConfirmModal } from "@/components/ui/delete-confirm-modal";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -16,9 +17,9 @@ import {
   ListActionsRow,
   ListPagination,
   ListToolbarPanel,
-  PageNotice,
   PageSizeSelect,
   SelectionMeta,
+  ActionNotices
 } from "@/components/ui/list-page-chrome";
 import {
   Select,
@@ -159,7 +160,7 @@ export default function LtfAdminClubsPage() {
 
   return (
     <LtfAdminLayout title={t("clubsTitle")} subtitle={t("clubsSubtitle")}>
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
       <div className="space-y-6">
         {issue === "no_admin" ? (
@@ -294,6 +295,16 @@ export default function LtfAdminClubsPage() {
                 ),
               },
               { key: "name", header: t("clubNameLabel") },
+              {
+                key: "is_active",
+                header: t("clubStatusLabel"),
+                render: (club) => (
+                  <StatusBadge
+                    label={club.is_active ? t("clubStatusActive") : t("clubStatusInactive")}
+                    tone={club.is_active ? "success" : "neutral"}
+                  />
+                ),
+              },
               { key: "postal_code", header: t("postalCodeLabel") },
               {
                 key: "locality",

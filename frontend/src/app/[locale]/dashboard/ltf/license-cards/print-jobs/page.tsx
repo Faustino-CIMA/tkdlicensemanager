@@ -10,7 +10,11 @@ import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { Button } from "@/components/ui/button";
 import { FilterPills } from "@/components/ui/filter-pills";
 import { Input } from "@/components/ui/input";
-import { ListActionsRow, ListToolbarPanel, PageNotice } from "@/components/ui/list-page-chrome";
+import {
+  ListActionsRow,
+  ListToolbarPanel,
+  ActionNotices
+} from "@/components/ui/list-page-chrome";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { apiRequest } from "@/lib/api";
 import { formatDisplayDateTime } from "@/lib/date-display";
@@ -243,8 +247,7 @@ export default function LtfAdminLicenseCardPrintJobsPage() {
 
   return (
     <LtfAdminLayout title={t("licenseCardPrintJobsTitle")} subtitle={t("licenseCardPrintJobsSubtitle")}>
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
-      {successMessage ? <PageNotice tone="success">{successMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} success={successMessage} onDismiss={() => { setErrorMessage(null); setSuccessMessage(null); }} />
 
       <div className="space-y-6">
         <div className="flex flex-col gap-4">

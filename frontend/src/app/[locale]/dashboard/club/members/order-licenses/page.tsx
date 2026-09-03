@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -11,7 +17,7 @@ import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
 import { Button } from "@/components/ui/button";
 import { InfoHint } from "@/components/ui/info-hint";
-import { FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
+import { ActionNotices, FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Select,
@@ -634,7 +640,7 @@ export default function ClubMembersOrderLicensesPage() {
             {createdOrder.orderNumber ? ` · ${createdOrder.orderNumber}` : ""}
           </p>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-            <Button onClick={() => router.push(`/${locale}/dashboard/club/orders/${createdOrder.id}`)}>
+            <Button variant="primary" onClick={() => router.push(`/${locale}/dashboard/club/orders/${createdOrder.id}`)}>
               {t("orderLicenseViewOrderAction")}
             </Button>
             <Button variant="outline" onClick={goToMembers}>
@@ -661,7 +667,7 @@ export default function ClubMembersOrderLicensesPage() {
 
   return (
     <ClubAdminLayout title={t("orderLicenseModalTitle")} subtitle={t("orderLicensePageSubtitle")}>
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
       <div className="space-y-6">
         <FormPanel>
@@ -958,7 +964,7 @@ export default function ClubMembersOrderLicensesPage() {
             <Button variant="outline" onClick={goToMembers}>
               {t("backToMembers")}
             </Button>
-            <Button onClick={handleCreateOrder} disabled={!canSubmit}>
+            <Button variant="primary" onClick={handleCreateOrder} disabled={!canSubmit}>
               {isSubmitting ? t("orderLicenseProcessing") : t("orderLicenseButton", { year: targetYear })}
             </Button>
           </div>

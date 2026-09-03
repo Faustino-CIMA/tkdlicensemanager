@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter, useSearchParams } from "next/navigation";
 import { X } from "lucide-react";
@@ -21,6 +27,7 @@ import {
   PageNotice,
   PageSizeSelect,
   resolveListPageSize,
+  ActionNotices,
 } from "@/components/ui/list-page-chrome";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDisplayDateTime } from "@/lib/date-display";
@@ -299,8 +306,13 @@ export default function LtfFinanceInvoicesPage() {
 
   return (
     <LtfFinanceLayout title={t("invoicesTitle")} subtitle={t("invoicesSubtitle")}>
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
-      {actionError ? <PageNotice tone="danger">{actionError}</PageNotice> : null}
+      <ActionNotices
+        error={errorMessage || actionError}
+        onDismiss={() => {
+          setErrorMessage(null);
+          setActionError(null);
+        }}
+      />
       {overdueIssue ? (
         <PageNotice tone="info">
           <span className="flex items-start justify-between gap-3">

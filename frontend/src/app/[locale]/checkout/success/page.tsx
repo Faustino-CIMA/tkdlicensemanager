@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
+import { ActionNotices } from "@/components/ui/list-page-chrome";
 import { Spinner } from "@/components/ui/spinner";
 import { apiRequest } from "@/lib/api";
 import { getToken } from "@/lib/auth";
@@ -150,12 +151,10 @@ function CheckoutSuccessContent() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-6">
+      <ActionNotices error={phase !== "confirming" ? errorMessage : null} onDismiss={() => setErrorMessage(null)} />
       <div className="w-full max-w-xl rounded-[var(--radius-card)] bg-card p-10 text-center shadow-sm">
         <h1 className="text-2xl font-semibold text-foreground">{t("successTitle")}</h1>
         <p className="mt-3 text-sm text-muted">{subtitle}</p>
-        {errorMessage && phase !== "confirming" ? (
-          <p className="mt-2 text-sm text-destructive">{errorMessage}</p>
-        ) : null}
         {phase === "confirming" ? (
           <div className="mt-6 flex justify-center">
             <Spinner label={t("confirmingSubtitle")} />
@@ -165,7 +164,7 @@ function CheckoutSuccessContent() {
           {phase === "confirming" ? (
             <Button disabled>{t("confirmingAction")}</Button>
           ) : (
-            <Button asChild>
+            <Button asChild variant="primary">
               <Link href={dashboardHref} onClick={handleGoToDashboard}>
                 {t("successAction")}
               </Link>

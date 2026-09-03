@@ -9,7 +9,12 @@ import { EmptyState } from "@/components/club-admin/empty-state";
 import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AppTextarea, FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
+import {
+  AppTextarea,
+  FormPanel,
+  PageNotice,
+  ActionNotices
+} from "@/components/ui/list-page-chrome";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Select,
@@ -220,7 +225,7 @@ export default function LtfFinanceRecordPaymentPage() {
       <Button asChild variant="outline" className="w-fit">
         <Link href={paymentsHref}>{t("backToPayments")}</Link>
       </Button>
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
       <FormPanel>
         <div className="grid gap-4 text-sm text-foreground md:grid-cols-2">
@@ -322,7 +327,7 @@ export default function LtfFinanceRecordPaymentPage() {
               </div>
             </div>
             <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
-              <Button type="submit" disabled={isSaving}>
+              <Button type="submit" variant="primary" disabled={isSaving}>
                 {isSaving ? common("paymentProcessing") : t("recordPaymentButton")}
               </Button>
               <Button asChild type="button" variant="outline">

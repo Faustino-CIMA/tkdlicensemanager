@@ -13,6 +13,7 @@ from accounts.permissions import (
     IsLtfAdminOrClubAdmin,
     IsLtfFinanceOrLtfAdmin,
 )
+from rest_framework.permissions import BasePermission
 from config.pagination import OptionalPaginationListMixin
 from django.db import transaction
 from django.db.models import Count
@@ -28,6 +29,7 @@ from .admin_assignment import (
     search_assignment_members,
 )
 
+from .languages import CLUB_COMMUNICATION_LANGUAGES
 from .models import BrandingAsset, Club, FederationProfile
 from .serializers import (
     BrandingAssetCreateSerializer,
@@ -83,6 +85,15 @@ def _set_logo_selected(logo: BrandingAsset, *, selected: bool) -> None:
         logo.save(update_fields=["is_selected", "updated_at"])
 
 
+class IsLtfAdminOrClubAdminOrLtfFinance(BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role in [
+            "ltf_admin",
+            "club_admin",
+            "ltf_finance",
+        ]
+
+
 class ClubViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
     serializer_class = ClubSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -90,7 +101,7 @@ class ClubViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
     def _can_manage_club(self, user, club: Club) -> bool:
         if not user or not user.is_authenticated:
             return False
-        if user.role == "ltf_admin":
+        if user.role in {"ltf_admin", "ltf_finance"}:
             return True
         if user.role == "club_admin" and club.admins.filter(id=user.id).exists():
             return True
@@ -102,7 +113,7 @@ class ClubViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
         if self.action in ["create", "destroy"]:
             return [IsLtfAdmin()]
         if self.action in ["update", "partial_update"]:
-            return [IsLtfAdminOrClubAdmin()]
+            return [IsLtfAdminOrClubAdminOrLtfFinance()]
         return [permissions.IsAuthenticated()]
 
     def get_queryset(self):
@@ -167,6 +178,12 @@ class ClubViewSet(OptionalPaginationListMixin, viewsets.ModelViewSet):
         if not self._can_manage_club(request.user, club):
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
         return super().partial_update(request, *args, **kwargs)
+
+    @action(detail=False, methods=["get"], url_path="communication-languages")
+    def communication_languages(self, request):
+        return Response(
+            [{"code": code, "name": name} for code, name in CLUB_COMMUNICATION_LANGUAGES]
+        )
 
     @action(detail=False, methods=["get"], permission_classes=[permissions.IsAuthenticated])
     def admin_assignment(self, request):

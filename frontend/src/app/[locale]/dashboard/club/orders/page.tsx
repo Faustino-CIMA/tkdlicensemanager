@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
 import { useClubSelection } from "@/components/club-selection-provider";
 import { Button } from "@/components/ui/button";
+import { ActionNotices } from "@/components/ui/list-page-chrome";
 import { FilterPills } from "@/components/ui/filter-pills";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -190,7 +191,7 @@ export default function ClubAdminOrdersPage() {
   return (
     <ClubAdminLayout title={t("ordersTitle")} subtitle={t("ordersSubtitle")}>
       <div className="space-y-6">
-        {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+        <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-end gap-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm">

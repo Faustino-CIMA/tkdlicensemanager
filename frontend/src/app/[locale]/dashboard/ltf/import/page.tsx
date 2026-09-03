@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { useClubSelection } from "@/components/club-selection-provider";
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { ImportWizardPage } from "@/components/import/import-wizard-page";
+import { ActionNotices } from "@/components/ui/list-page-chrome";
 import { getClubs } from "@/lib/ltf-admin-api";
 
 type ClubOption = {
@@ -87,7 +88,7 @@ export default function LtfImportPage() {
 
   return (
     <LtfAdminLayout title={t("importWizardTitle")} subtitle={t("wizardSubtitleLtf")}>
-      {error ? <p className="mb-4 text-sm text-destructive">{error}</p> : null}
+      <ActionNotices error={error} onDismiss={() => setError(null)} />
       {isLoading && clubOptions.length === 0 ? (
         <p className="mb-4 text-sm text-muted">{ltfT("loadingTitle")}</p>
       ) : null}

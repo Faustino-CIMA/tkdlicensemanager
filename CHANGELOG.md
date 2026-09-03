@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-03
+
+### User-facing
+- **Club fees:** LTF Finance Settings has a Club fees catalog (name, cadence, amount) and a Billing tab. Finance can invoice active clubs for those fees once, or on a monthly/annual schedule. Club fees are not licenses; paying a club-fee invoice does not create or activate a license.
+- **Club status and language:** LTF Finance and LTF Admin can mark a club Active or Inactive. Inactive clubs are not billed. Clubs can set communication language (English or Luxembourgish) for emails.
+- **Member pages:** Club and LTF member detail use a tab bar (Overview, Current license, Licenses history, Grades, Club movements).
+- **Finance Settings:** Sidebar label is Settings, with tabs for License types, License prices, Club fees, and Billing.
+- **Action messages:** Success and error toasts slide in from the top-right so they stay on screen when you are scrolled down.
+- **LTF Finance club filter:** After login, Orders, Invoices, and Payments start on **All clubs**.
+- **Audit log:** The list shows date, action, and message. Click a row to open a detail page with names, order/invoice links, and readable extra details (no raw IDs).
+- **Buttons:** Everyday actions (Save, Create invoice, Add price) use a quiet gray fill. Brand cyan is for Sign in, Pay now, Record payment, and page-level Create.
+
+### Technical
+- `ClubFeeType`, `ClubFeePrice`, `ClubFeeBillingSchedule`; migrations `licenses.0034_club_fee_types`, `licenses.0035_club_fee_billing`.
+- `Club.is_active`, `Club.communication_language`; migration `clubs.0009_club_active_and_language`.
+- `POST /api/club-fee-billings/`, Celery `run_club_fee_billing_schedules`.
+- `apply_payment_and_activate` skips order items without a license.
+- Finance audit logs expose display names (`actor_name`, `club_name`, `order_number`, `metadata_display`).
+- `ActionNotices` / `FloatingNotice`; Button `default` uses `--default`, `primary` is brand cyan.
+
 ## [0.6.4] - 2026-08-28
 
 ### User-facing

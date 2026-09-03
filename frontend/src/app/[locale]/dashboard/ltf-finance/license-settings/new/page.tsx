@@ -9,7 +9,10 @@ import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
+import {
+  FormPanel,
+  ActionNotices
+} from "@/components/ui/list-page-chrome";
 import { createFinanceLicenseType } from "@/lib/ltf-finance-api";
 
 export default function LtfFinanceLicenseTypeCreatePage() {
@@ -62,7 +65,7 @@ export default function LtfFinanceLicenseTypeCreatePage() {
 
   return (
     <LtfFinanceLayout title={t("createLicenseType")} subtitle={t("licenseTypeFormSubtitle")}>
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
       <FormPanel>
         <form className="space-y-5" onSubmit={handleSubmit}>
@@ -118,7 +121,7 @@ export default function LtfFinanceLicenseTypeCreatePage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <Button type="submit" disabled={isSaving}>
+            <Button type="submit" variant="primary" disabled={isSaving}>
               {isSaving ? t("savingAction") : t("createLicenseType")}
             </Button>
             <Button asChild type="button" variant="outline">

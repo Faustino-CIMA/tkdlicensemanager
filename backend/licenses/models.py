@@ -105,6 +105,74 @@ class LicensePrice(models.Model):
         )
 
 
+class ClubFeeType(models.Model):
+    class Cadence(models.TextChoices):
+        ONE_OFF = "one_off", "One-off"
+        ANNUAL = "annual", "Annual"
+        PER_MEMBER = "per_member", "Per member"
+        PER_EVENT = "per_event", "Per event"
+
+    name = models.CharField(max_length=100, unique=True)
+    code = models.SlugField(max_length=50, unique=True)
+    description = models.TextField(blank=True)
+    cadence = models.CharField(max_length=20, choices=Cadence.choices, default=Cadence.ONE_OFF)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            self.code = slugify(self.name)
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return str(self.name)
+
+
+class ClubFeePrice(models.Model):
+    objects = models.Manager()
+    fee_type = models.ForeignKey(
+        ClubFeeType,
+        on_delete=models.CASCADE,
+        related_name="prices",
+    )
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    currency = models.CharField(max_length=3, default="EUR")
+    effective_from = models.DateField(default=timezone.localdate)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="club_fee_prices",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-effective_from", "-created_at"]
+        indexes = [
+            models.Index(
+                fields=["fee_type", "-effective_from", "-created_at"],
+                name="clubfee_type_eff_created_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.fee_type.name}: {self.amount} {self.currency} ({self.effective_from})"
+
+    @classmethod
+    def get_active_price(cls, *, fee_type: ClubFeeType, as_of=None):
+        date_value = as_of or timezone.localdate()
+        return (
+            cls.objects.filter(fee_type=fee_type, effective_from__lte=date_value)
+            .order_by("-effective_from", "-created_at")
+            .first()
+        )
+
+
 def generate_order_number() -> str:
     return f"ORD-{uuid4().hex[:12].upper()}"
 
@@ -287,13 +355,61 @@ class Order(models.Model):
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
     license = models.ForeignKey(
-        License, on_delete=models.PROTECT, related_name="order_items"
+        License,
+        on_delete=models.PROTECT,
+        related_name="order_items",
+        null=True,
+        blank=True,
     )
+    fee_type = models.ForeignKey(
+        "ClubFeeType",
+        on_delete=models.PROTECT,
+        related_name="order_items",
+        null=True,
+        blank=True,
+    )
+    description = models.CharField(max_length=255, blank=True)
     price_snapshot = models.DecimalField(max_digits=10, decimal_places=2)
     quantity = models.PositiveIntegerField(default=1)  # type: ignore[arg-type]
 
     def __str__(self) -> str:
-        return f"{self.order} - {self.license}"
+        if self.license_id:
+            return f"{self.order} - {self.license}"
+        return f"{self.order} - {self.description or 'fee'}"
+
+
+class ClubFeeBillingSchedule(models.Model):
+    class Recurrence(models.TextChoices):
+        MONTHLY = "monthly", "Monthly"
+        ANNUAL = "annual", "Annual"
+
+    fee_type = models.ForeignKey(
+        ClubFeeType,
+        on_delete=models.CASCADE,
+        related_name="billing_schedules",
+    )
+    recurrence = models.CharField(max_length=20, choices=Recurrence.choices)
+    next_run_on = models.DateField()
+    end_on = models.DateField(null=True, blank=True)
+    last_run_on = models.DateField(null=True, blank=True)
+    all_active_clubs = models.BooleanField(default=True)
+    clubs = models.ManyToManyField(Club, blank=True, related_name="fee_billing_schedules")
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="club_fee_billing_schedules",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["next_run_on", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.fee_type.name} {self.recurrence} next {self.next_run_on}"
 
 
 class Invoice(models.Model):

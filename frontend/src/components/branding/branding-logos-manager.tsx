@@ -6,6 +6,7 @@ import { DragEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "
 
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { Button } from "@/components/ui/button";
+import { ActionNotices } from "@/components/ui/list-page-chrome";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DeleteConfirmModal } from "@/components/ui/delete-confirm-modal";
 import { Input } from "@/components/ui/input";
@@ -334,6 +335,14 @@ export function BrandingLogosManager({
 
   return (
     <section className="rounded-[var(--radius-card)] border border-border bg-card p-6 shadow-sm">
+      <ActionNotices
+        error={errorMessage}
+        success={successMessage}
+        onDismiss={() => {
+          setErrorMessage(null);
+          setSuccessMessage(null);
+        }}
+      />
       <h2 className="text-lg font-semibold text-foreground">{t("logoSectionTitle")}</h2>
       <p className="mt-1 text-sm text-muted">{t("logoSectionSubtitle")}</p>
 
@@ -450,23 +459,16 @@ export function BrandingLogosManager({
         </Button>
       </div>
 
-      {successMessage ? (
-        <p className="banner-success mt-4 rounded-[var(--radius-form)] border px-3 py-2 text-sm">
-          {successMessage}
-        </p>
-      ) : null}
-      {errorMessage || loadError ? (
-        <p className="banner-danger mt-4 rounded-[var(--radius-form)] border px-3 py-2 text-sm">
-          {errorMessage || loadError}
-        </p>
-      ) : null}
-
       <div className="mt-6 border-t border-border pt-6">
         <h3 className="text-sm font-semibold text-foreground">{t("logoLibraryTitle")}</h3>
         {isLoading ? (
           <div className="mt-4 flex items-center gap-3 text-sm text-muted" role="status" aria-live="polite">
             <Spinner />
             <span>{t("loadingLabel")}</span>
+          </div>
+        ) : loadError ? (
+          <div className="mt-4">
+            <EmptyState title={t("logoEmptyTitle")} description={loadError} />
           </div>
         ) : logos.length === 0 ? (
           <div className="mt-4">

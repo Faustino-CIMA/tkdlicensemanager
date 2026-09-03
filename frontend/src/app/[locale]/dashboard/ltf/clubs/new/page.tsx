@@ -11,7 +11,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
+import {
+  FormPanel,
+  ActionNotices
+} from "@/components/ui/list-page-chrome";
 import { deriveBankNameFromIban, isValidIban } from "@/lib/iban";
 import { createClub } from "@/lib/ltf-admin-api";
 
@@ -80,7 +83,7 @@ export default function LtfAdminCreateClubPage() {
           <Link href={`/${locale}/dashboard/ltf/clubs`}>{t("backToClubs")}</Link>
         </Button>
 
-        {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+        <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
         <FormPanel>
           <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
@@ -128,7 +131,7 @@ export default function LtfAdminCreateClubPage() {
             </div>
 
             <div className="flex items-center gap-3 md:col-span-2">
-              <Button type="submit" disabled={isSubmitting}>
+              <Button type="submit" variant="primary" disabled={isSubmitting}>
                 {t("createClub")}
               </Button>
               <Button type="button" variant="outline" asChild>

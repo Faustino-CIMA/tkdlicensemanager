@@ -77,6 +77,60 @@ describe("MemberHistoryTimeline", () => {
     expect(screen.getByText("Club")).toBeInTheDocument();
   });
 
+  it("can show only the licenses or grades section", () => {
+    const historyProps = {
+      ...baseProps,
+      licenseHistory: [
+        {
+          id: 1,
+          member: 1,
+          license: 1,
+          club: 1,
+          order: null,
+          payment: null,
+          actor: null,
+          event_type: "issued" as const,
+          event_at: "2026-01-01T00:00:00Z",
+          reason: "Created",
+          metadata: {},
+          license_year: 2026,
+          status_before: "",
+          status_after: "pending",
+          club_name_snapshot: "Club",
+          license_type_name: "Athlete",
+          created_at: "2026-01-01T00:00:00Z",
+        },
+      ],
+      gradeHistory: [
+        {
+          id: 1,
+          member: 1,
+          club: 1,
+          examiner_user: null,
+          from_grade: "8th Kup",
+          to_grade: "7th Kup",
+          promotion_date: "2026-02-01",
+          exam_date: null,
+          proof_ref: "",
+          notes: "Good exam",
+          created_by: "Club",
+          metadata: {},
+          created_at: "2026-02-01T00:00:00Z",
+        },
+      ],
+    };
+
+    const { rerender } = render(<MemberHistoryTimeline {...historyProps} visibleSection="licenses" />);
+    expect(screen.getByText("Athlete")).toBeInTheDocument();
+    expect(screen.queryByText("7th Kup")).not.toBeInTheDocument();
+    expect(screen.queryByText("Licenses")).not.toBeInTheDocument();
+
+    rerender(<MemberHistoryTimeline {...historyProps} visibleSection="grades" />);
+    expect(screen.getByText("7th Kup")).toBeInTheDocument();
+    expect(screen.queryByText("Athlete")).not.toBeInTheDocument();
+    expect(screen.queryByText("Grades")).not.toBeInTheDocument();
+  });
+
   it("submits add grade form", async () => {
     const onPromote = jest.fn(async () => {});
     render(

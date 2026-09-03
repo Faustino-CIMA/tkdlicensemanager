@@ -68,7 +68,7 @@ export function AppChrome({ children }: { children: React.ReactNode }) {
                 {t("signOut")}
               </Button>
             ) : (
-              <Button asChild>
+              <Button asChild variant="primary">
                 <Link href={`/${locale}/login`}>{t("signIn")}</Link>
               </Button>
             )}

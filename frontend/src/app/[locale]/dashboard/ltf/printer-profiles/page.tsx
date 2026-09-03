@@ -16,7 +16,7 @@ import {
   AppTextarea,
   ListActionsRow,
   ListToolbarPanel,
-  PageNotice,
+  ActionNotices
 } from "@/components/ui/list-page-chrome";
 import { Modal } from "@/components/ui/modal";
 import { apiRequest } from "@/lib/api";
@@ -251,8 +251,7 @@ export default function LtfAdminPrinterProfilesPage() {
 
   return (
     <LtfAdminLayout title={t("printerProfilesTitle")} subtitle={t("printerProfilesSubtitle")}>
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
-      {successMessage ? <PageNotice tone="success">{successMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} success={successMessage} onDismiss={() => { setErrorMessage(null); setSuccessMessage(null); }} />
 
       <div className="space-y-6">
         <div className="flex flex-col gap-4">
@@ -268,7 +267,7 @@ export default function LtfAdminPrinterProfilesPage() {
             }
           />
           <ListActionsRow
-            actions={<Button onClick={startCreate}>{t("printerProfilesCreateAction")}</Button>}
+            actions={<Button variant="primary" onClick={startCreate}>{t("printerProfilesCreateAction")}</Button>}
           />
         </div>
 

@@ -8,6 +8,7 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 from .banking import derive_bank_name_from_iban, is_valid_iban, normalize_iban
+from .languages import DEFAULT_CLUB_LANGUAGE, normalize_club_language
 
 def _validate_luxembourg_postal_code(postal_code: str) -> None:
     normalized_postal_code = str(postal_code or "").strip()
@@ -28,6 +29,8 @@ class Club(models.Model):
     iban = models.CharField(max_length=34, blank=True)
     bank_name = models.CharField(max_length=255, blank=True)
     email = models.EmailField(blank=True)
+    is_active = models.BooleanField(default=True)
+    communication_language = models.CharField(max_length=10, default=DEFAULT_CLUB_LANGUAGE)
     max_admins = models.PositiveIntegerField(default=10)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -49,6 +52,7 @@ class Club(models.Model):
             raise ValidationError({"iban": _("Enter a valid IBAN.")})
         self.iban = normalized_iban
         self.bank_name = derive_bank_name_from_iban(normalized_iban)
+        self.communication_language = normalize_club_language(self.communication_language)
 
     @property
     def formatted_address(self) -> str:

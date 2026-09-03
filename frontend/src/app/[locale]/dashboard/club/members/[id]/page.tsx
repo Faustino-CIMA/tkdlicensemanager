@@ -2,9 +2,16 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Pencil } from "lucide-react";
+import {
+  ArrowLeftRight,
+  Award,
+  History,
+  IdCard,
+  Pencil,
+  User,
+} from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
 import { useTranslations } from "next-intl";
 import { z } from "zod";
@@ -18,7 +25,13 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   deleteMemberGrade,
   deleteMemberProfilePicture,
@@ -32,9 +45,14 @@ import {
   promoteMemberGrade,
   updateMember,
   updateMemberGrade,
-} from "@/lib/club-admin-api";
+  } from "@/lib/club-admin-api";
 import { MemberClubMovementPanel } from "@/components/member/member-club-movement-panel";
-import { PageNotice } from "@/components/ui/list-page-chrome";
+import {
+  FormPanel,
+  PageNotice,
+  ActionNotices
+} from "@/components/ui/list-page-chrome";
+import { UnderlineTabs } from "@/components/ui/underline-tabs";
 import { apiRequest } from "@/lib/api";
 import { formatDateInputValue, formatDisplayDate, parseDisplayDateToIso } from "@/lib/date-display";
 import {
@@ -83,6 +101,23 @@ const memberSchema = z.object({
 type MemberFormValues = z.infer<typeof memberSchema>;
 type AuthMeResponse = { role: string };
 
+const MEMBER_DETAIL_TABS = [
+  "overview",
+  "current-licenses",
+  "license-history",
+  "grades",
+  "club-movements",
+] as const;
+
+type MemberDetailTab = (typeof MEMBER_DETAIL_TABS)[number];
+
+function parseMemberDetailTab(value: string | null): MemberDetailTab {
+  if (value && (MEMBER_DETAIL_TABS as readonly string[]).includes(value)) {
+    return value as MemberDetailTab;
+  }
+  return "overview";
+}
+
 function memberToFormValues(member: Member): MemberFormValues {
   return {
     first_name: member.first_name,
@@ -104,12 +139,15 @@ export default function ClubMemberDetailPage() {
   const importT = useTranslations("Import");
   const params = useParams();
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const rawLocale = params?.locale;
   const rawId = params?.id;
   const locale = typeof rawLocale === "string" ? rawLocale : "en";
   const memberId = typeof rawId === "string" ? Number(rawId) : Number(rawId?.[0]);
   const isEditing = searchParams.get("edit") === "1";
+  const urlTab = parseMemberDetailTab(searchParams.get("tab"));
+  const [activeTab, setActiveTabState] = useState<MemberDetailTab>(urlTab);
   const [member, setMember] = useState<Member | null>(null);
   const [history, setHistory] = useState<MemberHistoryResponse | null>(null);
   const [clubMoves, setClubMoves] = useState<MemberClubTransferHistory | null>(null);
@@ -170,12 +208,32 @@ export default function ClubMemberDetailPage() {
       if (nextQuery === currentQuery) {
         return;
       }
-      router.replace(
-        `/${locale}/dashboard/club/members/${memberId}${nextQuery ? `?${nextQuery}` : ""}`,
-        { scroll: false }
-      );
+      router.replace(`${pathname}${nextQuery ? `?${nextQuery}` : ""}`, { scroll: false });
     },
-    [locale, memberId, router, searchParams]
+    [pathname, router, searchParams]
+  );
+
+  useEffect(() => {
+    setActiveTabState(urlTab);
+  }, [urlTab]);
+
+  const setActiveTab = useCallback(
+    (tab: MemberDetailTab) => {
+      setActiveTabState(tab);
+      const nextParams = new URLSearchParams(searchParams.toString());
+      if (tab === "overview") {
+        nextParams.delete("tab");
+      } else {
+        nextParams.set("tab", tab);
+      }
+      const nextQuery = nextParams.toString();
+      const currentQuery = searchParams.toString();
+      if (nextQuery === currentQuery) {
+        return;
+      }
+      router.replace(`${pathname}${nextQuery ? `?${nextQuery}` : ""}`, { scroll: false });
+    },
+    [pathname, router, searchParams]
   );
 
   const loadMember = useCallback(async () => {
@@ -294,9 +352,51 @@ export default function ClubMemberDetailPage() {
     }
   };
 
+  const licenseHistoryCount = useMemo(() => {
+    const years = new Set((history?.license_history ?? []).map((entry) => entry.license_year));
+    return years.size;
+  }, [history]);
+  const gradeHistoryCount = history?.grade_history.length ?? 0;
+  const clubMovementCount = clubMoves?.completed_transfer_count ?? 0;
+
   const title = member
     ? t("memberDetailTitle", { name: `${member.first_name} ${member.last_name}` })
     : t("memberDetailTitleFallback");
+
+  const historyTimelineShared = {
+    licenseTitle: t("licenseHistoryTitle"),
+    gradeTitle: t("gradeHistoryTitle"),
+    emptyLabel: t("historyEmpty"),
+    licenseYearLabel: t("historyLicenseYearColumn"),
+    licenseTypeLabel: t("historyLicenseTypeColumn"),
+    licenseStatusLabel: t("historyLicenseStatusColumn"),
+    licenseIssuedLabel: t("historyLicenseIssuedColumn"),
+    gradeDateLabel: t("historyGradeDateColumn"),
+    gradeLabel: t("historyGradeColumn"),
+    gradeIssuedByLabel: t("historyGradeIssuedByColumn"),
+    addGradeAriaLabel: t("addGradeAction"),
+    editGradeAriaLabel: t("editGradeAction"),
+    deleteGradeAriaLabel: t("deleteGradeAction"),
+    deleteGradeTitle: t("deleteGradeTitle"),
+    deleteGradeDescription: t("deleteGradeDescription"),
+    deleteConfirmLabel: commonT("deleteConfirmButton"),
+    gradeFormTitle: t("promoteGradeTitle"),
+    editGradeFormTitle: t("editGradeTitle"),
+    promoteToGradeLabel: t("promoteToGradeLabel"),
+    promoteDateLabel: t("promoteDateLabel"),
+    issuedByLabel: t("gradeIssuedByLabel"),
+    issuedByClubOption: t("gradeIssuedByClubOption"),
+    issuedByLtfOption: t("gradeIssuedByLtfOption"),
+    issuedByOtherOption: t("gradeIssuedByOtherOption"),
+    issuedByOtherPlaceholder: t("gradeIssuedByOtherPlaceholder"),
+    promoteSubmitLabel: t("promoteSubmitLabel"),
+    cancelLabel: t("cancelEdit"),
+    previousPageLabel: commonT("paginationPrevious"),
+    nextPageLabel: commonT("paginationNext"),
+    pageLabel: commonT("paginationPage"),
+    licenseHistory: history?.license_history ?? [],
+    gradeHistory: history?.grade_history ?? [],
+  };
 
   return (
     <ClubAdminLayout title={title} subtitle={t("memberDetailSubtitle")}>
@@ -305,17 +405,60 @@ export default function ClubMemberDetailPage() {
           <Link href={`/${locale}/dashboard/club/members`}>{t("backToMembers")}</Link>
         </Button>
 
-        {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+        <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
         {isLoading ? (
           <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
         ) : !member ? (
           <EmptyState title={t("noResultsTitle")} description={t("memberNotFound")} />
         ) : (
-          <div className="space-y-4">
-            <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
+          <div className="space-y-6">
+            {member.is_club_tourist ? (
+              <PageNotice tone="warning">{t("clubTouristMemberHint")}</PageNotice>
+            ) : null}
+
+            <UnderlineTabs
+              idPrefix="member-detail"
+              ariaLabel={t("memberDetailTabsAriaLabel")}
+              value={activeTab}
+              onChange={setActiveTab}
+              options={[
+                { value: "overview", label: t("memberOverviewTab"), icon: User },
+                {
+                  value: "current-licenses",
+                  label: t("memberCurrentLicensesTab"),
+                  icon: IdCard,
+                },
+                {
+                  value: "license-history",
+                  label: t("memberLicenseHistoryTab"),
+                  icon: History,
+                  count: licenseHistoryCount,
+                },
+                {
+                  value: "grades",
+                  label: t("memberGradesTab"),
+                  icon: Award,
+                  count: gradeHistoryCount,
+                },
+                {
+                  value: "club-movements",
+                  label: t("memberClubMovementsTab"),
+                  icon: ArrowLeftRight,
+                  count: clubMovementCount,
+                },
+              ]}
+            />
+
+            <div
+              role="tabpanel"
+              id="member-detail-panel"
+              aria-labelledby={`member-detail-${activeTab}`}
+            >
+            {activeTab === "overview" ? (
+            <FormPanel>
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold text-foreground">{t("memberOverviewTab")}</h2>
+                <h2 className="text-section text-foreground">{t("memberOverviewTab")}</h2>
                 {isEditing && canManageMemberFull ? (
                   <Button variant="outline" size="sm" className="h-[var(--control-height)] min-h-[var(--control-height)]" onClick={onCancelEdit}>
                     {t("cancelEdit")}
@@ -642,110 +785,94 @@ export default function ClubMemberDetailPage() {
                   </div>
                 </div>
               )}
-            </section>
-
-            {member.is_club_tourist ? (
-              <PageNotice tone="warning">{t("clubTouristMemberHint")}</PageNotice>
+            </FormPanel>
             ) : null}
 
-            <CurrentLicensesPanel
-              memberId={member.id}
-              licenses={member.current_licenses ?? []}
-              title={t("currentLicensesTitle")}
-              subtitle={t("currentLicensesSubtitle")}
-              emptyLabel={t("currentLicensesEmpty")}
-              pendingHint={t("currentLicensesPendingHint")}
-              yearLabel={t("yearLabel")}
-              typeLabel={t("licenseTypeLabel")}
-              statusLabel={t("statusLabel")}
-              pendingLabel={t("statusPending")}
-              activeLabel={t("statusActive")}
-              expiredLabel={t("statusExpired")}
-              revokedLabel={t("statusRevoked")}
-              cardPreviewTitle={t("cardPreviewTitle")}
-              cardPreviewFrontLabel={t("cardPreviewFrontLabel")}
-              cardPreviewBackLabel={t("cardPreviewBackLabel")}
-              cardPreviewUnavailable={t("cardPreviewUnavailable")}
-            />
+            {activeTab === "current-licenses" ? (
+              <CurrentLicensesPanel
+                memberId={member.id}
+                licenses={member.current_licenses ?? []}
+                title={t("currentLicensesTitle")}
+                subtitle={t("currentLicensesSubtitle")}
+                emptyLabel={t("currentLicensesEmpty")}
+                pendingHint={t("currentLicensesPendingHint")}
+                yearLabel={t("yearLabel")}
+                typeLabel={t("licenseTypeLabel")}
+                statusLabel={t("statusLabel")}
+                pendingLabel={t("statusPending")}
+                activeLabel={t("statusActive")}
+                expiredLabel={t("statusExpired")}
+                revokedLabel={t("statusRevoked")}
+                cardPreviewTitle={t("cardPreviewTitle")}
+                cardPreviewFrontLabel={t("cardPreviewFrontLabel")}
+                cardPreviewBackLabel={t("cardPreviewBackLabel")}
+                cardPreviewUnavailable={t("cardPreviewUnavailable")}
+              />
+            ) : null}
 
-            <MemberClubMovementPanel
-              title={t("clubMovementHistoryTitle")}
-              subtitle={t("clubMovementHistorySubtitle")}
-              emptyLabel={t("clubMovementHistoryEmpty")}
-              fromLabel={t("clubMovementFromLabel")}
-              toLabel={t("clubMovementToLabel")}
-              dateLabel={t("clubMovementDateLabel")}
-              statusLabel={t("statusLabel")}
-              countLabel={t("clubMovementCountLabel")}
-              touristLabel={t("clubTouristBadge")}
-              touristHint={t("clubTouristMemberHint")}
-              history={clubMoves}
-            />
+            {activeTab === "license-history" ? (
+              <FormPanel>
+                <h2 className="text-section text-foreground">{t("memberLicenseHistoryTab")}</h2>
+                <p className="mt-1 text-sm text-muted">{t("licenseHistorySubtitle")}</p>
+                <div className="mt-4">
+                  <MemberHistoryTimeline {...historyTimelineShared} visibleSection="licenses" />
+                </div>
+              </FormPanel>
+            ) : null}
 
-            <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
-              <h2 className="text-lg font-semibold text-foreground">{t("memberHistoryTab")}</h2>
-              <p className="mt-1 text-sm text-muted">{t("memberHistorySubtitle")}</p>
-              <div className="mt-4">
-                <MemberHistoryTimeline
-                  licenseTitle={t("licenseHistoryTitle")}
-                  gradeTitle={t("gradeHistoryTitle")}
-                  emptyLabel={t("historyEmpty")}
-                  licenseYearLabel={t("historyLicenseYearColumn")}
-                  licenseTypeLabel={t("historyLicenseTypeColumn")}
-                  licenseStatusLabel={t("historyLicenseStatusColumn")}
-                  licenseIssuedLabel={t("historyLicenseIssuedColumn")}
-                  gradeDateLabel={t("historyGradeDateColumn")}
-                  gradeLabel={t("historyGradeColumn")}
-                  gradeIssuedByLabel={t("historyGradeIssuedByColumn")}
-                  addGradeAriaLabel={t("addGradeAction")}
-                  editGradeAriaLabel={t("editGradeAction")}
-                  deleteGradeAriaLabel={t("deleteGradeAction")}
-                  deleteGradeTitle={t("deleteGradeTitle")}
-                  deleteGradeDescription={t("deleteGradeDescription")}
-                  deleteConfirmLabel={commonT("deleteConfirmButton")}
-                  gradeFormTitle={t("promoteGradeTitle")}
-                  editGradeFormTitle={t("editGradeTitle")}
-                  promoteToGradeLabel={t("promoteToGradeLabel")}
-                  promoteDateLabel={t("promoteDateLabel")}
-                  issuedByLabel={t("gradeIssuedByLabel")}
-                  issuedByClubOption={t("gradeIssuedByClubOption")}
-                  issuedByLtfOption={t("gradeIssuedByLtfOption")}
-                  issuedByOtherOption={t("gradeIssuedByOtherOption")}
-                  issuedByOtherPlaceholder={t("gradeIssuedByOtherPlaceholder")}
-                  promoteSubmitLabel={t("promoteSubmitLabel")}
-                  cancelLabel={t("cancelEdit")}
-                  previousPageLabel={commonT("paginationPrevious")}
-                  nextPageLabel={commonT("paginationNext")}
-                  pageLabel={commonT("paginationPage")}
-                  onPromote={
-                    canManageGrades
-                      ? async (input) => {
-                          await promoteMemberGrade(member.id, input);
-                          await loadMember();
-                        }
-                      : undefined
-                  }
-                  onUpdateGrade={
-                    canManageGrades
-                      ? async (historyId, input) => {
-                          await updateMemberGrade(member.id, historyId, input);
-                          await loadMember();
-                        }
-                      : undefined
-                  }
-                  onDeleteGrade={
-                    canManageGrades
-                      ? async (historyId) => {
-                          await deleteMemberGrade(member.id, historyId);
-                          await loadMember();
-                        }
-                      : undefined
-                  }
-                  licenseHistory={history?.license_history ?? []}
-                  gradeHistory={history?.grade_history ?? []}
-                />
-              </div>
-            </section>
+            {activeTab === "grades" ? (
+              <FormPanel>
+                <h2 className="text-section text-foreground">{t("memberGradesTab")}</h2>
+                <p className="mt-1 text-sm text-muted">{t("gradeHistorySubtitle")}</p>
+                <div className="mt-4">
+                  <MemberHistoryTimeline
+                    {...historyTimelineShared}
+                    visibleSection="grades"
+                    onPromote={
+                      canManageGrades
+                        ? async (input) => {
+                            await promoteMemberGrade(member.id, input);
+                            await loadMember();
+                          }
+                        : undefined
+                    }
+                    onUpdateGrade={
+                      canManageGrades
+                        ? async (historyId, input) => {
+                            await updateMemberGrade(member.id, historyId, input);
+                            await loadMember();
+                          }
+                        : undefined
+                    }
+                    onDeleteGrade={
+                      canManageGrades
+                        ? async (historyId) => {
+                            await deleteMemberGrade(member.id, historyId);
+                            await loadMember();
+                          }
+                        : undefined
+                    }
+                  />
+                </div>
+              </FormPanel>
+            ) : null}
+
+            {activeTab === "club-movements" ? (
+              <MemberClubMovementPanel
+                title={t("clubMovementHistoryTitle")}
+                subtitle={t("clubMovementHistorySubtitle")}
+                emptyLabel={t("clubMovementHistoryEmpty")}
+                fromLabel={t("clubMovementFromLabel")}
+                toLabel={t("clubMovementToLabel")}
+                dateLabel={t("clubMovementDateLabel")}
+                statusLabel={t("statusLabel")}
+                countLabel={t("clubMovementCountLabel")}
+                touristLabel={t("clubTouristBadge")}
+                touristHint={t("clubTouristMemberHint")}
+                history={clubMoves}
+              />
+            ) : null}
+            </div>
           </div>
         )}
       </div>

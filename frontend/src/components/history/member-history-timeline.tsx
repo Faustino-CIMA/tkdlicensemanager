@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 
+import { ActionNotices } from "@/components/ui/list-page-chrome";
+
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DeleteConfirmModal } from "@/components/ui/delete-confirm-modal";
@@ -83,6 +85,7 @@ type HistoryTimelineProps = {
   onDeleteGrade?: (id: number) => Promise<void>;
   licenseHistory: LicenseHistoryEvent[];
   gradeHistory: GradeHistoryEntry[];
+  visibleSection?: "all" | "licenses" | "grades";
 };
 
 function humanizeStatus(value: string): string {
@@ -271,7 +274,6 @@ function GradeInlineForm({
   issuedByOption,
   issuedByOther,
   isSubmitting,
-  errorMessage,
   onToGradeChange,
   onPromotionDateChange,
   onIssuedByOptionChange,
@@ -297,7 +299,6 @@ function GradeInlineForm({
   issuedByOption: IssuedByOption;
   issuedByOther: string;
   isSubmitting: boolean;
-  errorMessage: string | null;
   onToGradeChange: (value: string) => void;
   onPromotionDateChange: (value: string) => void;
   onIssuedByOptionChange: (value: IssuedByOption) => void;
@@ -365,7 +366,6 @@ function GradeInlineForm({
           </div>
         ) : null}
       </div>
-      {errorMessage ? <p className="mt-3 text-sm text-destructive">{errorMessage}</p> : null}
       <div className="mt-4 flex justify-end gap-2">
         <Button type="button" variant="outline" className="h-[var(--control-height)] min-h-[var(--control-height)]" onClick={onCancel}>
           {cancelLabel}
@@ -413,6 +413,7 @@ export function MemberHistoryTimeline({
   onDeleteGrade,
   licenseHistory,
   gradeHistory,
+  visibleSection = "all",
 }: HistoryTimelineProps) {
   const [licensePage, setLicensePage] = useState(1);
   const [gradePage, setGradePage] = useState(1);
@@ -620,14 +621,22 @@ export function MemberHistoryTimeline({
     }
   };
 
+  const showLicenses = visibleSection === "all" || visibleSection === "licenses";
+  const showGrades = visibleSection === "all" || visibleSection === "grades";
+  const showSectionTitles = visibleSection === "all";
+
   return (
     <section className="space-y-6">
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
+      {showLicenses ? (
       <div>
-        <h3 className="text-lg font-semibold text-foreground">{licenseTitle}</h3>
+        {showSectionTitles ? (
+          <h3 className="text-lg font-semibold text-foreground">{licenseTitle}</h3>
+        ) : null}
         {sortedLicenses.length === 0 ? (
-          <p className="mt-2 text-sm text-muted">{emptyLabel}</p>
+          <p className={showSectionTitles ? "mt-2 text-sm text-muted" : "text-sm text-muted"}>{emptyLabel}</p>
         ) : (
-          <div className="mt-3">
+          <div className={showSectionTitles ? "mt-3" : undefined}>
             <HistoryEntityTable
               columns={[
                 { key: "year", header: licenseYearLabel, render: (row) => row.license_year },
@@ -664,10 +673,17 @@ export function MemberHistoryTimeline({
           </div>
         )}
       </div>
+      ) : null}
 
+      {showGrades ? (
       <div>
+        {showSectionTitles || canManageGrades ? (
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-lg font-semibold text-foreground">{gradeTitle}</h3>
+          {showSectionTitles ? (
+            <h3 className="text-lg font-semibold text-foreground">{gradeTitle}</h3>
+          ) : (
+            <span />
+          )}
           {canManageGrades ? (
             <div className="flex items-center gap-2">
               {onPromote ? (
@@ -711,7 +727,7 @@ export function MemberHistoryTimeline({
             </div>
           ) : null}
         </div>
-        {errorMessage && !gradeFormOpen ? <p className="mt-3 text-sm text-destructive">{errorMessage}</p> : null}
+        ) : null}
         {gradeFormOpen ? (
           <div className="mt-3">
             <GradeInlineForm
@@ -733,7 +749,6 @@ export function MemberHistoryTimeline({
               issuedByOption={issuedByOption}
               issuedByOther={issuedByOther}
               isSubmitting={isSubmitting}
-              errorMessage={errorMessage}
               onToGradeChange={setToGrade}
               onPromotionDateChange={setPromotionDate}
               onIssuedByOptionChange={setIssuedByOption}
@@ -765,6 +780,7 @@ export function MemberHistoryTimeline({
           </div>
         )}
       </div>
+      ) : null}
       <DeleteConfirmModal
         isOpen={pendingDeleteId !== null}
         title={deleteGradeTitle ?? "Delete grade"}

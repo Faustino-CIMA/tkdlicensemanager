@@ -333,7 +333,17 @@ def send_invoice_email(invoice_id: int, recipients: list[str] | None = None) -> 
         )
         return
 
+    from clubs.communications import invoice_copy_for_club
+
+    copy = invoice_copy_for_club(invoice.club)
     context = build_invoice_context(invoice)
+    context["copy"] = {
+        "hello": copy["hello"],
+        "ready": copy["ready"].format(number=invoice.invoice_number),
+        "total": copy["total"].format(total=invoice.total, currency=invoice.currency),
+        "pdf": copy["pdf"],
+        "thanks": copy["thanks"],
+    }
     html = render_to_string("finance/invoice_email.html", context)
     text = render_to_string("finance/invoice_email.txt", context)
     attachment = {
@@ -343,7 +353,7 @@ def send_invoice_email(invoice_id: int, recipients: list[str] | None = None) -> 
     for recipient in recipient_list:
         success, error = send_resend_email(
             recipient,
-            f"Invoice {invoice.invoice_number}",
+            copy["subject"].format(number=invoice.invoice_number),
             html,
             text,
             attachments=[attachment],
@@ -362,6 +372,16 @@ def send_invoice_email(invoice_id: int, recipients: list[str] | None = None) -> 
                 "error": error if not success else "",
             },
         )
+
+
+@shared_task
+def run_club_fee_billing_schedules() -> int:
+    from .club_fee_billing import run_due_schedules
+
+    invoice_ids = run_due_schedules()
+    for invoice_id in invoice_ids:
+        send_invoice_email.delay(invoice_id)
+    return len(invoice_ids)
 
 
 @shared_task

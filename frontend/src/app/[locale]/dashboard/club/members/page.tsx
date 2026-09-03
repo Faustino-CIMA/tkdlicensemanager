@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { CircleAlert, Trash2, X } from "lucide-react";
 
+import { ActionNotices } from "@/components/ui/list-page-chrome";
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
@@ -629,7 +630,7 @@ export default function ClubAdminMembersPage() {
 
   return (
     <ClubAdminLayout title={t("membersTitle")} subtitle={t("membersSubtitle")}>
-      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
       <Modal
         isOpen={Boolean(pendingRowStatusMember)}

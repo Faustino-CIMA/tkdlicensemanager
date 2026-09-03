@@ -34,6 +34,56 @@ class ClubApiTests(TestCase):
             created_by=self.ltf_admin,
         )
         self.club.admins.add(self.club_admin)
+        self.ltf_finance = User.objects.create_user(
+            username="ltffinance-clubs",
+            password="pass12345",
+            role=User.Roles.LTF_FINANCE,
+        )
+
+    def test_ltf_admin_can_set_club_inactive(self):
+        self.client.force_authenticate(user=self.ltf_admin)
+        response = self.client.patch(
+            f"/api/clubs/{self.club.id}/",
+            {"is_active": False},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.club.refresh_from_db()
+        self.assertFalse(self.club.is_active)
+
+    def test_ltf_finance_can_set_club_inactive(self):
+        self.client.force_authenticate(user=self.ltf_finance)
+        response = self.client.patch(
+            f"/api/clubs/{self.club.id}/",
+            {"is_active": False, "name": "Hacked"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.club.refresh_from_db()
+        self.assertFalse(self.club.is_active)
+        self.assertEqual(self.club.name, "Main Club")
+
+    def test_club_admin_cannot_set_is_active(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.patch(
+            f"/api/clubs/{self.club.id}/",
+            {"is_active": False},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.club.refresh_from_db()
+        self.assertTrue(self.club.is_active)
+
+    def test_club_admin_can_set_communication_language(self):
+        self.client.force_authenticate(user=self.club_admin)
+        response = self.client.patch(
+            f"/api/clubs/{self.club.id}/",
+            {"communication_language": "lb"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.club.refresh_from_db()
+        self.assertEqual(self.club.communication_language, "lb")
 
     def test_ltf_admin_sees_all_clubs(self):
         self.client.force_authenticate(user=self.ltf_admin)

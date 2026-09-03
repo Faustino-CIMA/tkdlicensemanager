@@ -6,7 +6,10 @@ import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { PageNotice } from "@/components/ui/list-page-chrome";
+import {
+  PageNotice,
+  ActionNotices
+} from "@/components/ui/list-page-chrome";
 import { Modal } from "@/components/ui/modal";
 import {
   Select,
@@ -1200,7 +1203,7 @@ export function ImportWizardPage({
 
   return (
     <div className="space-y-4">
-      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
       <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
         <div className="flex flex-wrap items-center gap-2">
@@ -2043,7 +2046,7 @@ export function ImportWizardPage({
               </Button>
             ) : null}
           </div>
-          <Button onClick={handlePrimaryAction} disabled={primaryDisabled}>
+          <Button variant="primary" onClick={handlePrimaryAction} disabled={primaryDisabled}>
             {isLoading ? t("loadingAction") : primaryLabel}
           </Button>
         </div>

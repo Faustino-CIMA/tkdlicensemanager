@@ -11,6 +11,9 @@ from members.models import Member
 
 from .history import log_license_created
 from .models import (
+    ClubFeeBillingSchedule,
+    ClubFeePrice,
+    ClubFeeType,
     Expense,
     ExpenseCategory,
     FinanceAuditLog,
@@ -50,22 +53,18 @@ class LicenseSerializer(serializers.ModelSerializer):
 
 class OrderItemSerializer(serializers.ModelSerializer):
     license = LicenseSerializer(read_only=True)
-    member_id = serializers.IntegerField(source="license.member_id", read_only=True)
-    member_first_name = serializers.CharField(
-        source="license.member.first_name", read_only=True
-    )
-    member_last_name = serializers.CharField(
-        source="license.member.last_name", read_only=True
-    )
-    member_ltf_licenseid = serializers.CharField(
-        source="license.member.ltf_licenseid", read_only=True
-    )
+    member_id = serializers.SerializerMethodField()
+    member_first_name = serializers.SerializerMethodField()
+    member_last_name = serializers.SerializerMethodField()
+    member_ltf_licenseid = serializers.SerializerMethodField()
 
     class Meta:
         model = OrderItem
         fields = [
             "id",
             "license",
+            "fee_type",
+            "description",
             "price_snapshot",
             "quantity",
             "member_id",
@@ -73,6 +72,18 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "member_last_name",
             "member_ltf_licenseid",
         ]
+
+    def get_member_id(self, obj: OrderItem):
+        return obj.license.member_id if obj.license_id else None
+
+    def get_member_first_name(self, obj: OrderItem):
+        return obj.license.member.first_name if obj.license_id else ""
+
+    def get_member_last_name(self, obj: OrderItem):
+        return obj.license.member.last_name if obj.license_id else ""
+
+    def get_member_ltf_licenseid(self, obj: OrderItem):
+        return obj.license.member.ltf_licenseid if obj.license_id else ""
 
 
 class InvoiceSerializer(serializers.ModelSerializer):
@@ -459,7 +470,90 @@ class PayconiqCreateSerializer(serializers.Serializer):
         return attrs
 
 
+def _audit_person_name(user) -> str:
+    if not user:
+        return ""
+    full_name = user.get_full_name().strip()
+    return full_name or user.get_username()
+
+
+def _audit_member_name(member) -> str:
+    if not member:
+        return ""
+    return f"{member.first_name} {member.last_name}".strip()
+
+
+def _audit_license_label(license_record) -> str:
+    if not license_record:
+        return ""
+    member = getattr(license_record, "member", None)
+    name = _audit_member_name(member)
+    ltf_id = (getattr(member, "ltf_licenseid", "") or "").strip() if member else ""
+    type_name = ""
+    license_type = getattr(license_record, "license_type", None)
+    if license_type:
+        type_name = license_type.name
+    year = getattr(license_record, "year", None)
+    parts = [part for part in [name, ltf_id, type_name, str(year) if year else ""] if part]
+    return " · ".join(parts) if parts else f"License {license_record.id}"
+
+
+def build_audit_label_maps(logs) -> dict:
+    license_ids: set[int] = set()
+    fee_ids: set[int] = set()
+    for log in logs:
+        if getattr(log, "license_id", None):
+            license_ids.add(log.license_id)
+        metadata = getattr(log, "metadata", None) or {}
+        if not isinstance(metadata, dict):
+            continue
+        for key in (
+            "activated_license_ids",
+            "deferred_license_ids",
+            "outside_validity_license_ids",
+            "conflict_license_ids",
+        ):
+            values = metadata.get(key) or []
+            if isinstance(values, list):
+                for value in values:
+                    try:
+                        license_ids.add(int(value))
+                    except (TypeError, ValueError):
+                        continue
+        status_before = metadata.get("license_status_before") or {}
+        if isinstance(status_before, dict):
+            for key in status_before:
+                try:
+                    license_ids.add(int(key))
+                except (TypeError, ValueError):
+                    continue
+        fee_values = metadata.get("fee_type_ids") or []
+        if isinstance(fee_values, list):
+            for value in fee_values:
+                try:
+                    fee_ids.add(int(value))
+                except (TypeError, ValueError):
+                    continue
+    licenses = License.objects.filter(id__in=license_ids).select_related(
+        "member", "license_type"
+    )
+    fees = ClubFeeType.objects.filter(id__in=fee_ids)
+    return {
+        "license_labels": {item.id: _audit_license_label(item) for item in licenses},
+        "fee_labels": {item.id: item.name for item in fees},
+    }
+
+
 class FinanceAuditLogSerializer(serializers.ModelSerializer):
+    actor_name = serializers.SerializerMethodField()
+    club_name = serializers.SerializerMethodField()
+    member_name = serializers.SerializerMethodField()
+    member_ltf_licenseid = serializers.SerializerMethodField()
+    order_number = serializers.SerializerMethodField()
+    invoice_number = serializers.SerializerMethodField()
+    license_label = serializers.SerializerMethodField()
+    metadata_display = serializers.SerializerMethodField()
+
     class Meta:
         model = FinanceAuditLog
         fields = [
@@ -467,15 +561,129 @@ class FinanceAuditLogSerializer(serializers.ModelSerializer):
             "action",
             "message",
             "metadata",
+            "metadata_display",
             "actor",
+            "actor_name",
             "club",
+            "club_name",
             "member",
+            "member_name",
+            "member_ltf_licenseid",
             "license",
+            "license_label",
             "order",
+            "order_number",
             "invoice",
+            "invoice_number",
             "created_at",
         ]
         read_only_fields = ["created_at"]
+
+    def get_actor_name(self, obj: FinanceAuditLog) -> str | None:
+        name = _audit_person_name(obj.actor)
+        return name or None
+
+    def get_club_name(self, obj: FinanceAuditLog) -> str | None:
+        return obj.club.name if obj.club_id and obj.club else None
+
+    def get_member_name(self, obj: FinanceAuditLog) -> str | None:
+        name = _audit_member_name(obj.member)
+        return name or None
+
+    def get_member_ltf_licenseid(self, obj: FinanceAuditLog) -> str | None:
+        if not obj.member_id or not obj.member:
+            return None
+        value = (obj.member.ltf_licenseid or "").strip()
+        return value or None
+
+    def get_order_number(self, obj: FinanceAuditLog) -> str | None:
+        return obj.order.order_number if obj.order_id and obj.order else None
+
+    def get_invoice_number(self, obj: FinanceAuditLog) -> str | None:
+        return obj.invoice.invoice_number if obj.invoice_id and obj.invoice else None
+
+    def get_license_label(self, obj: FinanceAuditLog) -> str | None:
+        labels = self.context.get("license_labels") or {}
+        if obj.license_id and obj.license_id in labels:
+            return labels[obj.license_id]
+        label = _audit_license_label(obj.license)
+        return label or None
+
+    def get_metadata_display(self, obj: FinanceAuditLog) -> list[dict]:
+        metadata = obj.metadata or {}
+        if not isinstance(metadata, dict) or not metadata:
+            return []
+        license_labels = self.context.get("license_labels") or {}
+        fee_labels = self.context.get("fee_labels") or {}
+        rows = []
+        for key, value in metadata.items():
+            if value in (None, "", [], {}):
+                continue
+            formatted = self._format_metadata_value(key, value, license_labels, fee_labels)
+            if not formatted:
+                continue
+            rows.append(
+                {
+                    "key": key,
+                    "label": AUDIT_METADATA_LABELS.get(key, key.replace("_", " ").capitalize()),
+                    "value": formatted,
+                }
+            )
+        return rows
+
+    def _format_metadata_value(self, key, value, license_labels, fee_labels) -> str:
+        if key in {
+            "activated_license_ids",
+            "deferred_license_ids",
+            "outside_validity_license_ids",
+            "conflict_license_ids",
+        } and isinstance(value, list):
+            labels = [
+                license_labels.get(int(item), f"#{item}") if str(item).lstrip("-").isdigit() else str(item)
+                for item in value
+            ]
+            return ", ".join(labels)
+        if key == "fee_type_ids" and isinstance(value, list):
+            labels = [
+                fee_labels.get(int(item), f"#{item}") if str(item).lstrip("-").isdigit() else str(item)
+                for item in value
+            ]
+            return ", ".join(labels)
+        if key == "license_status_before" and isinstance(value, dict):
+            parts = []
+            for license_id, status_value in value.items():
+                try:
+                    parsed_id = int(license_id)
+                except (TypeError, ValueError):
+                    parsed_id = None
+                label = license_labels.get(parsed_id, f"#{license_id}") if parsed_id else str(license_id)
+                parts.append(f"{label}: {status_value}")
+            return "; ".join(parts)
+        if isinstance(value, bool):
+            return "Yes" if value else "No"
+        if isinstance(value, list):
+            return ", ".join(str(item) for item in value)
+        if isinstance(value, dict):
+            return ", ".join(f"{item_key}: {item_value}" for item_key, item_value in value.items())
+        return str(value)
+
+
+AUDIT_METADATA_LABELS = {
+    "activated_license_ids": "Activated licenses",
+    "deferred_license_ids": "Deferred licenses",
+    "outside_validity_license_ids": "Outside validity",
+    "conflict_license_ids": "Conflicting licenses",
+    "license_status_before": "License status before",
+    "order_status_before": "Order status before",
+    "order_status_after": "Order status after",
+    "invoice_status_before": "Invoice status before",
+    "invoice_status_after": "Invoice status after",
+    "billed_on": "Billed on",
+    "fee_type_ids": "Club fees",
+    "schedule_id": "Billing schedule",
+    "total": "Total",
+    "source": "Source",
+}
 
 
 class LicensePriceSerializer(serializers.ModelSerializer):
@@ -496,6 +704,118 @@ class LicensePriceSerializer(serializers.ModelSerializer):
         if value < 0:
             raise serializers.ValidationError("Amount cannot be negative.")
         return value
+
+
+class ClubFeePriceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ClubFeePrice
+        fields = [
+            "id",
+            "fee_type",
+            "amount",
+            "currency",
+            "effective_from",
+            "created_by",
+            "created_at",
+        ]
+        read_only_fields = ["created_by", "created_at"]
+
+    def validate_amount(self, value):
+        if value < 0:
+            raise serializers.ValidationError("Amount cannot be negative.")
+        return value
+
+
+class ClubFeeTypeSerializer(serializers.ModelSerializer):
+    current_amount = serializers.SerializerMethodField()
+    current_currency = serializers.SerializerMethodField()
+    initial_amount = serializers.DecimalField(
+        max_digits=10, decimal_places=2, required=False, write_only=True
+    )
+    initial_currency = serializers.CharField(
+        max_length=3, required=False, write_only=True, default="EUR"
+    )
+    initial_effective_from = serializers.DateField(required=False, write_only=True)
+
+    class Meta:
+        model = ClubFeeType
+        fields = [
+            "id",
+            "name",
+            "code",
+            "description",
+            "cadence",
+            "is_active",
+            "current_amount",
+            "current_currency",
+            "initial_amount",
+            "initial_currency",
+            "initial_effective_from",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["created_at", "updated_at"]
+        extra_kwargs = {"code": {"required": False, "allow_blank": True}}
+
+    def get_current_amount(self, obj: ClubFeeType):
+        price = ClubFeePrice.get_active_price(fee_type=obj)
+        return str(price.amount) if price else None
+
+    def get_current_currency(self, obj: ClubFeeType):
+        price = ClubFeePrice.get_active_price(fee_type=obj)
+        return price.currency if price else None
+
+    def create(self, validated_data):
+        initial_amount = validated_data.pop("initial_amount", None)
+        initial_currency = validated_data.pop("initial_currency", "EUR")
+        initial_effective_from = validated_data.pop("initial_effective_from", None)
+        fee_type = super().create(validated_data)
+        if initial_amount is not None:
+            request = self.context.get("request")
+            created_by = getattr(request, "user", None) if request else None
+            if created_by is not None and not getattr(created_by, "is_authenticated", False):
+                created_by = None
+            ClubFeePrice.objects.create(
+                fee_type=fee_type,
+                amount=initial_amount,
+                currency=initial_currency or "EUR",
+                effective_from=initial_effective_from or timezone.localdate(),
+                created_by=created_by,
+            )
+        return fee_type
+
+
+class ClubFeeBillingScheduleSerializer(serializers.ModelSerializer):
+    fee_type_name = serializers.CharField(source="fee_type.name", read_only=True)
+
+    class Meta:
+        model = ClubFeeBillingSchedule
+        fields = [
+            "id",
+            "fee_type",
+            "fee_type_name",
+            "recurrence",
+            "next_run_on",
+            "end_on",
+            "last_run_on",
+            "all_active_clubs",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["created_at", "updated_at", "last_run_on"]
+
+
+class ClubFeeBillingRequestSerializer(serializers.Serializer):
+    fee_type_ids = serializers.ListField(child=serializers.IntegerField(), allow_empty=False)
+    club_ids = serializers.ListField(child=serializers.IntegerField(), required=False)
+    billed_on = serializers.DateField()
+    recurring = serializers.BooleanField(required=False, default=False)
+    recurrence = serializers.ChoiceField(
+        choices=ClubFeeBillingSchedule.Recurrence.choices,
+        required=False,
+        allow_null=True,
+    )
 
 
 class LicenseTypeSerializer(serializers.ModelSerializer):

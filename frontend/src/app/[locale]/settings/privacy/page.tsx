@@ -7,6 +7,7 @@ import { useLocale } from "next-intl";
 import { apiRequest } from "@/lib/api";
 import { clearToken } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
+import { ActionNotices } from "@/components/ui/list-page-chrome";
 import { Checkbox } from "@/components/ui/checkbox";
 
 type MeResponse = {
@@ -101,7 +102,7 @@ export default function PrivacySettingsPage() {
           </Button>
         </div>
 
-        {errorMessage ? <p className="mt-4 text-sm text-destructive">{errorMessage}</p> : null}
+        <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
         {exportData ? (
           <div className="mt-6 rounded-[var(--radius-card)] border border-border bg-secondary p-4">

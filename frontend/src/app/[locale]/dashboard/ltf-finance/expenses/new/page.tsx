@@ -9,7 +9,11 @@ import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { AppTextarea, FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
+import {
+  AppTextarea,
+  FormPanel,
+  ActionNotices
+} from "@/components/ui/list-page-chrome";
 import {
   Select,
   SelectContent,
@@ -102,7 +106,7 @@ export default function LtfFinanceExpenseCreatePage() {
       <Button asChild variant="outline" className="w-fit">
         <Link href={`/${locale}/dashboard/ltf-finance/expenses`}>{t("backToExpenses")}</Link>
       </Button>
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
       <FormPanel>
         <form className="space-y-5" onSubmit={handleSubmit}>
@@ -202,7 +206,7 @@ export default function LtfFinanceExpenseCreatePage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <Button type="submit" disabled={isSaving}>
+            <Button type="submit" variant="primary" disabled={isSaving}>
               {isSaving ? t("savingAction") : t("recordExpenseAction")}
             </Button>
             <Button asChild type="button" variant="outline">

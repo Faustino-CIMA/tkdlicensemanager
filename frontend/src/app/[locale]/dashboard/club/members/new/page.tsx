@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
+import { ActionNotices } from "@/components/ui/list-page-chrome";
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { useClubSelection } from "@/components/club-selection-provider";
@@ -227,7 +228,7 @@ export default function ClubAdminMemberCreatePage() {
           <Link href={`/${locale}/dashboard/club/members`}>{t("backToMembers")}</Link>
         </Button>
 
-        {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+        <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
         <section className="rounded-[var(--radius-card)] bg-card p-6 shadow-sm">
           <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
@@ -392,7 +393,7 @@ export default function ClubAdminMemberCreatePage() {
             </div>
 
             <div className="flex items-center gap-3 md:col-span-2">
-              <Button type="submit" disabled={isSubmitting}>
+              <Button type="submit" variant="primary" disabled={isSubmitting}>
                 {t("createMember")}
               </Button>
               <Button type="button" variant="outline" asChild>

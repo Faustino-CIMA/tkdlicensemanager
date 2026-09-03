@@ -9,7 +9,10 @@ import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
 import { Button } from "@/components/ui/button";
-import { FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
+import {
+  FormPanel,
+  ActionNotices
+} from "@/components/ui/list-page-chrome";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDisplayDateTime } from "@/lib/date-display";
 import {
@@ -175,7 +178,7 @@ export default function LtfFinancePaymentDetailPage() {
           <Link href={`/${locale}/dashboard/ltf-finance/payments`}>{t("backToPayments")}</Link>
         </Button>
         {invoice.status !== "paid" && invoice.status !== "void" ? (
-          <Button asChild>
+          <Button asChild variant="primary">
             <Link href={`/${locale}/dashboard/ltf-finance/payments/${invoice.id}/record`}>
               {t("recordPaymentButton")}
             </Link>
@@ -183,7 +186,7 @@ export default function LtfFinancePaymentDetailPage() {
         ) : null}
       </div>
 
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
       <FormPanel>
         <div className="grid gap-4 text-sm text-foreground md:grid-cols-2">

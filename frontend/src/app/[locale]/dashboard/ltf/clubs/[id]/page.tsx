@@ -8,12 +8,24 @@ import { useTranslations } from "next-intl";
 import {
   BrandingLogoUploadPayload,
   BrandingLogosManager,
-} from "@/components/branding/branding-logos-manager";
+  } from "@/components/branding/branding-logos-manager";
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
+import {
+  FormPanel,
+  ActionNotices
+} from "@/components/ui/list-page-chrome";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { deriveBankNameFromIban, isValidIban } from "@/lib/iban";
 import {
   BrandingLogo,
@@ -25,6 +37,7 @@ import {
   updateClubLogo,
   uploadClubLogo,
 } from "@/lib/ltf-admin-api";
+import { getClubCommunicationLanguages, type ClubCommunicationLanguage } from "@/lib/club-admin-api";
 
 type ClubEditValues = {
   name: string;
@@ -34,6 +47,8 @@ type ClubEditValues = {
   locality: string;
   iban: string;
   email: string;
+  is_active: boolean;
+  communication_language: string;
 };
 
 function toClubEditValues(club: Club): ClubEditValues {
@@ -45,6 +60,8 @@ function toClubEditValues(club: Club): ClubEditValues {
     locality: club.locality || club.city || "",
     iban: club.iban ?? "",
     email: club.email ?? "",
+    is_active: club.is_active !== false,
+    communication_language: club.communication_language || "en",
   };
 }
 
@@ -69,11 +86,23 @@ export default function LtfClubDetailPage() {
     locality: "",
     iban: "",
     email: "",
+    is_active: true,
+    communication_language: "en",
   });
 
   const [clubLogos, setClubLogos] = useState<BrandingLogo[]>([]);
   const [isLoadingLogos, setIsLoadingLogos] = useState(false);
   const [logosLoadError, setLogosLoadError] = useState<string | null>(null);
+  const [languages, setLanguages] = useState<ClubCommunicationLanguage[]>([
+    { code: "en", name: "English" },
+    { code: "lb", name: "Lëtzebuergesch" },
+  ]);
+
+  useEffect(() => {
+    void getClubCommunicationLanguages()
+      .then(setLanguages)
+      .catch(() => undefined);
+  }, []);
 
   const loadClub = useCallback(async () => {
     if (!clubId) {
@@ -118,7 +147,7 @@ export default function LtfClubDetailPage() {
     void loadLogos();
   }, [loadLogos]);
 
-  const handleOverviewFieldChange = (field: keyof ClubEditValues, value: string) => {
+  const handleOverviewFieldChange = (field: keyof ClubEditValues, value: string | boolean) => {
     setEditValues((previous) => ({ ...previous, [field]: value }));
   };
 
@@ -157,6 +186,8 @@ export default function LtfClubDetailPage() {
         email: editValues.email.trim(),
         city: editValues.locality.trim(),
         address: editValues.address_line1.trim(),
+        is_active: editValues.is_active,
+        communication_language: editValues.communication_language,
       };
       const updated = await updateClub(clubId, payload);
       setClub(updated);
@@ -205,7 +236,7 @@ export default function LtfClubDetailPage() {
           </Button>
         </div>
 
-        {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+        <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
         {isLoading ? (
           <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
@@ -260,6 +291,21 @@ export default function LtfClubDetailPage() {
                   <div className="flex flex-col gap-1">
                     <span className="text-xs text-muted">{t("maxAdminsLabel")}</span>
                     <span className="font-medium">{club.max_admins}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-muted">{t("clubStatusLabel")}</span>
+                    <StatusBadge
+                      label={club.is_active ? t("clubStatusActive") : t("clubStatusInactive")}
+                      tone={club.is_active ? "success" : "neutral"}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-muted">{t("clubLanguageLabel")}</span>
+                    <span className="font-medium">
+                      {languages.find((item) => item.code === club.communication_language)?.name ||
+                        club.communication_language ||
+                        "en"}
+                    </span>
                   </div>
                 </div>
               ) : (
@@ -316,6 +362,40 @@ export default function LtfClubDetailPage() {
                       placeholder="club@example.com"
                     />
                     <p className="text-xs text-muted">{t("clubEmailHint")}</p>
+                  </div>
+                  <div className="flex items-center gap-2 md:col-span-2">
+                    <Checkbox
+                      id="club-is-active"
+                      checked={editValues.is_active}
+                      onCheckedChange={(value) =>
+                        handleOverviewFieldChange("is_active", Boolean(value))
+                      }
+                    />
+                    <label htmlFor="club-is-active" className="text-sm font-medium text-foreground">
+                      {t("clubStatusActive")}
+                    </label>
+                    <p className="text-xs text-muted">{t("clubStatusHint")}</p>
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-medium text-foreground">{t("clubLanguageLabel")}</label>
+                    <Select
+                      value={editValues.communication_language}
+                      onValueChange={(value) =>
+                        handleOverviewFieldChange("communication_language", value)
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {languages.map((language) => (
+                          <SelectItem key={language.code} value={language.code}>
+                            {language.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted">{t("clubLanguageHint")}</p>
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">{t("ibanLabel")}</label>

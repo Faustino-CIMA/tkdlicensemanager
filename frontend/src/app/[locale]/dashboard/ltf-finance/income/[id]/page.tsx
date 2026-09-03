@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useParams } from "next/navigation";
 
@@ -9,7 +15,11 @@ import { EmptyState } from "@/components/club-admin/empty-state";
 import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AppTextarea, FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
+import {
+  AppTextarea,
+  FormPanel,
+  ActionNotices
+} from "@/components/ui/list-page-chrome";
 import {
   Select,
   SelectContent,
@@ -188,8 +198,7 @@ export default function LtfFinanceIncomeDetailPage() {
           </Button>
         ) : null}
       </div>
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
-      {successMessage ? <PageNotice tone="success">{successMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} success={successMessage} onDismiss={() => { setErrorMessage(null); setSuccessMessage(null); }} />
 
       <FormPanel>
         <div className="mb-4 flex flex-wrap items-center gap-3">

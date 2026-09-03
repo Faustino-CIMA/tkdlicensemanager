@@ -1,9 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { AlertTriangle, BadgeEuro, HandCoins, Receipt, ShoppingCart } from "lucide-react";
+import {
+  AlertTriangle,
+  BadgeEuro,
+  HandCoins,
+  Receipt,
+  ShoppingCart,
+} from "lucide-react";
 
 import { ActionQueue } from "@/components/club-admin/action-queue";
 import { EmptyState } from "@/components/club-admin/empty-state";
@@ -12,7 +24,7 @@ import { StatBreakdown } from "@/components/club-admin/stat-breakdown";
 import { SummaryCard } from "@/components/club-admin/summary-card";
 import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { Button } from "@/components/ui/button";
-import { PageNotice } from "@/components/ui/list-page-chrome";
+import { ActionNotices } from "@/components/ui/list-page-chrome";
 import { formatDisplayDateTime } from "@/lib/date-display";
 import {
   LtfFinanceOverviewResponse,
@@ -177,7 +189,7 @@ export default function LtfFinanceDashboardPage() {
 
   return (
     <LtfFinanceLayout title={t("overviewTitle")} subtitle={t("overviewSubtitle")}>
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
       {isLoading ? (
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />

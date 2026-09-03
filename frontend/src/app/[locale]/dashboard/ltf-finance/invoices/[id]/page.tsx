@@ -9,7 +9,10 @@ import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
 import { Button } from "@/components/ui/button";
-import { FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
+import {
+  FormPanel,
+  ActionNotices
+} from "@/components/ui/list-page-chrome";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDisplayDateTime } from "@/lib/date-display";
 import {
@@ -20,13 +23,15 @@ import {
   getFinanceMembers,
   getFinanceOrder,
   orderItemMemberDisplay,
+  orderItemsAreClubFees,
+  orderItemYearLabel,
 } from "@/lib/ltf-finance-api";
 
 type InvoiceItemRow = {
   id: number;
   memberName: string;
   ltfLicenseId: string;
-  year: number;
+  year: string;
   quantity: number;
 };
 
@@ -126,7 +131,7 @@ export default function LtfFinanceInvoiceDetailPage() {
         id: item.id,
         memberName: display.name,
         ltfLicenseId: display.ltfLicenseId,
-        year: item.license.year,
+        year: orderItemYearLabel(item),
         quantity: item.quantity,
       };
     });
@@ -139,12 +144,18 @@ export default function LtfFinanceInvoiceDetailPage() {
     return (order.items ?? []).reduce((sum, item) => sum + item.quantity, 0);
   }, [order]);
 
-  const columns = [
-    { key: "memberName", header: t("memberLabel") },
-    { key: "ltfLicenseId", header: t("ltfLicenseLabel") },
-    { key: "year", header: t("yearLabel") },
-    { key: "quantity", header: common("qtyLabel") },
-  ];
+  const feeOnly = orderItemsAreClubFees(order?.items);
+  const columns = feeOnly
+    ? [
+        { key: "memberName", header: t("orderItemDescriptionLabel") },
+        { key: "quantity", header: common("qtyLabel") },
+      ]
+    : [
+        { key: "memberName", header: t("memberLabel") },
+        { key: "ltfLicenseId", header: t("ltfLicenseLabel") },
+        { key: "year", header: t("yearLabel") },
+        { key: "quantity", header: common("qtyLabel") },
+      ];
 
   if (isLoading) {
     return (
@@ -169,7 +180,7 @@ export default function LtfFinanceInvoiceDetailPage() {
           <Link href={`/${locale}/dashboard/ltf-finance/invoices`}>{t("backToInvoices")}</Link>
         </Button>
         {invoice.status !== "paid" && invoice.status !== "void" ? (
-          <Button asChild>
+          <Button asChild variant="primary">
             <Link href={`/${locale}/dashboard/ltf-finance/payments/${invoice.id}/record`}>
               {t("recordPaymentButton")}
             </Link>
@@ -177,7 +188,7 @@ export default function LtfFinanceInvoiceDetailPage() {
         ) : null}
       </div>
 
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
       <FormPanel>
         <div className="grid gap-4 text-sm text-foreground md:grid-cols-2">
@@ -212,7 +223,7 @@ export default function LtfFinanceInvoiceDetailPage() {
             </span>
           </div>
           <div className="flex flex-col gap-1">
-            <span className="text-xs text-muted">{t("totalLicensesLabel")}</span>
+            <span className="text-xs text-muted">{feeOnly ? t("totalItemsLabel") : t("totalLicensesLabel")}</span>
             <span className="font-medium">{totalQuantity}</span>
           </div>
         </div>

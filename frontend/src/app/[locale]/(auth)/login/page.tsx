@@ -6,8 +6,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 
+import { persistSelectedClubId } from "@/components/club-selection-provider";
 import { login } from "@/lib/auth-api";
 import { setToken } from "@/lib/auth";
+import { ActionNotices } from "@/components/ui/list-page-chrome";
 import { AppVersionLink } from "@/components/app-version-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,6 +54,7 @@ export default function LoginPage() {
     try {
       const response = await login({ username, password });
       setToken(response.token);
+      persistSelectedClubId(null);
       router.push(`/${locale}/dashboard`);
     } catch (error) {
       const rawMessage = error instanceof Error ? error.message : "Login failed";
@@ -125,7 +128,7 @@ export default function LoginPage() {
               {fieldErrors.password ? <p className="text-sm text-destructive">{fieldErrors.password}</p> : null}
             </div>
 
-            {errorMessage ? <p className="text-center text-sm text-destructive">{errorMessage}</p> : null}
+            <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
             {showVerifyLink ? (
               <p className="text-center text-sm text-muted">
                 {t("verifyPrompt")}{" "}
@@ -138,7 +141,7 @@ export default function LoginPage() {
               </p>
             ) : null}
 
-            <Button className="w-full text-base font-semibold" type="submit" disabled={isSubmitting}>
+            <Button className="w-full text-base font-semibold" type="submit" variant="primary" disabled={isSubmitting}>
               {isSubmitting ? t("loading") : t("submit")}
             </Button>
           </form>

@@ -31,6 +31,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 
+import { ActionNotices } from "@/components/ui/list-page-chrome";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { Button } from "@/components/ui/button";
@@ -4155,8 +4156,7 @@ export default function LtfAdminLicenseCardDesignerPage() {
         </div>
       </div>
 
-      {errorMessage ? <p className="px-3 py-1 text-sm text-destructive">{errorMessage}</p> : null}
-      {successMessage ? <p className="px-3 py-1 text-sm text-success">{successMessage}</p> : null}
+      <ActionNotices error={errorMessage} success={successMessage} onDismiss={() => { setErrorMessage(null); setSuccessMessage(null); }} />
 
       <div className={designerPanel === "preview" ? "designer-preview-slot" : "hidden"}>
       <div className="designer-preview-header">

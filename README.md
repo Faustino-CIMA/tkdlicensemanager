@@ -4,10 +4,10 @@ Modern, secure Taekwondo license management for the Luxembourg Taekwondo Federat
 
 ## Release Notes
 
-This working tree is **v0.6.4**: club movement monitoring and order-item member names. Millimetre print output is unchanged.
+This working tree is **v0.7.0**: club fees and billing, member detail tabs, and finance UX. Millimetre print output is unchanged.
 
-- See `CHANGELOG.md` **0.6.4** for this patch, **0.6.3** for import helper dates and card photo fallback, and **0.4.0** for the UI refresh and license-card designer.
-- Current tagged release: `v0.6.4`.
+- See `CHANGELOG.md` **0.7.0** for this release, **0.6.4** for club movement monitoring, and **0.4.0** for the UI refresh and license-card designer.
+- Current tagged release: `v0.7.0`.
 
 ## CI (GitHub Actions)
 

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { useForm, useWatch } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -18,13 +18,24 @@ import {
   BrandingLogo,
   deleteClubLogo,
   getClubLogos,
+  getClubCommunicationLanguages,
   getClubs,
   updateClub,
   updateClubLogo,
   uploadClubLogo,
+  type ClubCommunicationLanguage,
 } from "@/lib/club-admin-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ActionNotices } from "@/components/ui/list-page-chrome";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { StatusBadge } from "@/components/ui/status-badge";
 
 const clubSchema = z.object({
   name: z.string().min(1, "Club name is required"),
@@ -34,6 +45,7 @@ const clubSchema = z.object({
   locality: z.string().optional(),
   iban: z.string().optional(),
   email: z.string().optional(),
+  communication_language: z.string().optional(),
 });
 
 type ClubFormValues = z.infer<typeof clubSchema>;
@@ -49,6 +61,11 @@ export default function ClubAdminSettingsPage() {
   const [clubLogos, setClubLogos] = useState<BrandingLogo[]>([]);
   const [isLoadingLogos, setIsLoadingLogos] = useState(false);
   const [logosLoadError, setLogosLoadError] = useState<string | null>(null);
+  const [clubIsActive, setClubIsActive] = useState(true);
+  const [languages, setLanguages] = useState<ClubCommunicationLanguage[]>([
+    { code: "en", name: "English" },
+    { code: "lb", name: "Lëtzebuergesch" },
+  ]);
 
   const {
     register,
@@ -66,6 +83,7 @@ export default function ClubAdminSettingsPage() {
       locality: "",
       iban: "",
       email: "",
+      communication_language: "en",
     },
   });
   const watchedIban = useWatch({ control, name: "iban", defaultValue: "" });
@@ -83,7 +101,9 @@ export default function ClubAdminSettingsPage() {
       locality: "",
       iban: "",
       email: "",
+      communication_language: "en",
     });
+    setClubIsActive(true);
   }, [reset]);
 
   const loadSelectedClub = useCallback(async () => {
@@ -114,7 +134,9 @@ export default function ClubAdminSettingsPage() {
         locality: club.locality ?? club.city ?? "",
         iban: club.iban ?? "",
         email: club.email ?? "",
+        communication_language: club.communication_language || "en",
       });
+      setClubIsActive(club.is_active !== false);
     } catch (error) {
       if (requestId !== requestIdRef.current) {
         return;
@@ -155,6 +177,12 @@ export default function ClubAdminSettingsPage() {
       }
     }
   }, [selectedClubId]);
+
+  useEffect(() => {
+    void getClubCommunicationLanguages()
+      .then(setLanguages)
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     void loadSelectedClub();
@@ -214,6 +242,14 @@ export default function ClubAdminSettingsPage() {
 
   return (
     <ClubAdminLayout title={t("clubProfileTitle")} subtitle={t("clubProfileSubtitle")}>
+      <ActionNotices
+        error={errorMessage}
+        success={successMessage}
+        onDismiss={() => {
+          setErrorMessage(null);
+          setSuccessMessage(null);
+        }}
+      />
       {isLoading ? (
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       ) : !selectedClubId ? (
@@ -261,6 +297,38 @@ export default function ClubAdminSettingsPage() {
               </div>
 
               <div className="space-y-2 md:col-span-2">
+                <label className="text-sm font-medium text-foreground">{t("clubStatusLabel")}</label>
+                <StatusBadge
+                  label={clubIsActive ? t("clubStatusActive") : t("clubStatusInactive")}
+                  tone={clubIsActive ? "success" : "neutral"}
+                />
+                <p className="text-xs text-muted">{t("clubStatusHint")}</p>
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-sm font-medium text-foreground">{t("clubLanguageLabel")}</label>
+                <Controller
+                  name="communication_language"
+                  control={control}
+                  render={({ field }) => (
+                    <Select value={field.value || "en"} onValueChange={field.onChange}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {languages.map((language) => (
+                          <SelectItem key={language.code} value={language.code}>
+                            {language.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                <p className="text-xs text-muted">{t("clubLanguageHint")}</p>
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
                 <label className="text-sm font-medium text-foreground">{t("ibanLabel")}</label>
                 <Input placeholder="LU00 0000 0000 0000" {...register("iban")} />
               </div>
@@ -276,17 +344,6 @@ export default function ClubAdminSettingsPage() {
                 </Button>
               </div>
             </form>
-
-            {successMessage ? (
-              <p className="banner-success mt-4 rounded-[var(--radius-form)] border px-3 py-2 text-sm">
-                {successMessage}
-              </p>
-            ) : null}
-            {errorMessage ? (
-              <p className="banner-danger mt-4 rounded-[var(--radius-form)] border px-3 py-2 text-sm">
-                {errorMessage}
-              </p>
-            ) : null}
           </section>
 
           <BrandingLogosManager

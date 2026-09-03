@@ -8,6 +8,7 @@ import { CircleAlert } from "lucide-react";
 import { ClubAdminLayout } from "@/components/club-admin/club-admin-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
 import { EntityTable } from "@/components/club-admin/entity-table";
+import { ActionNotices } from "@/components/ui/list-page-chrome";
 import { resolveAssignedClubId, useClubSelection } from "@/components/club-selection-provider";
 import {
   License,
@@ -424,7 +425,7 @@ export default function ClubAdminLicensesPage() {
 
   return (
     <ClubAdminLayout title={t("licensesTitle")} subtitle={t("licensesSubtitle")}>
-      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
       <div className="space-y-6">
         <div className="flex flex-col gap-4">

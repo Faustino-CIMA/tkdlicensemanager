@@ -1,6 +1,12 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useTranslations } from "next-intl";
 
 import { EmptyState } from "@/components/club-admin/empty-state";
@@ -8,7 +14,12 @@ import { EntityTable } from "@/components/club-admin/entity-table";
 import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AppTextarea, FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
+import {
+  AppTextarea,
+  FormPanel,
+  PageNotice,
+  ActionNotices
+} from "@/components/ui/list-page-chrome";
 import {
   Select,
   SelectContent,
@@ -100,8 +111,7 @@ export default function LtfFinanceReportsPage() {
 
   return (
     <LtfFinanceLayout title={t("reportsTitle")} subtitle={t("reportsSubtitle")}>
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
-      {successMessage ? <PageNotice tone="success">{successMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} success={successMessage} onDismiss={() => { setErrorMessage(null); setSuccessMessage(null); }} />
 
       <div className="flex flex-wrap items-end justify-between gap-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm">
         <div className="space-y-2">

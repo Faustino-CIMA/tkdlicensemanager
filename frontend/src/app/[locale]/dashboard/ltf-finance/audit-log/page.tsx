@@ -1,7 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useTranslations } from "next-intl";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { useLocale, useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
 
 import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { EmptyState } from "@/components/club-admin/empty-state";
@@ -12,32 +18,24 @@ import {
   ListActionsRow,
   ListPagination,
   ListToolbarPanel,
-  PageNotice,
   PageSizeSelect,
   resolveListPageSize,
+  ActionNotices,
 } from "@/components/ui/list-page-chrome";
+import { auditActionLabel } from "@/lib/audit-log";
 import { formatDisplayDateTime } from "@/lib/date-display";
 import {
-  Club,
   FinanceAuditLog,
   getFinanceAuditLogsList,
   getFinanceAuditLogsPage,
-  getFinanceClubs,
 } from "@/lib/ltf-finance-api";
-
-function humanizeAuditAction(action: string) {
-  return action
-    .split(/[._-]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
 
 export default function LtfFinanceAuditLogPage() {
   const t = useTranslations("LtfFinance");
   const common = useTranslations("Common");
+  const locale = useLocale();
+  const router = useRouter();
   const [logs, setLogs] = useState<FinanceAuditLog[]>([]);
-  const [clubs, setClubs] = useState<Club[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -65,34 +63,29 @@ export default function LtfFinanceAuditLogPage() {
     try {
       const normalizedSearch = searchQuery || undefined;
       if (pageSize === "all") {
-        const [response, clubsResponse] = await Promise.all([
-          getFinanceAuditLogsList({ q: normalizedSearch }, { signal: controller.signal }),
-          getFinanceClubs({ signal: controller.signal }),
-        ]);
+        const response = await getFinanceAuditLogsList(
+          { q: normalizedSearch },
+          { signal: controller.signal }
+        );
         if (requestAbortRef.current !== controller) {
           return;
         }
         setLogs(response);
         setTotalCount(response.length);
-        setClubs(clubsResponse);
       } else {
-        const [response, clubsResponse] = await Promise.all([
-          getFinanceAuditLogsPage(
-            {
-              page: currentPage,
-              pageSize: resolveListPageSize(pageSize, LIST_PAGE_SIZE_CAP),
-              q: normalizedSearch,
-            },
-            { signal: controller.signal }
-          ),
-          getFinanceClubs({ signal: controller.signal }),
-        ]);
+        const response = await getFinanceAuditLogsPage(
+          {
+            page: currentPage,
+            pageSize: resolveListPageSize(pageSize, LIST_PAGE_SIZE_CAP),
+            q: normalizedSearch,
+          },
+          { signal: controller.signal }
+        );
         if (requestAbortRef.current !== controller) {
           return;
         }
         setLogs(response.results);
         setTotalCount(response.count);
-        setClubs(clubsResponse);
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
@@ -121,50 +114,6 @@ export default function LtfFinanceAuditLogPage() {
   const totalPages =
     pageSize === "all" ? 1 : Math.max(1, Math.ceil(totalCount / resolvedPageSize));
 
-  const clubNameById = useMemo(() => {
-    return clubs.reduce<Record<number, string>>((acc, club) => {
-      acc[club.id] = club.name;
-      return acc;
-    }, {});
-  }, [clubs]);
-
-  const auditActionLabel = (action: string) => {
-    switch (action) {
-      case "order.created":
-        return t("auditActionOrderCreated");
-      case "invoice.created":
-        return t("auditActionInvoiceCreated");
-      case "licenses.created":
-        return t("auditActionLicensesCreated");
-      case "licenses.activated":
-        return t("auditActionLicensesActivated");
-      case "order.paid":
-        return t("auditActionOrderPaid");
-      case "order.payment_blocked":
-        return t("auditActionOrderPaymentBlocked");
-      case "payconiq.created":
-        return t("auditActionPayconiqCreated");
-      case "expense.created":
-        return t("auditActionExpenseCreated");
-      case "expense.updated":
-        return t("auditActionExpenseUpdated");
-      case "expense.paid":
-        return t("auditActionExpensePaid");
-      case "expense.voided":
-        return t("auditActionExpenseVoided");
-      case "income.created":
-        return t("auditActionIncomeCreated");
-      case "income.updated":
-        return t("auditActionIncomeUpdated");
-      case "income.voided":
-        return t("auditActionIncomeVoided");
-      case "finance_opening.updated":
-        return t("auditActionFinanceOpeningUpdated");
-      default:
-        return humanizeAuditAction(action);
-    }
-  };
-
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, pageSize]);
@@ -184,34 +133,18 @@ export default function LtfFinanceAuditLogPage() {
     {
       key: "action",
       header: t("actionLabel"),
-      render: (row: FinanceAuditLog) => auditActionLabel(row.action),
+      render: (row: FinanceAuditLog) => auditActionLabel(row.action, t),
     },
     {
       key: "message",
       header: t("messageLabel"),
       render: (row: FinanceAuditLog) => row.message || "-",
     },
-    {
-      key: "actor",
-      header: t("actorLabel"),
-      render: (row: FinanceAuditLog) => row.actor ?? "-",
-    },
-    {
-      key: "club",
-      header: t("clubLabel"),
-      render: (row: FinanceAuditLog) =>
-        row.club ? clubNameById[row.club] ?? String(row.club) : "-",
-    },
-    {
-      key: "order",
-      header: t("orderLabel"),
-      render: (row: FinanceAuditLog) => row.order ?? "-",
-    },
   ];
 
   return (
     <LtfFinanceLayout title={t("auditLogTitle")} subtitle={t("auditLogSubtitle")}>
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
       <div className="flex flex-col gap-4">
         <ListToolbarPanel
@@ -253,7 +186,11 @@ export default function LtfFinanceAuditLogPage() {
       ) : logs.length === 0 ? (
         <EmptyState title={t("noAuditLogTitle")} description={t("noAuditLogSubtitle")} />
       ) : (
-        <EntityTable columns={columns} rows={logs} />
+        <EntityTable
+          columns={columns}
+          rows={logs}
+          onRowClick={(row) => router.push(`/${locale}/dashboard/ltf-finance/audit-log/${row.id}`)}
+        />
       )}
     </LtfFinanceLayout>
   );

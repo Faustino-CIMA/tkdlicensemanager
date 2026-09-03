@@ -14,7 +14,11 @@ import { DeleteConfirmModal } from "@/components/ui/delete-confirm-modal";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ListActionsRow, ListToolbarPanel, PageNotice } from "@/components/ui/list-page-chrome";
+import {
+  ListActionsRow,
+  ListToolbarPanel,
+  ActionNotices
+} from "@/components/ui/list-page-chrome";
 import { apiRequest } from "@/lib/api";
 import {
   LicenseType,
@@ -158,7 +162,7 @@ export default function LtfAdminLicenseTypesPage() {
 
   return (
     <LtfAdminLayout title={t("licenseTypesTitle")} subtitle={t("licenseTypesSubtitle")}>
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
       <div className="space-y-6">
         <div className="flex flex-col gap-4">
@@ -176,7 +180,7 @@ export default function LtfAdminLicenseTypesPage() {
           <ListActionsRow
             actions={
               canManageLicenseTypes ? (
-                <Button onClick={startCreate}>{t("createLicenseType")}</Button>
+                <Button variant="primary" onClick={startCreate}>{t("createLicenseType")}</Button>
               ) : (
                 <p className="text-sm text-muted">{t("licenseTypesReadOnlyHint")}</p>
               )

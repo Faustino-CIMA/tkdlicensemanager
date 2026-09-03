@@ -8,7 +8,9 @@ type ApiCallOptions = {
 
 export type FinanceOrderItem = {
   id: number;
-  license: FinanceLicense;
+  license: FinanceLicense | null;
+  fee_type?: number | null;
+  description?: string;
   price_snapshot: string;
   quantity: number;
   member_id?: number | null;
@@ -29,7 +31,7 @@ export function orderItemMemberDisplay(
       ltfLicenseId: (item.member_ltf_licenseid ?? "").trim() || "-",
     };
   }
-  const memberId = item.member_id ?? item.license.member;
+  const memberId = item.member_id ?? item.license?.member ?? null;
   const member = memberId != null ? membersById?.[memberId] : undefined;
   if (member) {
     const name = `${member.first_name} ${member.last_name}`.trim();
@@ -38,7 +40,23 @@ export function orderItemMemberDisplay(
       ltfLicenseId: (member.ltf_licenseid ?? "").trim() || "-",
     };
   }
+  const description = (item.description ?? "").trim();
+  if (description) {
+    return { name: description, ltfLicenseId: "-" };
+  }
   return { name: unknownLabel, ltfLicenseId: "-" };
+}
+
+export function orderItemYearLabel(item: FinanceOrderItem): string {
+  return item.license?.year != null ? String(item.license.year) : "—";
+}
+
+export function isClubFeeItem(item: FinanceOrderItem): boolean {
+  return !item.license;
+}
+
+export function orderItemsAreClubFees(items: FinanceOrderItem[] | undefined): boolean {
+  return Boolean(items?.length) && items!.every((item) => isClubFeeItem(item));
 }
 
 export type Club = {
@@ -122,17 +140,31 @@ export type FinanceOrder = {
   invoice?: FinanceInvoice | null;
 };
 
+export type FinanceAuditLogMetadataRow = {
+  key: string;
+  label: string;
+  value: string;
+};
+
 export type FinanceAuditLog = {
   id: number;
   action: string;
   message: string;
   metadata: Record<string, unknown> | null;
+  metadata_display?: FinanceAuditLogMetadataRow[];
   actor: number | null;
+  actor_name?: string | null;
   club: number | null;
+  club_name?: string | null;
   member: number | null;
+  member_name?: string | null;
+  member_ltf_licenseid?: string | null;
   license: number | null;
+  license_label?: string | null;
   order: number | null;
+  order_number?: string | null;
   invoice: number | null;
+  invoice_number?: string | null;
   created_at: string;
 };
 
@@ -188,6 +220,31 @@ export type LicenseTypePolicy = {
   next_end_day: number;
   created_at: string;
   updated_at: string;
+};
+
+export type ClubFeeCadence = "one_off" | "annual" | "per_member" | "per_event";
+
+export type ClubFeeType = {
+  id: number;
+  name: string;
+  code: string;
+  description: string;
+  cadence: ClubFeeCadence;
+  is_active: boolean;
+  current_amount: string | null;
+  current_currency: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ClubFeePrice = {
+  id: number;
+  fee_type: number;
+  amount: string;
+  currency: string;
+  effective_from: string;
+  created_by: number | null;
+  created_at: string;
 };
 
 export type FinanceLicenseType = {
@@ -548,6 +605,12 @@ export function getFinanceAuditLogsList(
   ).then((response) => unwrapListResponse(response));
 }
 
+export function getFinanceAuditLog(id: number, options?: ApiCallOptions) {
+  return apiRequest<FinanceAuditLog>(`/api/finance-audit-logs/${id}/`, {
+    signal: options?.signal,
+  });
+}
+
 export function getFinanceAuditLogsPage(
   params: FinanceAuditLogPageParams,
   options?: ApiCallOptions
@@ -624,6 +687,106 @@ export function updateFinanceLicenseType(id: number, input: { name: string }) {
 export function deleteFinanceLicenseType(id: number) {
   return apiRequest<void>(`/api/license-types/${id}/`, {
     method: "DELETE",
+  });
+}
+
+export function getClubFeeTypes(options?: ApiCallOptions) {
+  return apiRequest<ClubFeeType[]>("/api/club-fee-types/", {
+    signal: options?.signal,
+  });
+}
+
+export function createClubFeeType(input: {
+  name: string;
+  description?: string;
+  cadence?: ClubFeeCadence;
+  is_active?: boolean;
+  initial_amount?: string;
+  initial_currency?: string;
+  initial_effective_from?: string;
+}) {
+  return apiRequest<ClubFeeType>("/api/club-fee-types/", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteClubFeeType(id: number) {
+  return apiRequest<void>(`/api/club-fee-types/${id}/`, {
+    method: "DELETE",
+  });
+}
+
+export function getClubFeePrices(params?: { feeTypeId?: number }, options?: ApiCallOptions) {
+  const search = new URLSearchParams();
+  if (params?.feeTypeId) {
+    search.set("fee_type", String(params.feeTypeId));
+  }
+  const suffix = search.toString();
+  return apiRequest<ClubFeePrice[]>(`/api/club-fee-prices/${suffix ? `?${suffix}` : ""}`, {
+    signal: options?.signal,
+  });
+}
+
+export function createClubFeePrice(input: {
+  fee_type: number;
+  amount: string;
+  currency?: string;
+  effective_from?: string;
+}) {
+  return apiRequest<ClubFeePrice>("/api/club-fee-prices/", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export type ClubFeeBillingSchedule = {
+  id: number;
+  fee_type: number;
+  fee_type_name: string;
+  recurrence: "monthly" | "annual";
+  next_run_on: string;
+  end_on: string | null;
+  last_run_on: string | null;
+  all_active_clubs: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ClubFeeBillingResult = {
+  invoice_ids: number[];
+  invoice_count: number;
+  schedule_ids: number[];
+  billed_on: string;
+};
+
+export function createClubFeeBilling(input: {
+  fee_type_ids: number[];
+  club_ids?: number[];
+  billed_on: string;
+  recurring?: boolean;
+  recurrence?: "monthly" | "annual" | null;
+}) {
+  return apiRequest<ClubFeeBillingResult>("/api/club-fee-billings/", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function getClubFeeBillingSchedules(options?: ApiCallOptions) {
+  return apiRequest<ClubFeeBillingSchedule[]>("/api/club-fee-billing-schedules/", {
+    signal: options?.signal,
+  });
+}
+
+export function updateClubFeeBillingSchedule(
+  id: number,
+  input: Partial<Pick<ClubFeeBillingSchedule, "is_active" | "end_on" | "next_run_on">>
+) {
+  return apiRequest<ClubFeeBillingSchedule>(`/api/club-fee-billing-schedules/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
   });
 }
 

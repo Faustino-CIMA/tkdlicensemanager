@@ -46,6 +46,10 @@ from licenses.views import (
     FinanceReportView,
     FinanceYearOpeningView,
     InvoicePdfView,
+    ClubFeeBillingScheduleViewSet,
+    ClubFeeBillingView,
+    ClubFeePriceViewSet,
+    ClubFeeTypeViewSet,
     LicensePriceViewSet,
     LicenseTypeViewSet,
     LicenseViewSet,
@@ -81,6 +85,13 @@ router.register(r"member-transfers", MemberTransferViewSet, basename="member-tra
 router.register(r"licenses", LicenseViewSet, basename="license")
 router.register(r"license-types", LicenseTypeViewSet, basename="license-type")
 router.register(r"license-prices", LicensePriceViewSet, basename="license-price")
+router.register(r"club-fee-types", ClubFeeTypeViewSet, basename="club-fee-type")
+router.register(r"club-fee-prices", ClubFeePriceViewSet, basename="club-fee-price")
+router.register(
+    r"club-fee-billing-schedules",
+    ClubFeeBillingScheduleViewSet,
+    basename="club-fee-billing-schedule",
+)
 router.register(r"orders", OrderViewSet, basename="order")
 router.register(r"invoices", InvoiceViewSet, basename="invoice")
 router.register(r"payments", PaymentViewSet, basename="payment")
@@ -143,6 +154,7 @@ urlpatterns = [
     path("api/imports/members/preview/", MemberImportPreviewView.as_view(), name="import-members-preview"),
     path("api/imports/members/confirm/", MemberImportConfirmView.as_view(), name="import-members-confirm"),
     path("api/federation-profile/", FederationProfileView.as_view(), name="federation-profile"),
+    path("api/club-fee-billings/", ClubFeeBillingView.as_view(), name="club-fee-billings"),
     path(
         "api/federation-profile/logos/",
         FederationProfileLogoListView.as_view(),

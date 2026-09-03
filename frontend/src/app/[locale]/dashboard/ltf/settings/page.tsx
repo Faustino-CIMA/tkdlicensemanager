@@ -15,7 +15,7 @@ import { EmptyState } from "@/components/club-admin/empty-state";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
+import { ActionNotices, FormPanel } from "@/components/ui/list-page-chrome";
 import { Modal } from "@/components/ui/modal";
 import { deriveBankNameFromIban, isValidIban } from "@/lib/iban";
 import {
@@ -234,6 +234,16 @@ export default function LtfAdminSettingsPage() {
       title={t("federationSettingsTitle")}
       subtitle={t("federationSettingsSubtitle")}
     >
+      <ActionNotices
+        error={errorMessage || importRewriteError}
+        success={successMessage || importRewriteSuccess}
+        onDismiss={() => {
+          setErrorMessage(null);
+          setSuccessMessage(null);
+          setImportRewriteError(null);
+          setImportRewriteSuccess(null);
+        }}
+      />
       {isLoading ? (
         <EmptyState title={t("loadingTitle")} description={t("loadingSubtitle")} loading />
       ) : (
@@ -312,16 +322,6 @@ export default function LtfAdminSettingsPage() {
             </div>
           </form>
 
-          {successMessage ? (
-            <div className="mt-4">
-              <PageNotice tone="success">{successMessage}</PageNotice>
-            </div>
-          ) : null}
-          {errorMessage ? (
-            <div className="mt-4">
-              <PageNotice tone="danger">{errorMessage}</PageNotice>
-            </div>
-          ) : null}
           </FormPanel>
 
           <FormPanel className="space-y-4">
@@ -338,8 +338,6 @@ export default function LtfAdminSettingsPage() {
               />
               <span>{t("importPrefixRewriteLabel")}</span>
             </label>
-            {importRewriteSuccess ? <PageNotice tone="success">{importRewriteSuccess}</PageNotice> : null}
-            {importRewriteError ? <PageNotice tone="danger">{importRewriteError}</PageNotice> : null}
             <Button
               type="button"
               onClick={() => void handleSaveImportRewrite()}

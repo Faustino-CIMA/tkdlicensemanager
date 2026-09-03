@@ -7,6 +7,7 @@ import { useLocale, useTranslations } from "next-intl";
 
 import { resetPasswordConfirm } from "@/lib/auth-api";
 import { Button } from "@/components/ui/button";
+import { ActionNotices } from "@/components/ui/list-page-chrome";
 import { Input } from "@/components/ui/input";
 
 export default function ResetPasswordPage() {
@@ -61,8 +62,7 @@ export default function ResetPasswordPage() {
         <p className="text-sm text-muted">{t("subtitle")}</p>
       </div>
 
-      {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
-      {successMessage ? <p className="text-sm text-success">{successMessage}</p> : null}
+      <ActionNotices error={errorMessage} success={successMessage} onDismiss={() => { setErrorMessage(null); setSuccessMessage(null); }} />
 
       <form className="space-y-4" onSubmit={handleSubmit} autoComplete="on">
         {username ? (
@@ -108,7 +108,7 @@ export default function ResetPasswordPage() {
             onChange={(event) => setConfirmPassword(event.target.value)}
           />
         </div>
-        <Button type="submit" disabled={isSubmitting}>
+        <Button type="submit" variant="primary" disabled={isSubmitting}>
           {isSubmitting ? t("submitting") : t("submit")}
         </Button>
       </form>

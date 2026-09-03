@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 
@@ -10,7 +16,12 @@ import { EntityTable } from "@/components/club-admin/entity-table";
 import { LtfAdminLayout } from "@/components/ltf-admin/ltf-admin-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AppTextarea, ListActionsRow, ListToolbarPanel, PageNotice } from "@/components/ui/list-page-chrome";
+import {
+  AppTextarea,
+  ListActionsRow,
+  ListToolbarPanel,
+  ActionNotices
+} from "@/components/ui/list-page-chrome";
 import { Modal } from "@/components/ui/modal";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { apiRequest } from "@/lib/api";
@@ -350,8 +361,7 @@ export default function LtfAdminLicenseCardsPage() {
 
   return (
     <LtfAdminLayout title={t("licenseCardsTitle")} subtitle={t("licenseCardsSubtitle")}>
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
-      {successMessage ? <PageNotice tone="success">{successMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} success={successMessage} onDismiss={() => { setErrorMessage(null); setSuccessMessage(null); }} />
 
       <div className="space-y-6">
         <div className="flex flex-col gap-4">
@@ -369,7 +379,7 @@ export default function LtfAdminLicenseCardsPage() {
           <ListActionsRow
             actions={
               <>
-                <Button onClick={startCreateTemplate}>{t("licenseCardsCreateAction")}</Button>
+                <Button variant="primary" onClick={startCreateTemplate}>{t("licenseCardsCreateAction")}</Button>
                 <Button
                   variant="outline"
                   disabled={isImportingTemplate}

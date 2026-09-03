@@ -91,7 +91,7 @@ def apply_payment_and_activate(
         candidate_licenses = [
             item.license
             for item in order_items
-            if item.license.status != License.Status.ACTIVE
+            if item.license_id and item.license and item.license.status != License.Status.ACTIVE
         ]
         candidate_license_ids = [license.id for license in candidate_licenses]
         candidate_member_ids = {license.member_id for license in candidate_licenses}
@@ -110,6 +110,8 @@ def apply_payment_and_activate(
 
         for item in order_items:
             license_record = item.license
+            if not license_record:
+                continue
             license_status_before[license_record.id] = license_record.status
             if license_record.status != License.Status.ACTIVE:
                 if license_record.start_date > today:
@@ -265,9 +267,10 @@ def apply_payment_and_activate(
                 )
 
         if updated_order or updated_invoice or activated_any:
+            has_license_items = any(item.license_id for item in order_items)
             FinanceAuditLog.objects.create(
                 action="order.paid",
-                message=message,
+                message=message if has_license_items else "Payment confirmed.",
                 actor=actor,
                 club=order.club,
                 member=order.member,

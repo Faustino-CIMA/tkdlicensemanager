@@ -8,7 +8,11 @@ import { useRouter } from "next/navigation";
 import { LtfFinanceLayout } from "@/components/ltf-finance/ltf-finance-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AppTextarea, FormPanel, PageNotice } from "@/components/ui/list-page-chrome";
+import {
+  AppTextarea,
+  FormPanel,
+  ActionNotices
+} from "@/components/ui/list-page-chrome";
 import {
   Select,
   SelectContent,
@@ -103,7 +107,7 @@ export default function LtfFinanceIncomeCreatePage() {
       <Button asChild variant="outline" className="w-fit">
         <Link href={`/${locale}/dashboard/ltf-finance/income`}>{t("backToIncome")}</Link>
       </Button>
-      {errorMessage ? <PageNotice tone="danger">{errorMessage}</PageNotice> : null}
+      <ActionNotices error={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
       <FormPanel>
         <form className="space-y-5" onSubmit={handleSubmit}>
@@ -217,7 +221,7 @@ export default function LtfFinanceIncomeCreatePage() {
             </div>
           </div>
           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
-            <Button type="submit" disabled={isSaving}>
+            <Button type="submit" variant="primary" disabled={isSaving}>
               {isSaving ? t("savingAction") : t("recordIncomeAction")}
             </Button>
             <Button asChild type="button" variant="outline">

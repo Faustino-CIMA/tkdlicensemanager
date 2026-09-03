@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from .models import License, LicenseHistoryEvent, LicenseType, LicenseTypePolicy
+from .models import (
+    ClubFeePrice,
+    ClubFeeType,
+    License,
+    LicenseHistoryEvent,
+    LicenseType,
+    LicenseTypePolicy,
+)
 
 
 @admin.register(License)
@@ -24,6 +31,20 @@ class LicenseTypePolicyAdmin(admin.ModelAdmin):
         "updated_at",
     )
     search_fields = ("license_type__name", "license_type__code")
+
+
+@admin.register(ClubFeeType)
+class ClubFeeTypeAdmin(admin.ModelAdmin):
+    list_display = ("name", "code", "cadence", "is_active")
+    list_filter = ("cadence", "is_active")
+    search_fields = ("name", "code")
+
+
+@admin.register(ClubFeePrice)
+class ClubFeePriceAdmin(admin.ModelAdmin):
+    list_display = ("fee_type", "amount", "currency", "effective_from")
+    list_filter = ("currency",)
+    search_fields = ("fee_type__name", "fee_type__code")
 
 
 @admin.register(LicenseHistoryEvent)
