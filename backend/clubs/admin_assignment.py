@@ -72,6 +72,7 @@ def search_assignment_members(
     club_id=None,
     licensed_only: bool = True,
     limit: int = MEMBER_SEARCH_LIMIT,
+    allowed_club_ids=None,
 ) -> dict:
     query = str(query or "").strip()
     try:
@@ -94,6 +95,11 @@ def search_assignment_members(
         .annotate(has_valid_license=Exists(_valid_license_exists()))
         .order_by("last_name", "first_name", "id")
     )
+    if allowed_club_ids is not None:
+        allowed = {int(item) for item in allowed_club_ids}
+        if club_id and club_id not in allowed:
+            return {"members": [], "total": 0, "truncated": False, "limit": limit}
+        queryset = queryset.filter(club_id__in=allowed)
     if club_id:
         queryset = queryset.filter(club_id=club_id)
     if licensed_only:
@@ -125,12 +131,14 @@ def search_assignment_members(
     }
 
 
-def build_assignment_board() -> dict:
-    clubs = list(
-        Club.objects.annotate(admin_count=Count("admins", distinct=True))
-        .prefetch_related("admins")
-        .order_by("name")
+def build_assignment_board(*, actor=None) -> dict:
+    clubs_qs = Club.objects.annotate(admin_count=Count("admins", distinct=True)).prefetch_related(
+        "admins"
     )
+    if actor is not None and getattr(actor, "role", None) == User.Roles.CLUB_ADMIN:
+        clubs_qs = clubs_qs.filter(admins=actor)
+    clubs = list(clubs_qs.order_by("name"))
+    club_ids = [club.id for club in clubs]
     club_payload = []
     for club in clubs:
         admin_ids = [admin.id for admin in club.admins.all()]
@@ -146,7 +154,7 @@ def build_assignment_board() -> dict:
         )
 
     admin_users = (
-        User.objects.filter(clubs_administered__isnull=False)
+        User.objects.filter(clubs_administered__in=club_ids)
         .distinct()
         .select_related("member_profile__club")
         .prefetch_related(
@@ -177,6 +185,7 @@ def build_assignment_board() -> dict:
                 "clubs": [
                     {"id": club.id, "name": club.name}
                     for club in user.clubs_administered.all()
+                    if club.id in club_ids
                 ],
             }
         )
@@ -205,6 +214,7 @@ def assign_club_admin(
     user_id=None,
     email: str | None = None,
     locale: str | None = None,
+    require_home_club: bool = False,
 ) -> dict:
     if not member_id and not user_id:
         raise AdminAssignmentError(
@@ -270,6 +280,9 @@ def assign_club_admin(
         if not member:
             raise AdminAssignmentError({"detail": "User must have a member profile."}, 400)
 
+    if require_home_club and member and member.club_id != club.id:
+        raise AdminAssignmentError({"detail": "home_club_only"}, 400)
+
     already_admin = club.admins.filter(id=user.id).exists()
     if already_admin and not linked_existing_user:
         raise AdminAssignmentError({"detail": "already_admin"}, 400)
@@ -300,12 +313,14 @@ def assign_club_admin(
     }
 
 
-def remove_club_admin(club: Club, user_id) -> dict:
+def remove_club_admin(club: Club, user_id, *, prevent_last_admin: bool = False) -> dict:
     if not user_id:
         raise AdminAssignmentError({"detail": "user_id is required."}, 400)
     user = User.objects.filter(id=user_id).first()
     if not user or not club.admins.filter(id=user.id).exists():
         raise AdminAssignmentError({"detail": "Admin not found on this club."}, 400)
+    if prevent_last_admin and club.admins.count() <= 1:
+        raise AdminAssignmentError({"detail": "last_admin"}, 400)
     club.admins.remove(user)
     if (
         user.role == User.Roles.CLUB_ADMIN

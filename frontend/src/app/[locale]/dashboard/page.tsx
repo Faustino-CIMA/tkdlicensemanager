@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 
 import { apiRequest } from "@/lib/api";
+import { logout } from "@/lib/auth-api";
 import { clearToken } from "@/lib/auth";
 import { getDashboardRouteForRole } from "@/lib/dashboard-routing";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ type MeResponse = {
   username: string;
   email: string;
   role: string;
+  is_superuser?: boolean;
 };
 
 export default function DashboardPage() {
@@ -29,7 +31,9 @@ export default function DashboardPage() {
       try {
         const response = await apiRequest<MeResponse>("/api/auth/me/");
         setUser(response);
-        const targetRoute = getDashboardRouteForRole(response.role, locale);
+        const targetRoute = getDashboardRouteForRole(response.role, locale, {
+          isSuperuser: Boolean(response.is_superuser),
+        });
         if (targetRoute) {
           router.push(targetRoute);
         }
@@ -42,7 +46,8 @@ export default function DashboardPage() {
     loadUser();
   }, [locale, router]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await logout();
     clearToken();
     router.push(`/${locale}/login`);
   };

@@ -28,6 +28,10 @@ LTF Admin pages:
 Club Admin pages:
 - Print jobs history: `/{locale}/dashboard/club/print-jobs`
 - Quick print: `/{locale}/dashboard/club/print-jobs/quick-print`
+- Club admins (rubber-band): `/{locale}/dashboard/club/admins`
+
+Ops console (Django `is_superuser` only):
+- Overview: `/{locale}/dashboard/ops`
 
 Quick print entry points:
 - Members page stores selected member IDs and opens quick print:

@@ -15,6 +15,7 @@ import { getDashboardRouteForRole } from "@/lib/dashboard-routing";
 
 type MeResponse = {
   role: string;
+  is_superuser?: boolean;
 };
 
 const POLL_INTERVAL_MS = 2000;
@@ -41,7 +42,9 @@ function CheckoutSuccessContent() {
     const load = async () => {
       try {
         const me = await apiRequest<MeResponse>("/api/auth/me/");
-        const target = getDashboardRouteForRole(me.role, locale);
+        const target = getDashboardRouteForRole(me.role, locale, {
+          isSuperuser: Boolean(me.is_superuser),
+        });
         if (!cancelled && target) {
           setDashboardHref(target);
         }

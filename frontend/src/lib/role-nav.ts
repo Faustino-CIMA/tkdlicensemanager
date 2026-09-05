@@ -5,14 +5,17 @@ import {
   Camera,
   CircleDollarSign,
   CreditCard,
+  Database,
   FileText,
   History,
   IdCard,
+  Languages,
   Layers,
   LayoutDashboard,
   Printer,
   ScrollText,
   Settings,
+  ShieldAlert,
   ShoppingCart,
   Sparkles,
   ArrowLeftRight,
@@ -23,7 +26,7 @@ import {
 
 export type NavMatchMode = "exact" | "prefix";
 
-export type RoleNavNamespace = "ClubAdmin" | "LtfAdmin" | "LtfFinance" | "Member";
+export type RoleNavNamespace = "ClubAdmin" | "LtfAdmin" | "LtfFinance" | "Member" | "Ops";
 
 export type RoleNavDef = {
   id: string;
@@ -89,6 +92,14 @@ const CLUB_NAV: RoleNavDef[] = [
     labelKey: "navTransfers",
     namespace: "ClubAdmin",
     icon: ArrowLeftRight,
+    matchMode: "prefix",
+  },
+  {
+    id: "admins",
+    href: (locale) => `/${locale}/dashboard/club/admins`,
+    labelKey: "navAdmins",
+    namespace: "ClubAdmin",
+    icon: UserCog,
     matchMode: "prefix",
   },
   {
@@ -270,15 +281,80 @@ const MEMBER_NAV: RoleNavDef[] = [
   },
 ];
 
-export function getRoleNavDefs(role: string): RoleNavDef[] {
+const OPS_NAV: RoleNavDef[] = [
+  {
+    id: "overview",
+    href: (locale) => `/${locale}/dashboard/ops`,
+    labelKey: "navOverview",
+    namespace: "Ops",
+    icon: LayoutDashboard,
+    matchMode: "exact",
+  },
+  {
+    id: "security",
+    href: (locale) => `/${locale}/dashboard/ops/security`,
+    labelKey: "navSecurity",
+    namespace: "Ops",
+    icon: ShieldAlert,
+    matchMode: "prefix",
+  },
+  {
+    id: "users",
+    href: (locale) => `/${locale}/dashboard/ops/users`,
+    labelKey: "navUsers",
+    namespace: "Ops",
+    icon: Users,
+    matchMode: "prefix",
+  },
+  {
+    id: "queries",
+    href: (locale) => `/${locale}/dashboard/ops/queries`,
+    labelKey: "navQueries",
+    namespace: "Ops",
+    icon: Database,
+    matchMode: "prefix",
+  },
+  {
+    id: "translations",
+    href: (locale) => `/${locale}/dashboard/ops/translations`,
+    labelKey: "navTranslations",
+    namespace: "Ops",
+    icon: Languages,
+    matchMode: "prefix",
+  },
+  {
+    id: "jobs",
+    href: (locale) => `/${locale}/dashboard/ops/jobs`,
+    labelKey: "navJobs",
+    namespace: "Ops",
+    icon: Printer,
+    matchMode: "prefix",
+  },
+  {
+    id: "audit",
+    href: (locale) => `/${locale}/dashboard/ops/audit`,
+    labelKey: "navAudit",
+    namespace: "Ops",
+    icon: ScrollText,
+    matchMode: "prefix",
+  },
+];
+
+export function getRoleNavDefs(role: string, options?: { isSuperuser?: boolean }): RoleNavDef[] {
+  if (options?.isSuperuser) {
+    return OPS_NAV;
+  }
   if (role === "ltf_admin") {
     return LTF_ADMIN_NAV;
   }
   if (role === "ltf_finance") {
     return LTF_FINANCE_NAV;
   }
-  if (role === "club_admin" || role === "coach") {
+  if (role === "club_admin") {
     return CLUB_NAV;
+  }
+  if (role === "coach") {
+    return CLUB_NAV.filter((item) => item.id !== "admins");
   }
   if (role === "member") {
     return MEMBER_NAV;

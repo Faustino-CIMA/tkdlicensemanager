@@ -74,6 +74,9 @@ export function shouldShowClubSelector(pathname: string | null | undefined): boo
     ];
     return !hiddenPrefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
   }
+  if (path === "/dashboard/club/admins" || path.startsWith("/dashboard/club/admins/")) {
+    return false;
+  }
   return true;
 }
 

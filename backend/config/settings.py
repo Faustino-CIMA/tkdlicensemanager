@@ -107,6 +107,7 @@ INSTALLED_APPS = [
     "clubs",
     "members",
     "licenses",
+    "ops.apps.OpsConfig",
 ]
 
 MIDDLEWARE = [
@@ -360,7 +361,7 @@ ACCOUNT_ADAPTER = "accounts.adapter.CustomAccountAdapter"
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.SessionAuthentication",
-        "rest_framework.authentication.TokenAuthentication",
+        "ops.authentication.TokenAuthenticationWithMeta",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
@@ -562,3 +563,14 @@ INVOICE_SEPA_BENEFICIARY = config("INVOICE_SEPA_BENEFICIARY", default="LTF Licen
 INVOICE_SEPA_IBAN = config("INVOICE_SEPA_IBAN", default="")
 INVOICE_SEPA_BIC = config("INVOICE_SEPA_BIC", default="")
 INVOICE_SEPA_REMITTANCE_PREFIX = config("INVOICE_SEPA_REMITTANCE_PREFIX", default="Invoice")
+
+LTF_APP_VERSION = config("LTF_APP_VERSION", default="0.8.0")
+OPS_LOCKOUT_FAILURES = config("OPS_LOCKOUT_FAILURES", cast=int, default=10)
+OPS_LOCKOUT_WINDOW_MINUTES = config("OPS_LOCKOUT_WINDOW_MINUTES", cast=int, default=15)
+OPS_STUFFING_DISTINCT_USERNAMES = config("OPS_STUFFING_DISTINCT_USERNAMES", cast=int, default=5)
+OPS_SESSION_ONLINE_MINUTES = config("OPS_SESSION_ONLINE_MINUTES", cast=int, default=15)
+OPS_TOKEN_TOUCH_INTERVAL_SECONDS = config("OPS_TOKEN_TOUCH_INTERVAL_SECONDS", cast=int, default=60)
+OPS_QUERY_TIMEOUT_MS = config("OPS_QUERY_TIMEOUT_MS", cast=int, default=5000)
+OPS_QUERY_MAX_ROWS = config("OPS_QUERY_MAX_ROWS", cast=int, default=500)
+OPS_I18N_DIR = config("OPS_I18N_DIR", default="/app/i18n_frontend")
+OPS_DOCKER_SOCKET = config("OPS_DOCKER_SOCKET", default="")

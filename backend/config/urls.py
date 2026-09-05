@@ -20,6 +20,7 @@ from accounts.views import (
     ResendVerificationView,
     VerifyEmailView,
 )
+from ops.views import PublicI18nView
 from imports.views import (
     ClubImportConfirmView,
     ClubImportPreviewView,
@@ -171,6 +172,8 @@ urlpatterns = [
         name="federation-profile-logo-content",
     ),
     path("api/health/", health_check, name="health-check"),
+    path("api/i18n/<str:locale>/", PublicI18nView.as_view(), name="public-i18n"),
+    path("api/ops/", include("ops.urls")),
     path(
         "api/members/ltf-license-prefix-rewrite/",
         RewriteLtfLicensePrefixView.as_view(),

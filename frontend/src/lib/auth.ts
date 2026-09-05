@@ -5,6 +5,7 @@ export type AuthUser = {
   first_name: string;
   last_name: string;
   role: string;
+  is_superuser: boolean;
   is_email_verified: boolean;
   consent_given: boolean;
   consent_given_at: string | null;

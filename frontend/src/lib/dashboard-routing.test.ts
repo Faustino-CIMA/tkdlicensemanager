@@ -12,4 +12,10 @@ describe("dashboard routing", () => {
   it("returns null for unknown role", () => {
     expect(getDashboardRouteForRole("unknown", "en")).toBeNull();
   });
+
+  it("sends superusers to the ops console", () => {
+    expect(getDashboardRouteForRole("member", "en", { isSuperuser: true })).toBe(
+      "/en/dashboard/ops",
+    );
+  });
 });

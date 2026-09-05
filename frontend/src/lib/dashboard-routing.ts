@@ -1,4 +1,11 @@
-export function getDashboardRouteForRole(role: string, locale: string): string | null {
+export function getDashboardRouteForRole(
+  role: string,
+  locale: string,
+  options?: { isSuperuser?: boolean },
+): string | null {
+  if (options?.isSuperuser) {
+    return `/${locale}/dashboard/ops`;
+  }
   if (role === "ltf_admin") {
     return `/${locale}/dashboard/ltf`;
   }

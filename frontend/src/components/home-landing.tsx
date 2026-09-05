@@ -15,6 +15,7 @@ type MeResponse = {
   username: string;
   first_name: string;
   role: string;
+  is_superuser?: boolean;
 };
 
 export function HomeLanding() {
@@ -25,6 +26,7 @@ export function HomeLanding() {
   const tLtf = useTranslations("LtfAdmin");
   const tFinance = useTranslations("LtfFinance");
   const tMember = useTranslations("Member");
+  const tOps = useTranslations("Ops");
   const [me, setMe] = useState<MeResponse | null>(null);
   const [isChecking, setIsChecking] = useState(true);
 
@@ -70,6 +72,9 @@ export function HomeLanding() {
     if (def.namespace === "LtfFinance") {
       return tFinance(def.labelKey);
     }
+    if (def.namespace === "Ops") {
+      return tOps(def.labelKey);
+    }
     return tMember(def.labelKey);
   };
 
@@ -85,17 +90,20 @@ export function HomeLanding() {
   }
 
   if (me) {
-    const navDefs = getRoleNavDefs(me.role);
-    const dashboardHref = getDashboardRouteForRole(me.role, locale) ?? `/${locale}/dashboard`;
+    const navDefs = getRoleNavDefs(me.role, { isSuperuser: Boolean(me.is_superuser) });
+    const dashboardHref =
+      getDashboardRouteForRole(me.role, locale, { isSuperuser: Boolean(me.is_superuser) }) ??
+      `/${locale}/dashboard`;
     const displayName = me.first_name?.trim() || me.username;
-    const roleLabel =
-      {
-        ltf_admin: common("roleLtfAdmin"),
-        ltf_finance: common("roleLtfFinance"),
-        club_admin: common("roleClubAdmin"),
-        coach: common("roleCoach"),
-        member: common("roleMember"),
-      }[me.role] ?? me.role;
+    const roleLabel = me.is_superuser
+      ? common("roleSuperuser")
+      : ({
+          ltf_admin: common("roleLtfAdmin"),
+          ltf_finance: common("roleLtfFinance"),
+          club_admin: common("roleClubAdmin"),
+          coach: common("roleCoach"),
+          member: common("roleMember"),
+        }[me.role] ?? me.role);
 
     return (
       <main className="bg-background px-6 py-16 lg:py-24">

@@ -4,10 +4,10 @@ Modern, secure Taekwondo license management for the Luxembourg Taekwondo Federat
 
 ## Release Notes
 
-This working tree is **v0.7.0**: club fees and billing, member detail tabs, and finance UX. Millimetre print output is unchanged.
+This working tree is **v0.8.0**: superuser ops console and Club Admin rubber-band assignment. Millimetre print output is unchanged.
 
-- See `CHANGELOG.md` **0.7.0** for this release, **0.6.4** for club movement monitoring, and **0.4.0** for the UI refresh and license-card designer.
-- Current tagged release: `v0.7.0`.
+- See `CHANGELOG.md` **0.8.0** for this release, **0.7.0** for club fees, and **0.4.0** for the UI refresh and license-card designer.
+- Current tagged release: `v0.8.0`.
 
 ## CI (GitHub Actions)
 
@@ -69,7 +69,7 @@ docker compose up --build
 docker compose exec backend python manage.py migrate
 ```
 
-5. Create Django superuser (admin login):
+5. Create Django superuser (ops console login). `createsuperuser` sets `is_superuser`; that is what opens the frontend ops console, not the federation role:
 
 ```
 docker compose exec backend python manage.py createsuperuser
@@ -126,12 +126,12 @@ docker compose -f docker-compose.yml -f docker-compose.pgbouncer.yml up -d --bui
 - This profile switches Django DB host to `pgbouncer` and sets `DJANGO_DB_CONN_MAX_AGE=0`.
 
 What the services are:
-- `frontend`: Next.js UI (accessible at `http://localhost:3000/`)
-- `backend`: Django API (accessible at `http://localhost:8000/`)
+- `frontend`: Next.js UI (accessible at `http://localhost:3000/`). UI changes need `docker compose up -d --build frontend` because the image has no source volume.
+- `backend`: Django API (accessible at `http://localhost:8000/`). Superuser ops console is `/{locale}/dashboard/ops`.
 - `db`: PostgreSQL database (data stored in a volume)
 - `redis`: Redis message broker/cache
-- `worker`: Celery background jobs (runs tasks like invoice emails)
-- `beat`: Celery scheduler (runs periodic jobs like license expiry reconciliation)
+- `worker`: Celery background jobs (runs tasks like invoice emails). Shares the `ltf-license-manager-backend` image with backend and beat.
+- `beat`: Celery scheduler (runs periodic jobs like license expiry reconciliation). Same image as backend/worker.
 
 Important volumes:
 - `postgres_data`: keeps your database data between restarts.

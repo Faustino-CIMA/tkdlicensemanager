@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 
 import { FormPanel } from "@/components/ui/list-page-chrome";
+import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { apiRequest } from "@/lib/api";
 import { APP_RELEASES, APP_VERSION, GITHUB_RELEASES_URL } from "@/lib/app-version";
@@ -14,6 +15,7 @@ import { formatDisplayDate } from "@/lib/date-display";
 
 type MeResponse = {
   role: string;
+  is_superuser?: boolean;
 };
 
 export default function AboutPage() {
@@ -30,7 +32,9 @@ export default function AboutPage() {
     const load = async () => {
       try {
         const me = await apiRequest<MeResponse>("/api/auth/me/");
-        const target = getDashboardRouteForRole(me.role, locale);
+        const target = getDashboardRouteForRole(me.role, locale, {
+          isSuperuser: Boolean(me.is_superuser),
+        });
         if (!cancelled) {
           setDashboardHref(target ?? `/${locale}/dashboard`);
         }
@@ -55,20 +59,14 @@ export default function AboutPage() {
           <p className="mt-2 text-sm text-muted">{t("subtitle")}</p>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <StatusBadge label={t("versionLabel", { version: APP_VERSION })} tone="info" />
-            <Link
-              href={dashboardHref}
-              className="text-sm font-medium text-accent underline-offset-4 hover:underline"
-            >
-              {t("backToApp")}
-            </Link>
-            <a
-              href={GITHUB_RELEASES_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="text-sm font-medium text-accent underline-offset-4 hover:underline"
-            >
-              {t("githubReleasesLink")}
-            </a>
+            <Button asChild variant="outline">
+              <Link href={dashboardHref}>{t("backToApp")}</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <a href={GITHUB_RELEASES_URL} target="_blank" rel="noreferrer">
+                {t("githubReleasesLink")}
+              </a>
+            </Button>
           </div>
         </div>
 

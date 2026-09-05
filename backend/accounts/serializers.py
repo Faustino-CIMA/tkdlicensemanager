@@ -16,6 +16,7 @@ class UserSerializer(serializers.ModelSerializer):
             "first_name",
             "last_name",
             "role",
+            "is_superuser",
             "is_email_verified",
             "consent_given",
             "consent_given_at",
@@ -92,7 +93,9 @@ class LoginSerializer(serializers.Serializer):
         )
         if not user:
             raise serializers.ValidationError("Invalid credentials")
-        is_verified = user.is_email_verified or EmailAddress.objects.filter(
+        if not user.is_active:
+            raise serializers.ValidationError("Invalid credentials")
+        is_verified = user.is_superuser or user.is_email_verified or EmailAddress.objects.filter(
             user=user, verified=True
         ).exists()
         if not is_verified:

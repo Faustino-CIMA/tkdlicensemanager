@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-04
+
+### User-facing
+- **Ops console:** Django superusers (`is_superuser`) sign in on the same frontend and land on `/{locale}/dashboard/ops`. Federation roles stay separate. The console shows who is signed in, dependency health, failed logins, lockouts, security alerts, users, a read-only query catalog, a screen-by-screen EN|LB translation editor, Celery/print/billing jobs, and an ops audit log.
+- **Ops navigation:** Superusers get an **Ops console** button on federation dashboards and **Open federation dashboard** on ops. Sign out calls the logout API so the session disappears from “who is signed in.”
+- **Club admins:** Club Admins can add other admins for their clubs on a rubber-band board (`/{locale}/dashboard/club/admins`). A member can only become admin of the club they belong to. The header club dropdown is hidden on that page; click a club in **Your clubs** to list its members. Coaches do not see this screen. A club must keep at least one admin.
+
+### Technical
+- New Django app `ops`: `AuthEvent`, `AuthTokenMeta`, `SecurityAlert`, `TranslationOverride`, `OpsAuditLog`; migration `ops.0001_ops_console`.
+- `/api/ops/**` is gated on `IsSuperuser`. Login records success/failure, lockout (10 failures / 15 minutes), and token last-used. `GET /api/i18n/{locale}/` serves bundled messages plus overrides.
+- Club Admin may call `admin_assignment`, `add_admin`, and `remove_admin` for clubs they administer, with `require_home_club` and `prevent_last_admin`.
+- `docker-compose.yml`: backend, worker, and beat share image `ltf-license-manager-backend`; frontend messages are mounted read-only for the translation editor; `INTERNAL_API_URL` for server-side i18n fetch.
+
 ## [0.7.0] - 2026-09-03
 
 ### User-facing

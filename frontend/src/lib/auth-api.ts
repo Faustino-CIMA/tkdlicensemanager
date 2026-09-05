@@ -40,6 +40,14 @@ export function login(input: LoginInput) {
   });
 }
 
+export async function logout() {
+  try {
+    await apiRequest("/api/auth/logout/", { method: "POST" });
+  } catch {
+    // Still drop the local token if the API is unreachable.
+  }
+}
+
 export function resendVerification(input: ResendVerificationInput) {
   const locale = input.locale ?? "en";
   return apiRequest<RegisterResponse>(

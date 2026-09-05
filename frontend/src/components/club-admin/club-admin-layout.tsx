@@ -2,7 +2,9 @@
 
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+import { apiRequest } from "@/lib/api";
 import {
   ArrowLeftRight,
   CreditCard,
@@ -12,6 +14,7 @@ import {
   Printer,
   Settings,
   ShoppingCart,
+  UserCog,
   Users,
 } from "lucide-react";
 
@@ -37,6 +40,7 @@ type ClubNavDef = Readonly<{
     | "navOrders"
     | "navInvoices"
     | "navTransfers"
+    | "navAdmins"
     | "navPrinterProfiles"
     | "navSettings";
   matchMode: NavMatchMode;
@@ -94,6 +98,13 @@ const CLUB_NAV_DEFINITIONS: readonly ClubNavDef[] = Object.freeze([
     icon: ArrowLeftRight,
   } satisfies ClubNavDef),
   Object.freeze({
+    id: "admins",
+    routePath: "dashboard/club/admins",
+    labelKey: "navAdmins",
+    matchMode: "prefix",
+    icon: UserCog,
+  } satisfies ClubNavDef),
+  Object.freeze({
     id: "printer-profiles",
     routePath: "dashboard/club/printer-profiles",
     labelKey: "navPrinterProfiles",
@@ -113,17 +124,32 @@ export function ClubAdminLayout({ title, subtitle, children }: ClubAdminLayoutPr
   const t = useTranslations("ClubAdmin");
   const pathname = usePathname();
   const locale = pathname?.split("/")[1] || "en";
+  const [role, setRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest<{ role: string }>("/api/auth/me/")
+      .then((me) => {
+        if (!cancelled) setRole(me.role);
+      })
+      .catch(() => {
+        if (!cancelled) setRole(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const navItems = useMemo<AppNavItem[]>(
     () =>
-      CLUB_NAV_DEFINITIONS.map((def) => ({
+      CLUB_NAV_DEFINITIONS.filter((def) => def.id !== "admins" || role === "club_admin").map((def) => ({
         id: def.id,
         href: `/${locale}/${def.routePath}`,
         label: t(def.labelKey),
         icon: def.icon,
         matchMode: def.matchMode,
       })),
-    [locale, t]
+    [locale, role, t]
   );
 
   return (

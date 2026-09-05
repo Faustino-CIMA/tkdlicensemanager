@@ -55,6 +55,7 @@ services:
       - app-net
 
   backend:
+    image: ltf-license-manager-backend
     build:
       context: ./backend
       args:
@@ -101,6 +102,7 @@ services:
       --access-logfile -'"
     volumes:
       - ./backend:/app
+      - ./frontend/src/messages:/app/i18n_frontend:ro
       # Keep for debug-mode logging (shared host log path)
       - ./.cursor:/app/.cursor
       - staticfiles_data:/app/staticfiles
@@ -121,6 +123,7 @@ services:
       - app-net
 
   worker:
+    image: ltf-license-manager-backend
     build:
       context: ./backend
       args:
@@ -160,6 +163,7 @@ services:
       celery -A config worker -l info -Q celery,$${CELERY_PRINT_JOB_QUEUE:-print_jobs}'"
     volumes:
       - ./backend:/app
+      - ./frontend/src/messages:/app/i18n_frontend:ro
       # Keep for debug-mode logging (shared host log path)
       - ./.cursor:/app/.cursor
       - mediafiles_data:/app/media
@@ -173,6 +177,7 @@ services:
       - app-net
 
   beat:
+    image: ltf-license-manager-backend
     build:
       context: ./backend
       args:
@@ -213,6 +218,7 @@ services:
       celery -A config beat -l info'"
     volumes:
       - ./backend:/app
+      - ./frontend/src/messages:/app/i18n_frontend:ro
       # Keep for debug-mode logging (shared host log path)
       - ./.cursor:/app/.cursor
       - mediafiles_data:/app/media
@@ -250,6 +256,7 @@ services:
       - .env
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      INTERNAL_API_URL: ${INTERNAL_API_URL:-http://backend:8000}
     depends_on:
       backend:
         condition: service_healthy

@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 
+import { logout } from "@/lib/auth-api";
 import { clearToken, getToken } from "@/lib/auth";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { Button } from "@/components/ui/button";
@@ -60,7 +61,8 @@ export function AppChrome({ children }: { children: React.ReactNode }) {
             {hasToken ? (
               <Button
                 variant="outline"
-                onClick={() => {
+                onClick={async () => {
+                  await logout();
                   clearToken();
                   router.push(`/${locale}/login`);
                 }}

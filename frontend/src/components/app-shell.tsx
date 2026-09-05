@@ -9,7 +9,9 @@ import type { LucideIcon } from "lucide-react";
 import { Menu, X } from "lucide-react";
 
 import { apiRequest } from "@/lib/api";
+import { logout } from "@/lib/auth-api";
 import { clearToken, getToken } from "@/lib/auth";
+import { getDashboardRouteForRole } from "@/lib/dashboard-routing";
 import {
   ALL_CLUBS_SELECT_VALUE,
   allowsAllClubsSelection,
@@ -51,6 +53,7 @@ type AuthMeResponse = {
   username: string;
   first_name: string;
   role: string;
+  is_superuser?: boolean;
 };
 
 function pathMatches(pathname: string, href: string, matchMode: AppNavItem["matchMode"]) {
@@ -129,7 +132,8 @@ export function AppShell({ title, subtitle, navItems, children, variant = "defau
     };
   }, []);
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    await logout();
     clearToken();
     persistSelectedClubId(null);
     setMe(null);
@@ -138,15 +142,35 @@ export function AppShell({ title, subtitle, navItems, children, variant = "defau
 
   const displayName = me?.first_name?.trim() || me?.username || t("welcomeFallbackName");
   const roleLabel = me
-    ? ({
-        ltf_admin: t("roleLtfAdmin"),
-        ltf_finance: t("roleLtfFinance"),
-        club_admin: t("roleClubAdmin"),
-        coach: t("roleCoach"),
-        member: t("roleMember"),
-      }[me.role] ?? me.role)
+    ? me.is_superuser
+      ? t("roleSuperuser")
+      : ({
+          ltf_admin: t("roleLtfAdmin"),
+          ltf_finance: t("roleLtfFinance"),
+          club_admin: t("roleClubAdmin"),
+          coach: t("roleCoach"),
+          member: t("roleMember"),
+        }[me.role] ?? me.role)
     : "";
-  const roleTone = me?.role === "ltf_finance" ? "warning" : me?.role === "club_admin" ? "success" : "info";
+  const roleTone = me?.is_superuser
+    ? "danger"
+    : me?.role === "ltf_finance"
+      ? "warning"
+      : me?.role === "club_admin"
+        ? "success"
+        : "info";
+
+  const isOpsDashboard = (pathname || "").includes("/dashboard/ops");
+  const federationHref = me
+    ? getDashboardRouteForRole(me.role, locale)
+    : null;
+  const showOpsConsoleButton = Boolean(me?.is_superuser && !isOpsDashboard);
+  const showFederationDashboardButton = Boolean(
+    me?.is_superuser &&
+      isOpsDashboard &&
+      federationHref &&
+      !federationHref.includes("/dashboard/ops"),
+  );
 
   const sidebar = (
     <div className="flex h-full flex-col">
@@ -281,6 +305,16 @@ export function AppShell({ title, subtitle, navItems, children, variant = "defau
                 </div>
               ) : null}
 
+              {showOpsConsoleButton ? (
+                <Button asChild variant="outline">
+                  <Link href={`/${locale}/dashboard/ops`}>{t("openOpsConsole")}</Link>
+                </Button>
+              ) : null}
+              {showFederationDashboardButton && federationHref ? (
+                <Button asChild variant="outline">
+                  <Link href={federationHref}>{t("openFederationDashboard")}</Link>
+                </Button>
+              ) : null}
               <LanguageSwitcher compact />
               <Button variant="outline" onClick={handleSignOut}>
                 {t("signOut")}

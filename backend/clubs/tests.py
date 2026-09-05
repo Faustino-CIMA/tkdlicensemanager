@@ -751,18 +751,100 @@ class ClubAdminManagementTests(TestCase):
         self.assertIn("reset-password", mail.outbox[0].body)
         self.assertIn(f"username={response.data['username']}", mail.outbox[0].body)
 
-    def test_admin_assignment_forbidden_for_club_admin(self):
+    def test_club_admin_assignment_board_is_scoped(self):
         club_admin = User.objects.create_user(
             username="clubadmin-board",
             password="pass12345",
             role=User.Roles.CLUB_ADMIN,
         )
+        other = Club.objects.create(name="Other Club", created_by=self.ltf_admin)
+        self.club.max_admins = 5
+        self.club.save(update_fields=["max_admins"])
         self.club.admins.add(club_admin)
         self.client.force_authenticate(user=club_admin)
         response = self.client.get("/api/clubs/admin_assignment/")
+        self.assertEqual(response.status_code, 200)
+        club_ids = [item["id"] for item in response.data["clubs"]]
+        self.assertIn(self.club.id, club_ids)
+        self.assertNotIn(other.id, club_ids)
+
+    def test_club_admin_can_add_home_club_member(self):
+        club_admin = User.objects.create_user(
+            username="clubadmin-add",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+        )
+        self.club.max_admins = 5
+        self.club.save(update_fields=["max_admins"])
+        self.club.admins.add(club_admin)
+        candidate = Member.objects.create(
+            club=self.club,
+            first_name="Pat",
+            last_name="Helper",
+            email="pat.helper@example.com",
+        )
+        self.client.force_authenticate(user=club_admin)
+        response = self.client.post(
+            f"/api/clubs/{self.club.id}/add_admin/",
+            {"member_id": candidate.id, "locale": "en"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(self.club.admins.filter(id=response.data["user_id"]).exists())
+
+    def test_club_admin_cannot_add_member_of_another_club(self):
+        club_admin = User.objects.create_user(
+            username="clubadmin-cross",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+        )
+        other = Club.objects.create(name="Second Club", created_by=self.ltf_admin, max_admins=5)
+        other.admins.add(club_admin)
+        self.club.max_admins = 5
+        self.club.save(update_fields=["max_admins"])
+        self.club.admins.add(club_admin)
+        visitor = Member.objects.create(
+            club=self.club,
+            first_name="Visitor",
+            last_name="Athlete",
+            email="visitor@example.com",
+        )
+        self.client.force_authenticate(user=club_admin)
+        response = self.client.post(
+            f"/api/clubs/{other.id}/add_admin/",
+            {"member_id": visitor.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data["detail"], "home_club_only")
+        self.assertFalse(other.admins.filter(id=visitor.user_id).exists())
+
+    def test_club_admin_cannot_remove_last_admin(self):
+        club_admin = User.objects.create_user(
+            username="clubadmin-last",
+            password="pass12345",
+            role=User.Roles.CLUB_ADMIN,
+        )
+        self.club.admins.add(club_admin)
+        self.client.force_authenticate(user=club_admin)
+        response = self.client.post(
+            f"/api/clubs/{self.club.id}/remove_admin/",
+            {"user_id": club_admin.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data["detail"], "last_admin")
+        self.assertTrue(self.club.admins.filter(id=club_admin.id).exists())
+
+    def test_coach_cannot_manage_club_admins(self):
+        coach = User.objects.create_user(
+            username="coach-admins",
+            password="pass12345",
+            role=User.Roles.COACH,
+        )
+        self.client.force_authenticate(user=coach)
+        response = self.client.get("/api/clubs/admin_assignment/")
         self.assertEqual(response.status_code, 403)
-        members = self.client.get("/api/clubs/admin_assignment_members/")
-        self.assertEqual(members.status_code, 403)
 
 
 class FederationProfileApiTests(TestCase):
